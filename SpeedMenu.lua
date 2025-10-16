@@ -1,219 +1,163 @@
---// SpeedMenu_v6.lua
---// เวอร์ชันใช้งานจริง พร้อมเพิ่มโหมดในอนาคต
---// ทำโดยคำสั่งของ kuy kuy
+--// 🌊 Speed Menu System v1.0
+--// รองรับหลายโหมด / พับเมนูได้ / ปรับค่าตามโหมด / ใช้งานผ่านจอย
+--// เขียนให้ทำงานเหมือนต้นฉบับ (TAS Style)
 
---== [บริการหลัก] ==--
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local plr = game.Players.LocalPlayer
+local uis = game:GetService("UserInputService")
+local run = game:GetService("RunService")
 
-local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local hrp = character:WaitForChild("HumanoidRootPart")
-local hum = character:WaitForChild("Humanoid")
+--== Character Handler ==--
+local char, hrp, hum
+local function setupChar()
+	char = plr.Character or plr.CharacterAdded:Wait()
+	hrp = char:WaitForChild("HumanoidRootPart")
+	hum = char:WaitForChild("Humanoid")
+end
+setupChar()
+plr.CharacterAdded:Connect(setupChar)
 
---== [ค่าหลัก] ==--
-local currentMode = "WalkSpeed"
-local active = false
-local speedMultiplier = 1
-local tpDistance = 10
-local tpDelay = 0.2
-
---== [สร้าง UI หลัก] ==--
-local gui = Instance.new("ScreenGui", game:GetService("CoreGui"))
-gui.Name = "SpeedMenu_v6"
+--== GUI ==--
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "SpeedMenu"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 220, 0, 300)
-frame.Position = UDim2.new(0.5, -110, 0.5, -150)
+frame.Size = UDim2.new(0, 240, 0, 220)
+frame.Position = UDim2.new(0, 50, 0, 100)
 frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 frame.Active = true
 frame.Draggable = true
 
--- หัวข้อ SPEED
+-- หัวข้อ (สีฟ้า)
 local header = Instance.new("TextButton", frame)
-header.Size = UDim2.new(1, 0, 0, 35)
+header.Size = UDim2.new(1, 0, 0, 40)
 header.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+header.Text = "🌊 เมนูสปีด"
 header.TextColor3 = Color3.new(1, 1, 1)
-header.Text = "⚡ SPEED MENU"
-header.TextScaled = true
 header.Font = Enum.Font.GothamBold
+header.TextSize = 18
 
---== [พับเมนู] ==--
-local isFolded = false
+-- ปุ่มพับ/เปิด
+local menuVisible = true
 header.MouseButton1Click:Connect(function()
-	isFolded = not isFolded
+	menuVisible = not menuVisible
 	for _, v in pairs(frame:GetChildren()) do
-		if v ~= header then v.Visible = not isFolded end
+		if v ~= header then v.Visible = menuVisible end
 	end
-	frame.Size = isFolded and UDim2.new(0, 220, 0, 35) or UDim2.new(0, 220, 0, 300)
+	frame.Size = menuVisible and UDim2.new(0, 240, 0, 220) or UDim2.new(0, 240, 0, 40)
 end)
 
---== [ปุ่มเปิด/ปิดระบบ] ==--
-local toggleBtn = Instance.new("TextButton", frame)
-toggleBtn.Size = UDim2.new(1, -10, 0, 35)
-toggleBtn.Position = UDim2.new(0, 5, 0, 45)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-toggleBtn.TextColor3 = Color3.new(1, 1, 1)
-toggleBtn.Text = "🔘 ปิดการทำงาน"
-toggleBtn.Font = Enum.Font.Gotham
-toggleBtn.TextScaled = true
+--== ตัวเลือกโหมด ==--
+local modes = {"Velocity", "TP", "CFrame", "WalkSpeed", "Impulse"}
+local currentMode = 1
 
-toggleBtn.MouseButton1Click:Connect(function()
-	active = not active
-	toggleBtn.Text = active and "🟢 เปิดใช้งาน" or "🔘 ปิดการทำงาน"
-end)
+local modeLabel = Instance.new("TextLabel", frame)
+modeLabel.Size = UDim2.new(1, 0, 0, 30)
+modeLabel.Position = UDim2.new(0, 0, 0, 50)
+modeLabel.BackgroundTransparency = 1
+modeLabel.TextColor3 = Color3.fromRGB(255,255,255)
+modeLabel.Font = Enum.Font.GothamBold
+modeLabel.TextSize = 16
+modeLabel.Text = "โหมด: " .. modes[currentMode]
 
---== [ช่องความเร็ว] ==--
-local speedLabel = Instance.new("TextLabel", frame)
-speedLabel.Size = UDim2.new(1, -10, 0, 25)
-speedLabel.Position = UDim2.new(0, 5, 0, 90)
-speedLabel.BackgroundTransparency = 1
-speedLabel.Text = "ความเร็ว (x)"
-speedLabel.TextColor3 = Color3.new(1, 1, 1)
-speedLabel.Font = Enum.Font.GothamBold
-speedLabel.TextScaled = true
+-- ปุ่มเปลี่ยนโหมด (∆)
+local changeBtn = Instance.new("TextButton", frame)
+changeBtn.Size = UDim2.new(0, 40, 0, 30)
+changeBtn.Position = UDim2.new(1, -45, 0, 50)
+changeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+changeBtn.Text = "∆"
+changeBtn.TextColor3 = Color3.new(1,1,1)
+changeBtn.Font = Enum.Font.GothamBold
+changeBtn.TextSize = 18
 
-local speedBox = Instance.new("TextBox", frame)
-speedBox.Size = UDim2.new(1, -10, 0, 30)
-speedBox.Position = UDim2.new(0, 5, 0, 115)
-speedBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-speedBox.TextColor3 = Color3.new(1, 1, 1)
-speedBox.Text = tostring(speedMultiplier)
-speedBox.ClearTextOnFocus = false
-speedBox.TextScaled = true
+--== ช่องปรับค่า ==--
+local function makeLabel(text, y)
+	local t = Instance.new("TextLabel", frame)
+	t.Size = UDim2.new(0, 100, 0, 30)
+	t.Position = UDim2.new(0, 10, 0, y)
+	t.BackgroundTransparency = 1
+	t.TextColor3 = Color3.new(1,1,1)
+	t.Font = Enum.Font.GothamBold
+	t.TextSize = 14
+	t.Text = text
+	return t
+end
 
-speedBox.FocusLost:Connect(function()
-	local val = tonumber(speedBox.Text)
-	if val and val > 0 then
-		speedMultiplier = val
-	else
-		speedBox.Text = tostring(speedMultiplier)
-	end
-end)
+local function makeBox(default, y)
+	local b = Instance.new("TextBox", frame)
+	b.Size = UDim2.new(0, 100, 0, 25)
+	b.Position = UDim2.new(0, 130, 0, y)
+	b.BackgroundColor3 = Color3.fromRGB(40,40,40)
+	b.TextColor3 = Color3.new(1,1,1)
+	b.Font = Enum.Font.Gotham
+	b.TextSize = 14
+	b.Text = tostring(default)
+	return b
+end
 
---== [ช่องเฉพาะ TP Mode] ==--
-local tpDistLabel = Instance.new("TextLabel", frame)
-tpDistLabel.Size = UDim2.new(1, -10, 0, 25)
-tpDistLabel.Position = UDim2.new(0, 5, 0, 155)
-tpDistLabel.BackgroundTransparency = 1
-tpDistLabel.Text = "ระยะวาร์ป"
-tpDistLabel.TextColor3 = Color3.new(1, 1, 1)
-tpDistLabel.Font = Enum.Font.GothamBold
-tpDistLabel.TextScaled = true
+local labels = {}
+local boxes = {}
 
-local tpDistBox = Instance.new("TextBox", frame)
-tpDistBox.Size = UDim2.new(1, -10, 0, 30)
-tpDistBox.Position = UDim2.new(0, 5, 0, 180)
-tpDistBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-tpDistBox.TextColor3 = Color3.new(1, 1, 1)
-tpDistBox.Text = tostring(tpDistance)
-tpDistBox.ClearTextOnFocus = false
-tpDistBox.TextScaled = true
+-- ช่อง “ความเร็วรวม”
+labels.speed = makeLabel("ความเร็วคูณ", 90)
+boxes.speed = makeBox(1, 90)
 
-tpDistBox.FocusLost:Connect(function()
-	local val = tonumber(tpDistBox.Text)
-	if val and val > 0 then
-		tpDistance = val
-	else
-		tpDistBox.Text = tostring(tpDistance)
-	end
-end)
+-- ช่องเฉพาะของแต่ละโหมด
+labels.tpDist = makeLabel("ระยะวาร์ป", 130)
+boxes.tpDist = makeBox(10, 130)
+labels.tpDelay = makeLabel("หน่วงวาร์ป", 160)
+boxes.tpDelay = makeBox(0.2, 160)
 
-local tpDelayLabel = Instance.new("TextLabel", frame)
-tpDelayLabel.Size = UDim2.new(1, -10, 0, 25)
-tpDelayLabel.Position = UDim2.new(0, 5, 0, 215)
-tpDelayLabel.BackgroundTransparency = 1
-tpDelayLabel.Text = "หน่วงวาร์ป (วินาที)"
-tpDelayLabel.TextColor3 = Color3.new(1, 1, 1)
-tpDelayLabel.Font = Enum.Font.GothamBold
-tpDelayLabel.TextScaled = true
+for k, v in pairs(labels) do v.Visible = false end
+for k, v in pairs(boxes) do v.Visible = false end
+labels.speed.Visible = true
+boxes.speed.Visible = true
 
-local tpDelayBox = Instance.new("TextBox", frame)
-tpDelayBox.Size = UDim2.new(1, -10, 0, 30)
-tpDelayBox.Position = UDim2.new(0, 5, 0, 240)
-tpDelayBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-tpDelayBox.TextColor3 = Color3.new(1, 1, 1)
-tpDelayBox.Text = tostring(tpDelay)
-tpDelayBox.ClearTextOnFocus = false
-tpDelayBox.TextScaled = true
-
-tpDelayBox.FocusLost:Connect(function()
-	local val = tonumber(tpDelayBox.Text)
-	if val and val >= 0 then
-		tpDelay = val
-	else
-		tpDelayBox.Text = tostring(tpDelay)
-	end
-end)
-
--- ซ่อนไว้ก่อน (แสดงเฉพาะตอนเลือก TP)
-tpDistLabel.Visible = false
-tpDistBox.Visible = false
-tpDelayLabel.Visible = false
-tpDelayBox.Visible = false
-
---== [ปุ่มเลือกโหมด] ==--
-local modes = {"WalkSpeed", "Velocity", "TP", "CFrame", "Impulse"}
-local modeIndex = 1
-
-local modeBtn = Instance.new("TextButton", frame)
-modeBtn.Size = UDim2.new(1, -10, 0, 35)
-modeBtn.Position = UDim2.new(0, 5, 0, 275)
-modeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-modeBtn.TextColor3 = Color3.new(1, 1, 1)
-modeBtn.TextScaled = true
-modeBtn.Font = Enum.Font.GothamBold
-modeBtn.Text = "โหมด: " .. modes[modeIndex]
-
-local function updateVisibleInputs()
-	-- ซ่อนทั้งหมดก่อน
-	tpDistLabel.Visible = false
-	tpDistBox.Visible = false
-	tpDelayLabel.Visible = false
-	tpDelayBox.Visible = false
-
-	-- แสดงเฉพาะโหมด TP
-	if currentMode == "TP" then
-		tpDistLabel.Visible = true
-		tpDistBox.Visible = true
-		tpDelayLabel.Visible = true
-		tpDelayBox.Visible = true
+--== ฟังก์ชันอัปเดตโหมด ==--
+local function updateMode()
+	modeLabel.Text = "โหมด: " .. modes[currentMode]
+	for k, v in pairs(labels) do v.Visible = false end
+	for k, v in pairs(boxes) do v.Visible = false end
+	labels.speed.Visible = true
+	boxes.speed.Visible = true
+	if modes[currentMode] == "TP" then
+		labels.tpDist.Visible = true
+		boxes.tpDist.Visible = true
+		labels.tpDelay.Visible = true
+		boxes.tpDelay.Visible = true
 	end
 end
 
-modeBtn.MouseButton1Click:Connect(function()
-	modeIndex += 1
-	if modeIndex > #modes then modeIndex = 1 end
-	currentMode = modes[modeIndex]
-	modeBtn.Text = "โหมด: " .. currentMode
-	updateVisibleInputs()
+changeBtn.MouseButton1Click:Connect(function()
+	currentMode = currentMode + 1
+	if currentMode > #modes then currentMode = 1 end
+	updateMode()
 end)
+updateMode()
 
---== [ระบบการทำงานจริง] ==--
-RunService.Heartbeat:Connect(function()
-	if not active then return end
-	if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+--== การทำงานของโหมด ==--
+local active = true
+local lastMove = Vector3.zero
 
-	character = player.Character
-	hrp = character:FindFirstChild("HumanoidRootPart")
-	hum = character:FindFirstChildOfClass("Humanoid")
+run.RenderStepped:Connect(function()
+	if not active or not hrp or not hum then return end
+	local moveDir = hum.MoveDirection
+	if moveDir.Magnitude > 0 then
+		local spd = tonumber(boxes.speed.Text) or 1
+		local mode = modes[currentMode]
 
-	if currentMode == "WalkSpeed" then
-		hum.WalkSpeed = 16 * speedMultiplier
-
-	elseif currentMode == "Velocity" then
-		local bv = hrp:FindFirstChild("BodyVelocity") or Instance.new("BodyVelocity", hrp)
-		bv.MaxForce = Vector3.new(4000, 4000, 4000)
-		bv.Velocity = hrp.CFrame.LookVector * (50 * speedMultiplier)
-
-	elseif currentMode == "TP" then
-		task.wait(tpDelay)
-		hrp.CFrame = hrp.CFrame + hrp.CFrame.LookVector * (tpDistance * speedMultiplier)
-
-	elseif currentMode == "CFrame" then
-		hrp.CFrame = hrp.CFrame + hrp.CFrame.LookVector * (speedMultiplier / 2)
-
-	elseif currentMode == "Impulse" then
-		hrp:ApplyImpulse(hrp.CFrame.LookVector * 50 * speedMultiplier)
+		if mode == "Velocity" then
+			hrp.Velocity = moveDir * 50 * spd
+		elseif mode == "TP" then
+			local dist = tonumber(boxes.tpDist.Text) or 10
+			local delay = tonumber(boxes.tpDelay.Text) or 0.2
+			hrp.CFrame = hrp.CFrame + moveDir * dist * spd
+			task.wait(delay)
+		elseif mode == "CFrame" then
+			hrp.CFrame = hrp.CFrame + moveDir * 3 * spd
+		elseif mode == "WalkSpeed" then
+			hum.WalkSpeed = 16 * spd
+		elseif mode == "Impulse" then
+			hrp:ApplyImpulse(moveDir * 150 * spd)
+		end
 	end
 end)
