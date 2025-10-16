@@ -1,163 +1,202 @@
---// SpeedMenu_Core5.lua
---// สคริปต์เมนู SPEED (เวอร์ชันนิ่งสุด)
---// เหลือเฉพาะโหมด: WalkSpeed, Velocity, TP, CFrame, Impulse
+--// SpeedMenu_v6.lua
+--// เวอร์ชันใช้งานจริง พร้อมเพิ่มโหมดในอนาคต
+--// ทำโดยคำสั่งของ kuy kuy
 
--- [บริการหลัก]
+--== [บริการหลัก] ==--
 local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local char = player.Character or player.CharacterAdded:Wait()
-local hrp = char:WaitForChild("HumanoidRootPart")
-local hum = char:WaitForChild("Humanoid")
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local hum = character:WaitForChild("Humanoid")
 
--- [ค่าหลัก]
-local currentMode = nil
+--== [ค่าหลัก] ==--
+local currentMode = "WalkSpeed"
 local active = false
 local speedMultiplier = 1
 local tpDistance = 10
 local tpDelay = 0.2
 
--- [UI หลัก]
-local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
-ScreenGui.Name = "SpeedMenu"
+--== [สร้าง UI หลัก] ==--
+local gui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+gui.Name = "SpeedMenu_v6"
 
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 200, 0, 250)
-Frame.Position = UDim2.new(0.5, -100, 0.5, -125)
-Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Frame.Active = true
-Frame.Draggable = true
-Frame.Visible = true
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 220, 0, 300)
+frame.Position = UDim2.new(0.5, -110, 0.5, -150)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.Active = true
+frame.Draggable = true
 
 -- หัวข้อ SPEED
-local Header = Instance.new("TextButton", Frame)
-Header.Size = UDim2.new(1, 0, 0, 30)
-Header.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-Header.Text = "⚡ SPEED MENU"
-Header.TextColor3 = Color3.new(1, 1, 1)
-Header.TextScaled = true
+local header = Instance.new("TextButton", frame)
+header.Size = UDim2.new(1, 0, 0, 35)
+header.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+header.TextColor3 = Color3.new(1, 1, 1)
+header.Text = "⚡ SPEED MENU"
+header.TextScaled = true
+header.Font = Enum.Font.GothamBold
 
--- ปุ่มพับเมนู
+--== [พับเมนู] ==--
 local isFolded = false
-Header.MouseButton1Click:Connect(function()
+header.MouseButton1Click:Connect(function()
 	isFolded = not isFolded
-	for _, child in pairs(Frame:GetChildren()) do
-		if child ~= Header then
-			child.Visible = not isFolded
-		end
+	for _, v in pairs(frame:GetChildren()) do
+		if v ~= header then v.Visible = not isFolded end
 	end
-	Frame.Size = isFolded and UDim2.new(0, 200, 0, 30) or UDim2.new(0, 200, 0, 250)
+	frame.Size = isFolded and UDim2.new(0, 220, 0, 35) or UDim2.new(0, 220, 0, 300)
 end)
 
--- ปุ่มเปิด/ปิดการทำงาน
-local ToggleBtn = Instance.new("TextButton", Frame)
-ToggleBtn.Size = UDim2.new(1, -10, 0, 30)
-ToggleBtn.Position = UDim2.new(0, 5, 0, 40)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
-ToggleBtn.Text = "🔘 ปิดการทำงาน"
+--== [ปุ่มเปิด/ปิดระบบ] ==--
+local toggleBtn = Instance.new("TextButton", frame)
+toggleBtn.Size = UDim2.new(1, -10, 0, 35)
+toggleBtn.Position = UDim2.new(0, 5, 0, 45)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+toggleBtn.Text = "🔘 ปิดการทำงาน"
+toggleBtn.Font = Enum.Font.Gotham
+toggleBtn.TextScaled = true
 
-ToggleBtn.MouseButton1Click:Connect(function()
+toggleBtn.MouseButton1Click:Connect(function()
 	active = not active
-	ToggleBtn.Text = active and "🟢 เปิดใช้งาน" or "🔘 ปิดการทำงาน"
+	toggleBtn.Text = active and "🟢 เปิดใช้งาน" or "🔘 ปิดการทำงาน"
 end)
 
--- ช่องค่าความเร็ว
-local SpeedLabel = Instance.new("TextLabel", Frame)
-SpeedLabel.Size = UDim2.new(1, -10, 0, 20)
-SpeedLabel.Position = UDim2.new(0, 5, 0, 80)
-SpeedLabel.BackgroundTransparency = 1
-SpeedLabel.Text = "ค่าความเร็ว (x)"
-SpeedLabel.TextColor3 = Color3.new(1, 1, 1)
-SpeedLabel.TextScaled = true
+--== [ช่องความเร็ว] ==--
+local speedLabel = Instance.new("TextLabel", frame)
+speedLabel.Size = UDim2.new(1, -10, 0, 25)
+speedLabel.Position = UDim2.new(0, 5, 0, 90)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "ความเร็ว (x)"
+speedLabel.TextColor3 = Color3.new(1, 1, 1)
+speedLabel.Font = Enum.Font.GothamBold
+speedLabel.TextScaled = true
 
-local SpeedBox = Instance.new("TextBox", Frame)
-SpeedBox.Size = UDim2.new(1, -10, 0, 25)
-SpeedBox.Position = UDim2.new(0, 5, 0, 105)
-SpeedBox.Text = tostring(speedMultiplier)
-SpeedBox.TextColor3 = Color3.new(1, 1, 1)
-SpeedBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-SpeedBox.ClearTextOnFocus = false
-SpeedBox.TextScaled = true
+local speedBox = Instance.new("TextBox", frame)
+speedBox.Size = UDim2.new(1, -10, 0, 30)
+speedBox.Position = UDim2.new(0, 5, 0, 115)
+speedBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+speedBox.TextColor3 = Color3.new(1, 1, 1)
+speedBox.Text = tostring(speedMultiplier)
+speedBox.ClearTextOnFocus = false
+speedBox.TextScaled = true
 
-SpeedBox.FocusLost:Connect(function()
-	local val = tonumber(SpeedBox.Text)
+speedBox.FocusLost:Connect(function()
+	local val = tonumber(speedBox.Text)
 	if val and val > 0 then
 		speedMultiplier = val
+	else
+		speedBox.Text = tostring(speedMultiplier)
 	end
 end)
 
--- ช่องเฉพาะ TP
-local TpDistLabel = Instance.new("TextLabel", Frame)
-TpDistLabel.Size = UDim2.new(1, -10, 0, 20)
-TpDistLabel.Position = UDim2.new(0, 5, 0, 140)
-TpDistLabel.BackgroundTransparency = 1
-TpDistLabel.Text = "ระยะวาร์ป"
-TpDistLabel.TextColor3 = Color3.new(1, 1, 1)
-TpDistLabel.TextScaled = true
+--== [ช่องเฉพาะ TP Mode] ==--
+local tpDistLabel = Instance.new("TextLabel", frame)
+tpDistLabel.Size = UDim2.new(1, -10, 0, 25)
+tpDistLabel.Position = UDim2.new(0, 5, 0, 155)
+tpDistLabel.BackgroundTransparency = 1
+tpDistLabel.Text = "ระยะวาร์ป"
+tpDistLabel.TextColor3 = Color3.new(1, 1, 1)
+tpDistLabel.Font = Enum.Font.GothamBold
+tpDistLabel.TextScaled = true
 
-local TpDistBox = Instance.new("TextBox", Frame)
-TpDistBox.Size = UDim2.new(1, -10, 0, 25)
-TpDistBox.Position = UDim2.new(0, 5, 0, 165)
-TpDistBox.Text = tostring(tpDistance)
-TpDistBox.TextColor3 = Color3.new(1, 1, 1)
-TpDistBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-TpDistBox.ClearTextOnFocus = false
-TpDistBox.TextScaled = true
+local tpDistBox = Instance.new("TextBox", frame)
+tpDistBox.Size = UDim2.new(1, -10, 0, 30)
+tpDistBox.Position = UDim2.new(0, 5, 0, 180)
+tpDistBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+tpDistBox.TextColor3 = Color3.new(1, 1, 1)
+tpDistBox.Text = tostring(tpDistance)
+tpDistBox.ClearTextOnFocus = false
+tpDistBox.TextScaled = true
 
-TpDistBox.FocusLost:Connect(function()
-	local val = tonumber(TpDistBox.Text)
-	if val then tpDistance = val end
+tpDistBox.FocusLost:Connect(function()
+	local val = tonumber(tpDistBox.Text)
+	if val and val > 0 then
+		tpDistance = val
+	else
+		tpDistBox.Text = tostring(tpDistance)
+	end
 end)
 
-local TpDelayLabel = Instance.new("TextLabel", Frame)
-TpDelayLabel.Size = UDim2.new(1, -10, 0, 20)
-TpDelayLabel.Position = UDim2.new(0, 5, 0, 195)
-TpDelayLabel.BackgroundTransparency = 1
-TpDelayLabel.Text = "หน่วงวาร์ป (วินาที)"
-TpDelayLabel.TextColor3 = Color3.new(1, 1, 1)
-TpDelayLabel.TextScaled = true
+local tpDelayLabel = Instance.new("TextLabel", frame)
+tpDelayLabel.Size = UDim2.new(1, -10, 0, 25)
+tpDelayLabel.Position = UDim2.new(0, 5, 0, 215)
+tpDelayLabel.BackgroundTransparency = 1
+tpDelayLabel.Text = "หน่วงวาร์ป (วินาที)"
+tpDelayLabel.TextColor3 = Color3.new(1, 1, 1)
+tpDelayLabel.Font = Enum.Font.GothamBold
+tpDelayLabel.TextScaled = true
 
-local TpDelayBox = Instance.new("TextBox", Frame)
-TpDelayBox.Size = UDim2.new(1, -10, 0, 25)
-TpDelayBox.Position = UDim2.new(0, 5, 0, 220)
-TpDelayBox.Text = tostring(tpDelay)
-TpDelayBox.TextColor3 = Color3.new(1, 1, 1)
-TpDelayBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-TpDelayBox.ClearTextOnFocus = false
-TpDelayBox.TextScaled = true
+local tpDelayBox = Instance.new("TextBox", frame)
+tpDelayBox.Size = UDim2.new(1, -10, 0, 30)
+tpDelayBox.Position = UDim2.new(0, 5, 0, 240)
+tpDelayBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+tpDelayBox.TextColor3 = Color3.new(1, 1, 1)
+tpDelayBox.Text = tostring(tpDelay)
+tpDelayBox.ClearTextOnFocus = false
+tpDelayBox.TextScaled = true
 
-TpDelayBox.FocusLost:Connect(function()
-	local val = tonumber(TpDelayBox.Text)
-	if val then tpDelay = val end
+tpDelayBox.FocusLost:Connect(function()
+	local val = tonumber(tpDelayBox.Text)
+	if val and val >= 0 then
+		tpDelay = val
+	else
+		tpDelayBox.Text = tostring(tpDelay)
+	end
 end)
 
--- [ระบบเลือกโหมด]
+-- ซ่อนไว้ก่อน (แสดงเฉพาะตอนเลือก TP)
+tpDistLabel.Visible = false
+tpDistBox.Visible = false
+tpDelayLabel.Visible = false
+tpDelayBox.Visible = false
+
+--== [ปุ่มเลือกโหมด] ==--
 local modes = {"WalkSpeed", "Velocity", "TP", "CFrame", "Impulse"}
-local ModeIndex = 1
+local modeIndex = 1
 
-local ModeBtn = Instance.new("TextButton", Frame)
-ModeBtn.Size = UDim2.new(1, -10, 0, 30)
-ModeBtn.Position = UDim2.new(0, 5, 0, 255)
-ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-ModeBtn.TextColor3 = Color3.new(1, 1, 1)
-ModeBtn.Text = "โหมด: WalkSpeed"
+local modeBtn = Instance.new("TextButton", frame)
+modeBtn.Size = UDim2.new(1, -10, 0, 35)
+modeBtn.Position = UDim2.new(0, 5, 0, 275)
+modeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+modeBtn.TextColor3 = Color3.new(1, 1, 1)
+modeBtn.TextScaled = true
+modeBtn.Font = Enum.Font.GothamBold
+modeBtn.Text = "โหมด: " .. modes[modeIndex]
 
-ModeBtn.MouseButton1Click:Connect(function()
-	ModeIndex = ModeIndex + 1
-	if ModeIndex > #modes then ModeIndex = 1 end
-	currentMode = modes[ModeIndex]
-	ModeBtn.Text = "โหมด: " .. currentMode
+local function updateVisibleInputs()
+	-- ซ่อนทั้งหมดก่อน
+	tpDistLabel.Visible = false
+	tpDistBox.Visible = false
+	tpDelayLabel.Visible = false
+	tpDelayBox.Visible = false
+
+	-- แสดงเฉพาะโหมด TP
+	if currentMode == "TP" then
+		tpDistLabel.Visible = true
+		tpDistBox.Visible = true
+		tpDelayLabel.Visible = true
+		tpDelayBox.Visible = true
+	end
+end
+
+modeBtn.MouseButton1Click:Connect(function()
+	modeIndex += 1
+	if modeIndex > #modes then modeIndex = 1 end
+	currentMode = modes[modeIndex]
+	modeBtn.Text = "โหมด: " .. currentMode
+	updateVisibleInputs()
 end)
 
--- [ระบบการทำงานหลัก]
+--== [ระบบการทำงานจริง] ==--
 RunService.Heartbeat:Connect(function()
-	if not active or not currentMode then return end
+	if not active then return end
 	if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
-	hrp = player.Character:FindFirstChild("HumanoidRootPart")
-	hum = player.Character:FindFirstChildOfClass("Humanoid")
+
+	character = player.Character
+	hrp = character:FindFirstChild("HumanoidRootPart")
+	hum = character:FindFirstChildOfClass("Humanoid")
 
 	if currentMode == "WalkSpeed" then
 		hum.WalkSpeed = 16 * speedMultiplier
@@ -168,8 +207,8 @@ RunService.Heartbeat:Connect(function()
 		bv.Velocity = hrp.CFrame.LookVector * (50 * speedMultiplier)
 
 	elseif currentMode == "TP" then
-		wait(tpDelay)
-		hrp.CFrame = hrp.CFrame + hrp.CFrame.LookVector * tpDistance * speedMultiplier
+		task.wait(tpDelay)
+		hrp.CFrame = hrp.CFrame + hrp.CFrame.LookVector * (tpDistance * speedMultiplier)
 
 	elseif currentMode == "CFrame" then
 		hrp.CFrame = hrp.CFrame + hrp.CFrame.LookVector * (speedMultiplier / 2)
