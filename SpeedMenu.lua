@@ -1,12 +1,10 @@
---// 🌊 Speed Menu System v1.0
---// รองรับหลายโหมด / พับเมนูได้ / ปรับค่าตามโหมด / ใช้งานผ่านจอย
---// เขียนให้ทำงานเหมือนต้นฉบับ (TAS Style)
+--// 🌊 Speed Menu System v1.1
+--// Dropdown ∆ เลือกโหมด / พับได้ / ควบคุมด้วยจอย / ความเร็วคูณทุกโหมด
 
 local plr = game.Players.LocalPlayer
-local uis = game:GetService("UserInputService")
 local run = game:GetService("RunService")
 
---== Character Handler ==--
+--== Character Setup ==--
 local char, hrp, hum
 local function setupChar()
 	char = plr.Character or plr.CharacterAdded:Wait()
@@ -36,7 +34,7 @@ header.TextColor3 = Color3.new(1, 1, 1)
 header.Font = Enum.Font.GothamBold
 header.TextSize = 18
 
--- ปุ่มพับ/เปิด
+-- ปุ่มพับเมนู
 local menuVisible = true
 header.MouseButton1Click:Connect(function()
 	menuVisible = not menuVisible
@@ -46,28 +44,72 @@ header.MouseButton1Click:Connect(function()
 	frame.Size = menuVisible and UDim2.new(0, 240, 0, 220) or UDim2.new(0, 240, 0, 40)
 end)
 
---== ตัวเลือกโหมด ==--
+--== โหมดต่าง ๆ ==--
 local modes = {"Velocity", "TP", "CFrame", "WalkSpeed", "Impulse"}
-local currentMode = 1
+local currentMode = "Velocity"
 
 local modeLabel = Instance.new("TextLabel", frame)
-modeLabel.Size = UDim2.new(1, 0, 0, 30)
-modeLabel.Position = UDim2.new(0, 0, 0, 50)
+modeLabel.Size = UDim2.new(1, -50, 0, 30)
+modeLabel.Position = UDim2.new(0, 5, 0, 50)
 modeLabel.BackgroundTransparency = 1
-modeLabel.TextColor3 = Color3.fromRGB(255,255,255)
+modeLabel.TextColor3 = Color3.new(1,1,1)
 modeLabel.Font = Enum.Font.GothamBold
 modeLabel.TextSize = 16
-modeLabel.Text = "โหมด: " .. modes[currentMode]
+modeLabel.Text = "โหมด: " .. currentMode
 
--- ปุ่มเปลี่ยนโหมด (∆)
 local changeBtn = Instance.new("TextButton", frame)
 changeBtn.Size = UDim2.new(0, 40, 0, 30)
 changeBtn.Position = UDim2.new(1, -45, 0, 50)
-changeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+changeBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
 changeBtn.Text = "∆"
 changeBtn.TextColor3 = Color3.new(1,1,1)
 changeBtn.Font = Enum.Font.GothamBold
 changeBtn.TextSize = 18
+
+--== เมนู Dropdown ==--
+local dropdownFrame = Instance.new("Frame", frame)
+dropdownFrame.Size = UDim2.new(0, 180, 0, 0)
+dropdownFrame.Position = UDim2.new(0, 30, 0, 85)
+dropdownFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+dropdownFrame.BorderSizePixel = 0
+dropdownFrame.Visible = false
+dropdownFrame.ClipsDescendants = true
+
+local function openDropdown()
+	dropdownFrame.Visible = true
+	dropdownFrame:TweenSize(UDim2.new(0, 180, 0, #modes * 25), "Out", "Quad", 0.2, true)
+end
+
+local function closeDropdown()
+	dropdownFrame:TweenSize(UDim2.new(0, 180, 0, 0), "Out", "Quad", 0.2, true)
+	task.wait(0.2)
+	dropdownFrame.Visible = false
+end
+
+for i, name in ipairs(modes) do
+	local opt = Instance.new("TextButton", dropdownFrame)
+	opt.Size = UDim2.new(1, 0, 0, 25)
+	opt.Position = UDim2.new(0, 0, 0, (i - 1) * 25)
+	opt.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	opt.TextColor3 = Color3.new(1, 1, 1)
+	opt.Text = name
+	opt.Font = Enum.Font.Gotham
+	opt.TextSize = 14
+
+	opt.MouseButton1Click:Connect(function()
+		currentMode = name
+		modeLabel.Text = "โหมด: " .. currentMode
+		closeDropdown()
+	end)
+end
+
+changeBtn.MouseButton1Click:Connect(function()
+	if dropdownFrame.Visible then
+		closeDropdown()
+	else
+		openDropdown()
+	end
+end)
 
 --== ช่องปรับค่า ==--
 local function makeLabel(text, y)
@@ -97,66 +139,56 @@ end
 local labels = {}
 local boxes = {}
 
--- ช่อง “ความเร็วรวม”
-labels.speed = makeLabel("ความเร็วคูณ", 90)
-boxes.speed = makeBox(1, 90)
+-- ความเร็วคูณ (ใช้ได้ทุกโหมด)
+labels.speed = makeLabel("ความเร็วคูณ", 120)
+boxes.speed = makeBox(1, 120)
 
--- ช่องเฉพาะของแต่ละโหมด
-labels.tpDist = makeLabel("ระยะวาร์ป", 130)
-boxes.tpDist = makeBox(10, 130)
-labels.tpDelay = makeLabel("หน่วงวาร์ป", 160)
-boxes.tpDelay = makeBox(0.2, 160)
+-- เฉพาะ TP
+labels.tpDist = makeLabel("ระยะวาร์ป", 160)
+boxes.tpDist = makeBox(10, 160)
+labels.tpDelay = makeLabel("หน่วงวาร์ป", 190)
+boxes.tpDelay = makeBox(0.2, 190)
 
-for k, v in pairs(labels) do v.Visible = false end
-for k, v in pairs(boxes) do v.Visible = false end
-labels.speed.Visible = true
-boxes.speed.Visible = true
-
---== ฟังก์ชันอัปเดตโหมด ==--
-local function updateMode()
-	modeLabel.Text = "โหมด: " .. modes[currentMode]
-	for k, v in pairs(labels) do v.Visible = false end
-	for k, v in pairs(boxes) do v.Visible = false end
+local function updateFields()
+	for _, v in pairs(labels) do v.Visible = false end
+	for _, v in pairs(boxes) do v.Visible = false end
 	labels.speed.Visible = true
 	boxes.speed.Visible = true
-	if modes[currentMode] == "TP" then
+	if currentMode == "TP" then
 		labels.tpDist.Visible = true
 		boxes.tpDist.Visible = true
 		labels.tpDelay.Visible = true
 		boxes.tpDelay.Visible = true
 	end
 end
+updateFields()
 
-changeBtn.MouseButton1Click:Connect(function()
-	currentMode = currentMode + 1
-	if currentMode > #modes then currentMode = 1 end
-	updateMode()
-end)
-updateMode()
+-- อัปเดตเมื่อเปลี่ยนโหมด
+for _, opt in ipairs(dropdownFrame:GetChildren()) do
+	if opt:IsA("TextButton") then
+		opt.MouseButton1Click:Connect(updateFields)
+	end
+end
 
---== การทำงานของโหมด ==--
+--== ระบบเคลื่อนที่ ==--
 local active = true
-local lastMove = Vector3.zero
-
 run.RenderStepped:Connect(function()
 	if not active or not hrp or not hum then return end
 	local moveDir = hum.MoveDirection
 	if moveDir.Magnitude > 0 then
 		local spd = tonumber(boxes.speed.Text) or 1
-		local mode = modes[currentMode]
-
-		if mode == "Velocity" then
+		if currentMode == "Velocity" then
 			hrp.Velocity = moveDir * 50 * spd
-		elseif mode == "TP" then
+		elseif currentMode == "TP" then
 			local dist = tonumber(boxes.tpDist.Text) or 10
 			local delay = tonumber(boxes.tpDelay.Text) or 0.2
 			hrp.CFrame = hrp.CFrame + moveDir * dist * spd
 			task.wait(delay)
-		elseif mode == "CFrame" then
+		elseif currentMode == "CFrame" then
 			hrp.CFrame = hrp.CFrame + moveDir * 3 * spd
-		elseif mode == "WalkSpeed" then
+		elseif currentMode == "WalkSpeed" then
 			hum.WalkSpeed = 16 * spd
-		elseif mode == "Impulse" then
+		elseif currentMode == "Impulse" then
 			hrp:ApplyImpulse(moveDir * 150 * spd)
 		end
 	end
