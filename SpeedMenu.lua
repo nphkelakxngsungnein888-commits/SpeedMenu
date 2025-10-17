@@ -1,152 +1,182 @@
--- ScatterUI.lua (mobile fixed)
-if getgenv().ScatterUI then
-	getgenv().ScatterUI:Destroy()
-end
-
+-- ScatterUI_Mobile.lua
+-- LocalScript สำหรับมือถือ
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
 
--- สร้าง GUI หลัก
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ScatterUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local player = Players.LocalPlayer
+local character, humanoid, hrp
 
--- ปุ่มเปิด/ปิด
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Size = UDim2.new(0, 50, 0, 50)
-ToggleButton.Position = UDim2.new(0, 20, 0.5, -25)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-ToggleButton.Text = "∆"
-ToggleButton.TextScaled = true
-ToggleButton.TextColor3 = Color3.new(1,1,1)
-ToggleButton.Font = Enum.Font.SourceSansBold
-ToggleButton.ZIndex = 10
-ToggleButton.Parent = ScreenGui
+local function setupCharacter(c)
+	character = c
+	humanoid = c:WaitForChild("Humanoid")
+	hrp = c:WaitForChild("HumanoidRootPart")
+end
+if player.Character then setupCharacter(player.Character) end
+player.CharacterAdded:Connect(setupCharacter)
 
--- กรอบเมนูหลัก
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 260, 0, 220)
-Frame.Position = UDim2.new(0, 80, 0.5, -110)
-Frame.BackgroundColor3 = Color3.fromRGB(25,25,35)
-Frame.BorderSizePixel = 0
-Frame.Visible = false
-Frame.Active = true
-Frame.Draggable = true
-Frame.ZIndex = 10
-Frame.Parent = ScreenGui
+-- ค่าเริ่มต้น
+local config = {
+	Force = 60, -- แรงกระจาย
+	Spread = 8, -- ความกระจาย
+	Spin = 2, -- การหมุน
+}
 
-local UICorner = Instance.new("UICorner", Frame)
-UICorner.CornerRadius = UDim.new(0, 10)
-local UIStroke = Instance.new("UIStroke", Frame)
-UIStroke.Thickness = 2
-UIStroke.Color = Color3.fromRGB(0, 200, 255)
+-- GUI
+local gui = Instance.new("ScreenGui")
+gui.Name = "ScatterUI_Mobile"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
 
--- หัวข้อ
-local Title = Instance.new("TextLabel")
-Title.Text = "ตัวกระจาย"
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.BackgroundColor3 = Color3.fromRGB(0,170,255)
-Title.TextColor3 = Color3.new(1,1,1)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextScaled = true
-Title.ZIndex = 11
-Title.Parent = Frame
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 250, 0, 200)
+frame.Position = UDim2.new(1, -270, 1, -240)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.BorderSizePixel = 0
+frame.Parent = gui
+frame.Visible = true
 
--- ปุ่มเปิดปิดระบบ
-local Toggle = Instance.new("TextButton")
-Toggle.Size = UDim2.new(0.9, 0, 0, 40)
-Toggle.Position = UDim2.new(0.05, 0, 0, 50)
-Toggle.BackgroundColor3 = Color3.fromRGB(255,100,100)
-Toggle.Text = "ปิดการทำงาน"
-Toggle.TextColor3 = Color3.new(1,1,1)
-Toggle.Font = Enum.Font.SourceSansBold
-Toggle.TextScaled = true
-Toggle.ZIndex = 11
-Toggle.Parent = Frame
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, 0, 0, 40)
+title.Text = "⚙ Scatter Control"
+title.Font = Enum.Font.SourceSansBold
+title.TextScaled = true
+title.TextColor3 = Color3.new(1, 1, 1)
+title.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
 
--- แรงกระจาย
-local PowerLabel = Instance.new("TextLabel")
-PowerLabel.Text = "แรงกระจาย"
-PowerLabel.Size = UDim2.new(0.4, 0, 0, 30)
-PowerLabel.Position = UDim2.new(0.05, 0, 0, 110)
-PowerLabel.BackgroundTransparency = 1
-PowerLabel.TextColor3 = Color3.new(1,1,1)
-PowerLabel.Font = Enum.Font.SourceSansBold
-PowerLabel.TextScaled = true
-PowerLabel.ZIndex = 11
-PowerLabel.Parent = Frame
+local function makeBox(labelText, defaultValue, yPos)
+	local lbl = Instance.new("TextLabel", frame)
+	lbl.Size = UDim2.new(0.5, -10, 0, 30)
+	lbl.Position = UDim2.new(0, 10, 0, yPos)
+	lbl.BackgroundTransparency = 1
+	lbl.TextColor3 = Color3.new(1, 1, 1)
+	lbl.Text = labelText
+	lbl.Font = Enum.Font.SourceSans
+	lbl.TextScaled = true
 
-local PowerBox = Instance.new("TextBox")
-PowerBox.Text = "5"
-PowerBox.Size = UDim2.new(0.4, 0, 0, 30)
-PowerBox.Position = UDim2.new(0.55, 0, 0, 110)
-PowerBox.BackgroundColor3 = Color3.fromRGB(255,255,255)
-PowerBox.TextColor3 = Color3.new(0,0,0)
-PowerBox.Font = Enum.Font.SourceSans
-PowerBox.TextScaled = true
-PowerBox.ZIndex = 11
-PowerBox.Parent = Frame
+	local box = Instance.new("TextBox", frame)
+	box.Size = UDim2.new(0.4, 0, 0, 30)
+	box.Position = UDim2.new(0.55, 0, 0, yPos)
+	box.Text = tostring(defaultValue)
+	box.Font = Enum.Font.SourceSans
+	box.TextScaled = true
+	return box
+end
 
--- สถานะระบบ
-local Active = false
+local boxForce = makeBox("แรง", config.Force, 50)
+local boxSpread = makeBox("กระจาย", config.Spread, 90)
+local boxSpin = makeBox("หมุน", config.Spin, 130)
 
-ToggleButton.MouseButton1Click:Connect(function()
-	Frame.Visible = not Frame.Visible
+local toggleBtn = Instance.new("TextButton", frame)
+toggleBtn.Size = UDim2.new(0.9, 0, 0, 40)
+toggleBtn.Position = UDim2.new(0.05, 0, 0, 160)
+toggleBtn.Text = "▶ เปิดระบบ"
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextScaled = true
+toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
+toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+
+local active = false
+toggleBtn.MouseButton1Click:Connect(function()
+	active = not active
+	if active then
+		toggleBtn.Text = "⏹ ปิดระบบ"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+	else
+		toggleBtn.Text = "▶ เปิดระบบ"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
+	end
 end)
 
-Toggle.MouseButton1Click:Connect(function()
-	Active = not Active
-	Toggle.Text = Active and "เปิดการทำงาน" or "ปิดการทำงาน"
-	Toggle.BackgroundColor3 = Active and Color3.fromRGB(0,255,120) or Color3.fromRGB(255,100,100)
-end)
+local clones = {}
 
 -- ฟังก์ชันกระจาย
-local function Scatter()
-	if not Active then return end
-	local power = tonumber(PowerBox.Text) or 5
-	for _, part in ipairs(Character:GetChildren()) do
+local function scatterParts()
+	if not character or not hrp then return end
+	for _, old in ipairs(clones) do
+		if old and old.Parent then old:Destroy() end
+	end
+	clones = {}
+
+	for _, part in ipairs(character:GetChildren()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-			part.Anchored = false
+			local clone = part:Clone()
+			clone.Anchored = false
+			clone.CanCollide = true
+			clone.CFrame = part.CFrame
+			clone.Parent = workspace
+
+			part.Transparency = 1
+			part.CanCollide = false
+
+			local dir = Vector3.new(
+				math.random(-config.Spread, config.Spread),
+				math.random(3, 8),
+				math.random(-config.Spread, config.Spread)
+			).Unit
+
 			local bv = Instance.new("BodyVelocity")
-			bv.Velocity = Vector3.new(math.random(-power,power), math.random(3,power*2), math.random(-power,power))
-			bv.MaxForce = Vector3.new(4000,4000,4000)
-			bv.Parent = part
-			game:GetService("Debris"):AddItem(bv, 0.2)
+			bv.Velocity = dir * config.Force
+			bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+			bv.Parent = clone
+
+			local bav = Instance.new("BodyAngularVelocity")
+			bav.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+			bav.AngularVelocity = Vector3.new(
+				math.random() * config.Spin,
+				math.random() * config.Spin,
+				math.random() * config.Spin
+			)
+			bav.Parent = clone
+
+			table.insert(clones, clone)
+			Debris:AddItem(clone, 8)
 		end
 	end
 end
 
--- ฟังก์ชันดูดกลับ
-local function Reassemble()
-	if not Active then return end
-	for _, part in ipairs(Character:GetChildren()) do
-		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-			local tween = TweenService:Create(part, TweenInfo.new(0.4), {CFrame = Character.HumanoidRootPart.CFrame})
+-- ฟังก์ชันรวมกลับ
+local function reassemble()
+	if not character or not hrp then return end
+	for _, clone in ipairs(clones) do
+		if clone and clone.Parent then
+			local tween = TweenService:Create(clone, TweenInfo.new(0.5), {CFrame = hrp.CFrame})
 			tween:Play()
+			tween.Completed:Connect(function()
+				clone:Destroy()
+			end)
+		end
+	end
+	clones = {}
+
+	for _, part in ipairs(character:GetChildren()) do
+		if part:IsA("BasePart") then
+			part.Transparency = 0
+			part.CanCollide = true
 		end
 	end
 end
 
--- ตรวจจับการเดิน
+-- ตรวจจับการเดินมือถือ (MoveDirection)
 local moving = false
-Humanoid.Running:Connect(function(speed)
-	if speed > 1 then
-		if not moving then
+RunService.RenderStepped:Connect(function()
+	if not humanoid then return end
+	local move = humanoid.MoveDirection.Magnitude > 0
+	if active then
+		if move and not moving then
 			moving = true
-			Scatter()
-		end
-	else
-		if moving then
+			scatterParts()
+		elseif not move and moving then
 			moving = false
-			Reassemble()
+			reassemble()
 		end
 	end
 end)
 
-getgenv().ScatterUI = ScreenGui
+-- อัปเดตค่าเมื่อเปลี่ยน textbox
+boxForce.FocusLost:Connect(function() config.Force = tonumber(boxForce.Text) or config.Force end)
+boxSpread.FocusLost:Connect(function() config.Spread = tonumber(boxSpread.Text) or config.Spread end)
+boxSpin.FocusLost:Connect(function() config.Spin = tonumber(boxSpin.Text) or config.Spin end)
+
+print("[ScatterUI_Mobile] Loaded successfully ✅")
