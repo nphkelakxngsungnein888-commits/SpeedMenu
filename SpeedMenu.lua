@@ -1,165 +1,91 @@
---// 💥 ตัวแตกกระจาย R15 พร้อมเมนูพับได้ (Mobile Ready)
---// เขียนให้เหมือนสไตล์สคริปต์แรก ใช้งานได้จริง
+--// UI ตัวกระจาย (ไม่มีฟังก์ชันอื่น)
+--// รองรับมือถือ / ลากได้ / พับเก็บได้
 
-local plr = game.Players.LocalPlayer
-local run = game:GetService("RunService")
-local uis = game:GetService("UserInputService")
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BreakUI"
+ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
 
---== GUI Setup ==--
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "ExplodeMenu"
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 300, 0, 300)
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -150)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 240, 0, 300)
-frame.Position = UDim2.new(0, 50, 0, 100)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-frame.Active = true
-frame.Draggable = true
-
--- Title
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1, 0, 0, 40)
-title.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 18
-title.Text = "💥 ตัวแตกกระจาย"
-
--- ปุ่มพับเมนู
-local menuBtn = Instance.new("TextButton", frame)
-menuBtn.Size = UDim2.new(0, 80, 0, 30)
-menuBtn.Position = UDim2.new(0, 10, 0, 260)
-menuBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
-menuBtn.TextColor3 = Color3.new(1, 1, 1)
-menuBtn.Font = Enum.Font.GothamBold
-menuBtn.TextSize = 14
-menuBtn.Text = "📂 เมนู"
+-- หัวข้อเมนู (สีฟ้า)
+local Header = Instance.new("TextButton")
+Header.Name = "Header"
+Header.Size = UDim2.new(1, 0, 0, 40)
+Header.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+Header.Text = "เมนู"
+Header.TextColor3 = Color3.fromRGB(255, 255, 255)
+Header.Font = Enum.Font.SourceSansBold
+Header.TextSize = 24
+Header.Parent = MainFrame
 
 -- ปุ่มเปิดใช้งาน
-local toggleBtn = Instance.new("TextButton", frame)
-toggleBtn.Size = UDim2.new(0, 200, 0, 40)
-toggleBtn.Position = UDim2.new(0, 20, 0, 60)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-toggleBtn.TextColor3 = Color3.new(1, 1, 1)
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.TextSize = 18
-toggleBtn.Text = "🔘 เปิดใช้งาน: ปิด"
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 100, 0, 30)
+ToggleButton.Position = UDim2.new(0.5, -50, 0, 50)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+ToggleButton.Text = "เปิดใช้งาน"
+ToggleButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.TextSize = 20
+ToggleButton.Parent = MainFrame
 
--- ป้ายชื่อค่าปรับ
-local strengthLabel = Instance.new("TextLabel", frame)
-strengthLabel.Size = UDim2.new(0, 200, 0, 25)
-strengthLabel.Position = UDim2.new(0, 20, 0, 120)
-strengthLabel.BackgroundTransparency = 1
-strengthLabel.TextColor3 = Color3.new(1, 1, 1)
-strengthLabel.Font = Enum.Font.Gotham
-strengthLabel.TextSize = 16
-strengthLabel.Text = "แรงกระจาย (เท่า):"
+-- ป้ายชื่อหลัก
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Position = UDim2.new(0, 0, 0, 90)
+Title.BackgroundTransparency = 1
+Title.Text = "ตัวกระจาย"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 24
+Title.Parent = MainFrame
 
--- ช่องกรอกแรง
-local strengthBox = Instance.new("TextBox", frame)
-strengthBox.Size = UDim2.new(0, 200, 0, 30)
-strengthBox.Position = UDim2.new(0, 20, 0, 150)
-strengthBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-strengthBox.TextColor3 = Color3.new(1, 1, 1)
-strengthBox.Font = Enum.Font.GothamBold
-strengthBox.TextSize = 16
-strengthBox.Text = "5"
+-- ฟังก์ชันสร้างช่องกรอกค่า
+local function CreateSetting(name, yPos)
+	local Label = Instance.new("TextLabel")
+	Label.Size = UDim2.new(0.5, -10, 0, 25)
+	Label.Position = UDim2.new(0, 10, 0, yPos)
+	Label.BackgroundTransparency = 1
+	Label.Text = name
+	Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	Label.Font = Enum.Font.SourceSans
+	Label.TextSize = 20
+	Label.TextXAlignment = Enum.TextXAlignment.Left
+	Label.Parent = MainFrame
 
---== พับเมนู ==--
-local menuCollapsed = false
-menuBtn.MouseButton1Click:Connect(function()
-	menuCollapsed = not menuCollapsed
-	for _, v in ipairs(frame:GetChildren()) do
-		if v ~= title and v ~= menuBtn then
-			v.Visible = not menuCollapsed
-		end
-	end
-	frame.Size = menuCollapsed and UDim2.new(0, 240, 0, 50) or UDim2.new(0, 240, 0, 300)
-end)
-
---== ฟังก์ชันหลัก ==--
-local active = false
-local exploded = false
-local connections = {}
-
-local function getCharacter()
-	local char = plr.Character
-	if not char or not char:FindFirstChild("HumanoidRootPart") then
-		char = plr.CharacterAdded:Wait()
-	end
-	return char
+	local Box = Instance.new("TextBox")
+	Box.Size = UDim2.new(0.4, 0, 0, 25)
+	Box.Position = UDim2.new(0.55, 0, 0, yPos)
+	Box.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	Box.Text = "1"
+	Box.TextColor3 = Color3.fromRGB(255, 255, 255)
+	Box.Font = Enum.Font.SourceSans
+	Box.TextSize = 18
+	Box.Parent = MainFrame
 end
 
-local function explodeCharacter(char, force)
-	if exploded then return end
-	exploded = true
+CreateSetting("แรงกระเด้ง", 140)
+CreateSetting("ความกว้าง", 180)
+CreateSetting("ความเร็ว", 220)
 
-	for _, part in ipairs(char:GetChildren()) do
-		if part:IsA("BasePart") then
-			part.Anchored = false
-			part.CanCollide = true
-			local bv = Instance.new("BodyVelocity", part)
-			bv.Velocity = Vector3.new(math.random(-1, 1), 1, math.random(-1, 1)).Unit * force
-			bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-			game.Debris:AddItem(bv, 0.3)
+-- ฟังก์ชันพับเมนู
+local folded = false
+Header.MouseButton1Click:Connect(function()
+	folded = not folded
+	for _, obj in ipairs(MainFrame:GetChildren()) do
+		if obj ~= Header then
+			obj.Visible = not folded
 		end
-	end
-end
-
-local function regroupCharacter(char)
-	if not exploded then return end
-	exploded = false
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-
-	for _, part in ipairs(char:GetChildren()) do
-		if part:IsA("BasePart") then
-			part.Anchored = false
-			part.Velocity = Vector3.zero
-			part.CFrame = hrp.CFrame * CFrame.new(math.random(-1, 1), 0, math.random(-1, 1))
-		end
-	end
-end
-
-local function startListener()
-	local char = getCharacter()
-	local hum = char:WaitForChild("Humanoid")
-	local root = char:WaitForChild("HumanoidRootPart")
-
-	local conn
-	conn = run.Heartbeat:Connect(function()
-		if not active or not hum or not root then return end
-		local moveDir = hum.MoveDirection
-		local speed = moveDir.Magnitude
-		local force = tonumber(strengthBox.Text) or 5
-
-		if speed > 0 then
-			explodeCharacter(char, force * 30)
-		else
-			regroupCharacter(char)
-		end
-	end)
-	table.insert(connections, conn)
-end
-
-toggleBtn.MouseButton1Click:Connect(function()
-	active = not active
-	toggleBtn.Text = active and "🔘 เปิดใช้งาน: เปิด" or "🔘 เปิดใช้งาน: ปิด"
-
-	if active then
-		startListener()
-	else
-		for _, c in ipairs(connections) do
-			c:Disconnect()
-		end
-		connections = {}
-	end
-end)
-
--- ระบบรีเซ็ตเมื่อเกิดใหม่
-plr.CharacterAdded:Connect(function()
-	if active then
-		task.wait(1)
-		startListener()
 	end
 end)
