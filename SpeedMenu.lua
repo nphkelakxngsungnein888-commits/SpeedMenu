@@ -1,123 +1,91 @@
---// 🌀 UI หลักของระบบเมนูแบบโปร่งใส พับได้ ลากได้เฉพาะปุ่ม "เมนู"
---// เขียนให้ใช้งานได้จริงบนมือถือ Roblox (Touch Input)
+-- LocalScript
 
--- ตรวจสอบว่ามี ScreenGui อยู่แล้วหรือยัง ถ้ามีให้ลบก่อน
-if game.CoreGui:FindFirstChild("SpeedMenu_UI") then
-	game.CoreGui:FindFirstChild("SpeedMenu_UI"):Destroy()
+-- กำหนดตัวแปรอ้างอิง
+local PlayerGui = script.Parent
+local MainFrame = PlayerGui:WaitForChild("MainGUI").MainFrame -- สมมติว่าโครงสร้างคือ MainGUI -> MainFrame
+local ControlFrame = MainFrame:WaitForChild("ControlFrame")
+local MenuButtonCollapsed = MainFrame:WaitForChild("MenuButtonCollapsed") -- ปุ่ม "เมนู" ตอนยุบ
+local MenuButtonExpanded = MainFrame:WaitForChild("MenuButtonExpanded")   -- ปุ่ม "เมนู" ตอนขยาย
+local ToggleUseButton = MainFrame:WaitForChild("ToggleUseButton")
+local ValueButton1 = ControlFrame:WaitForChild("ValueButton1")
+local InputBox1 = ControlFrame:WaitForChild("InputBox1") -- ช่องใส่ค่า
+-- ... กำหนดตัวแปรสำหรับ ValueButton2, 3 และ InputBox2, 3 ที่เหลือ
+
+-- สถานะเริ่มต้น
+local isExpanded = true -- สถานะขยาย/ยุบ
+local isEnabled = true  -- สถานะเปิด/ปิดการใช้งาน
+
+-- ฟังก์ชันสำหรับอัปเดตสถานะ UI
+local function UpdateUI(expanded)
+    -- ซ่อน/แสดงกรอบควบคุมหลัก
+    ControlFrame.Visible = expanded
+    
+    -- สลับการมองเห็นปุ่มเมนู
+    MenuButtonCollapsed.Visible = not expanded
+    MenuButtonExpanded.Visible = expanded
+    
+    -- หากต้องการให้ MainFrame ทั้งหมดเปลี่ยนขนาด/ตำแหน่ง 
+    -- คุณสามารถใช้ TweenService เพื่อทำให้ดูสวยงามขึ้นได้ 
+    -- แต่สำหรับการสลับการมองเห็นธรรมดาทำได้ตามข้างบน
+    
+    isExpanded = expanded
 end
 
--- สร้าง UI หลัก
-local gui = Instance.new("ScreenGui")
-gui.Name = "SpeedMenu_UI"
-gui.ResetOnSpawn = false
-gui.Parent = game.CoreGui
-
--- สร้างกรอบเมนู
-local frame = Instance.new("Frame")
-frame.Name = "MainFrame"
-frame.Size = UDim2.new(0, 300, 0, 220)
-frame.Position = UDim2.new(0.5, -150, 0.5, -110)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-frame.BackgroundTransparency = 0.4
-frame.BorderSizePixel = 0
-frame.Visible = true
-frame.Parent = gui
-frame.Active = true
-frame.Draggable = false -- ปิดการลากตรงกรอบ ใช้ลากเฉพาะปุ่มเมนูแทน
-
--- ปุ่มเมนู
-local menuButton = Instance.new("TextButton")
-menuButton.Name = "MenuButton"
-menuButton.Text = "เมนู"
-menuButton.Size = UDim2.new(0, 100, 0, 35)
-menuButton.Position = UDim2.new(0.5, -50, 0, -40)
-menuButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-menuButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-menuButton.Font = Enum.Font.SourceSansBold
-menuButton.TextSize = 22
-menuButton.AutoButtonColor = true
-menuButton.Parent = frame
-
--- ค่าตัวอย่าง (ไว้สำหรับต่อยอด)
-local label = Instance.new("TextLabel")
-label.Name = "Title"
-label.Text = "นี่คือเมนูหลัก"
-label.Size = UDim2.new(1, -20, 0, 30)
-label.Position = UDim2.new(0, 10, 0, 40)
-label.BackgroundTransparency = 1
-label.TextColor3 = Color3.fromRGB(255, 255, 255)
-label.TextScaled = true
-label.Font = Enum.Font.SourceSans
-label.Parent = frame
-
--- ปุ่มทดสอบ (ตัวอย่าง)
-local toggle = Instance.new("TextButton")
-toggle.Name = "ToggleExample"
-toggle.Text = "เปิดใช้งาน"
-toggle.Size = UDim2.new(1, -20, 0, 30)
-toggle.Position = UDim2.new(0, 10, 0, 80)
-toggle.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggle.Font = Enum.Font.SourceSans
-toggle.TextSize = 20
-toggle.Parent = frame
-
--- ตัวแปรสถานะ
-local isOpen = true
-local isDragging = false
-local dragStart, startPos
-
--- พับ/ขยายเมนู
-local function toggleMenu()
-	if isOpen then
-		isOpen = false
-		game:GetService("TweenService"):Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {
-			Size = UDim2.new(0, 120, 0, 50)
-		}):Play()
-		for _, v in ipairs(frame:GetChildren()) do
-			if v ~= menuButton then
-				v.Visible = false
-			end
-		end
-	else
-		isOpen = true
-		game:GetService("TweenService"):Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {
-			Size = UDim2.new(0, 300, 0, 220)
-		}):Play()
-		task.wait(0.5)
-		for _, v in ipairs(frame:GetChildren()) do
-			if v ~= menuButton then
-				v.Visible = true
-			end
-		end
-	end
+-- ฟังก์ชันสำหรับสลับการเปิด/ปิดการใช้งาน
+local function ToggleUsage()
+    isEnabled = not isEnabled
+    
+    -- อัปเดตข้อความบนปุ่ม
+    if isEnabled then
+        ToggleUseButton.Text = "เปิด-ปิดการใช้งาน" -- หรือข้อความที่สื่อถึง "เปิดอยู่"
+        -- เปิดใช้งานปุ่มปรับค่า
+        ValueButton1.Active = true
+        ValueButton2.Active = true
+        ValueButton3.Active = true
+        ControlFrame.BackgroundTransparency = 0 -- ทำให้ทึบ
+    else
+        ToggleUseButton.Text = "เปิด-ปิดการใช้งาน" -- หรือข้อความที่สื่อถึง "ปิดอยู่"
+        -- ปิดใช้งานปุ่มปรับค่า
+        ValueButton1.Active = false
+        ValueButton2.Active = false
+        ValueButton3.Active = false
+        ControlFrame.BackgroundTransparency = 0.5 -- ทำให้จางลงเพื่อบ่งชี้ว่าปิดใช้งาน
+    end
 end
-menuButton.MouseButton1Click:Connect(toggleMenu)
 
--- ระบบลากเฉพาะปุ่มเมนู
-menuButton.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.Touch then
-		isDragging = true
-		dragStart = input.Position
-		startPos = frame.Position
-	end
+-- ฟังก์ชันสำหรับการคลิกปุ่มปรับค่า (ตัวอย่างสำหรับปุ่ม 1)
+local function AdjustValue1()
+    if isEnabled then
+        local valueText = InputBox1.Text
+        local numericValue = tonumber(valueText)
+        
+        if numericValue then
+            -- ส่งค่าไปยัง Server หรือใช้ค่าใน LocalScript
+            print("ตั้งค่าตัวกระจาย 1 เป็น: " .. numericValue)
+            -- ตัวอย่าง: ส่งค่าไปที่ Server ผ่าน RemoteEvent
+            -- game.ReplicatedStorage.RemoteEvents.SetValue1:FireServer(numericValue)
+        else
+            warn("กรุณาใส่ค่าที่เป็นตัวเลขในช่องปรับค่า 1")
+        end
+    end
+end
+
+-- เชื่อมต่อเหตุการณ์
+MenuButtonCollapsed.MouseButton1Click:Connect(function()
+    UpdateUI(true) -- ยุบ -> ขยาย
 end)
 
-menuButton.InputChanged:Connect(function(input)
-	if isDragging and input.UserInputType == Enum.UserInputType.Touch then
-		local delta = input.Position - dragStart
-		frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-	end
+MenuButtonExpanded.MouseButton1Click:Connect(function()
+    UpdateUI(false) -- ขยาย -> ยุบ
 end)
 
-menuButton.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.Touch then
-		isDragging = false
-	end
-end)
+ToggleUseButton.MouseButton1Click:Connect(ToggleUsage)
 
--- ทำให้เมนูอยู่ด้านบนเสมอ
-frame.ZIndex = 10
-menuButton.ZIndex = 11
-label.ZIndex = 11
-toggle.ZIndex = 11
+ValueButton1.MouseButton1Click:Connect(AdjustValue1)
+-- ValueButton2.MouseButton1Click:Connect(AdjustValue2)
+-- ValueButton3.MouseButton1Click:Connect(AdjustValue3)
+
+-- กำหนดสถานะเริ่มต้นเมื่อเกมเริ่ม
+UpdateUI(isExpanded)
+ToggleUsage() -- กำหนดสถานะเริ่มต้นของปุ่มเปิด/ปิด
+
