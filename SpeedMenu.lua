@@ -1,5 +1,6 @@
---// ANYTHING FLY - EXPERT FULL FINAL SCRIPT
---// Character follows camera | Vehicle stable | Mobile friendly
+--// ANYTHING FLY - FULL FINAL EXPERT VERSION
+--// Character faces CAMERA (not joystick)
+--// Vehicle stable | Mobile friendly | UI included
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -63,9 +64,9 @@ local function startFly()
 
 	attachment = Instance.new("Attachment", controlPart)
 
-	-- 🧍 Character mode
+	-- 🧍 CHARACTER MODE
 	if not seat then
-		humanoid.AutoRotate = true
+		humanoid.AutoRotate = false
 
 		linearVel = Instance.new("LinearVelocity")
 		linearVel.Attachment0 = attachment
@@ -74,7 +75,7 @@ local function startFly()
 		return
 	end
 
-	-- 🚗 Vehicle mode
+	-- 🚗 VEHICLE MODE
 	alignOri = Instance.new("AlignOrientation")
 	alignOri.Attachment0 = attachment
 	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
@@ -115,7 +116,7 @@ gui.Name = "AnythingFlyUI"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 999
 
--- Toggle
+-- Toggle UI
 local toggle = Instance.new("TextButton", gui)
 toggle.Size = UDim2.fromScale(0.12, 0.06)
 toggle.Position = UDim2.fromScale(0.02, 0.6)
@@ -128,16 +129,17 @@ Instance.new("UICorner", toggle)
 
 -- Panel
 local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.fromScale(0.36, 0.26)
-panel.Position = UDim2.fromScale(0.32, 0.37)
+panel.Size = UDim2.fromScale(0.32, 0.24)
+panel.Position = UDim2.fromScale(0.34, 0.38)
 panel.BackgroundColor3 = Color3.fromRGB(20,20,20)
+panel.Visible = false
 panel.Active = true
 panel.Draggable = true
 Instance.new("UICorner", panel)
 
 -- Title
 local title = Instance.new("TextLabel", panel)
-title.Size = UDim2.fromScale(1, 0.22)
+title.Size = UDim2.fromScale(1, 0.25)
 title.BackgroundTransparency = 1
 title.Text = "✈ ANYTHING FLY"
 title.TextScaled = true
@@ -146,8 +148,8 @@ title.TextColor3 = Color3.new(1,1,1)
 
 -- Fly Button
 local flyBtn = Instance.new("TextButton", panel)
-flyBtn.Size = UDim2.fromScale(0.85, 0.28)
-flyBtn.Position = UDim2.fromScale(0.075, 0.3)
+flyBtn.Size = UDim2.fromScale(0.85, 0.3)
+flyBtn.Position = UDim2.fromScale(0.075, 0.28)
 flyBtn.Text = "FLY : OFF"
 flyBtn.TextScaled = true
 flyBtn.Font = Enum.Font.GothamBold
@@ -155,10 +157,10 @@ flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
 flyBtn.TextColor3 = Color3.new(1,1,1)
 Instance.new("UICorner", flyBtn)
 
--- Speed
+-- Speed Box
 local speedBox = Instance.new("TextBox", panel)
-speedBox.Size = UDim2.fromScale(0.6, 0.2)
-speedBox.Position = UDim2.fromScale(0.2, 0.63)
+speedBox.Size = UDim2.fromScale(0.6, 0.22)
+speedBox.Position = UDim2.fromScale(0.2, 0.62)
 speedBox.Text = tostring(HORIZONTAL_SPEED)
 speedBox.TextScaled = true
 speedBox.Font = Enum.Font.Gotham
@@ -206,14 +208,21 @@ RunService.RenderStepped:Connect(function()
 	local horizontal = Vector3.zero
 	local vertical = 0
 
+	-- 🧍 Character faces camera (LOCK)
+	if not seat then
+		local yaw = math.atan2(look.X, look.Z)
+		controlPart.CFrame =
+			CFrame.new(controlPart.Position) *
+			CFrame.Angles(0, yaw, 0)
+	end
+
+	-- Movement
 	if seat then
-		-- Vehicle
 		local yaw = math.atan2(look.X, look.Z)
 		alignOri.CFrame = CFrame.Angles(0, yaw, 0)
 		angularVel.AngularVelocity = Vector3.zero
 		horizontal = camera.CFrame.LookVector * seat.Throttle * HORIZONTAL_SPEED
 	else
-		-- Character
 		local moveDir = humanoid.MoveDirection
 		horizontal = Vector3.new(
 			moveDir.X * HORIZONTAL_SPEED,
@@ -222,10 +231,9 @@ RunService.RenderStepped:Connect(function()
 		)
 	end
 
-	if horizontal.Magnitude > 0.1 then
-		if math.abs(look.Y) > CAMERA_DEADZONE then
-			vertical = look.Y * VERTICAL_SPEED
-		end
+	-- Vertical
+	if horizontal.Magnitude > 0.1 and math.abs(look.Y) > CAMERA_DEADZONE then
+		vertical = look.Y * VERTICAL_SPEED
 	end
 
 	linearVel.VectorVelocity = horizontal + Vector3.new(0, vertical, 0)
