@@ -1,5 +1,5 @@
---// ANYTHING FLY - EXPERT FULL SCRIPT
---// Character + Vehicle | Stable | Mobile Friendly
+--// ANYTHING FLY - EXPERT FULL FIXED SCRIPT
+--// Camera Safe | Vehicle Stable | Proper Control | Mobile Ready
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -20,10 +20,15 @@ local CAMERA_DEADZONE = 0.12
 local flying = false
 local controlPart
 local humanoid
-local alignOri, linearVel
+local seat
+
+local alignOri
+local linearVel
+local angularVel
+local attachment
 
 --------------------------------------------------
--- GET CONTROL PART (AUTO)
+-- GET CONTROL PART
 --------------------------------------------------
 local function getControlPart()
 	local char = player.Character
@@ -32,15 +37,17 @@ local function getControlPart()
 	humanoid = char:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return end
 
-	-- ถ้านั่งรถ / ยาน
-	if humanoid.SeatPart then
-		local model = humanoid.SeatPart:FindFirstAncestorOfClass("Model")
+	seat = humanoid.SeatPart
+
+	-- 🚗 Vehicle
+	if seat then
+		local model = seat:FindFirstAncestorOfClass("Model")
 		if model and model.PrimaryPart then
 			return model.PrimaryPart
 		end
 	end
 
-	-- บินตัวละคร
+	-- 🧍 Character
 	return char:FindFirstChild("HumanoidRootPart")
 end
 
@@ -52,40 +59,59 @@ local function startFly()
 
 	controlPart = getControlPart()
 	if not controlPart then return end
-
 	flying = true
-	humanoid.PlatformStand = true
 
-	-- Align Orientation (Anti Roll / Anti Spin)
+	-- Character only
+	if not seat then
+		humanoid.PlatformStand = true
+	end
+
+	attachment = Instance.new("Attachment")
+	attachment.Parent = controlPart
+
+	-- 🧭 Orientation (Yaw only)
 	alignOri = Instance.new("AlignOrientation")
-	alignOri.Attachment0 = Instance.new("Attachment", controlPart)
+	alignOri.Attachment0 = attachment
 	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	alignOri.RigidityEnabled = true
 	alignOri.MaxTorque = math.huge
-	alignOri.Responsiveness = 15
+	alignOri.Responsiveness = 10
 	alignOri.Parent = controlPart
 
-	-- Linear Velocity
+	-- 🚀 Linear Velocity
 	linearVel = Instance.new("LinearVelocity")
-	linearVel.Attachment0 = alignOri.Attachment0
+	linearVel.Attachment0 = attachment
 	linearVel.MaxForce = math.huge
 	linearVel.Parent = controlPart
+
+	-- 🛑 Angular Velocity (Hard Stop Rotation)
+	angularVel = Instance.new("AngularVelocity")
+	angularVel.Attachment0 = attachment
+	angularVel.MaxTorque = math.huge
+	angularVel.AngularVelocity = Vector3.zero
+	angularVel.Parent = controlPart
 end
 
 local function stopFly()
 	flying = false
-	if humanoid then humanoid.PlatformStand = false end
-	if alignOri then alignOri:Destroy() alignOri = nil end
-	if linearVel then linearVel:Destroy() linearVel = nil end
+
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+
+	for _,v in ipairs({alignOri, linearVel, angularVel, attachment}) do
+		if v then v:Destroy() end
+	end
 end
 
 --------------------------------------------------
 -- UI (SMALL & CLEAN)
 --------------------------------------------------
-local gui = Instance.new("ScreenGui", game.CoreGui)
+local gui = Instance.new("ScreenGui")
 gui.Name = "AnythingFlyUI"
-gui.DisplayOrder = 999
 gui.ResetOnSpawn = false
+gui.DisplayOrder = 999
+gui.Parent = game:GetService("CoreGui")
 
 -- Toggle Button
 local toggleBtn = Instance.new("TextButton", gui)
@@ -171,31 +197,37 @@ speedBox.FocusLost:Connect(function()
 end)
 
 --------------------------------------------------
--- MAIN LOOP (ANTI ROTATE CORE)
+-- MAIN LOOP (CORE LOGIC)
 --------------------------------------------------
 RunService.RenderStepped:Connect(function()
-	if not flying or not controlPart or not humanoid then return end
+	if not flying or not controlPart then return end
 
-	-- ล็อกการหมุน (Yaw เท่านั้น)
 	local look = camera.CFrame.LookVector
+
+	-- 🧭 Yaw only (camera stays natural)
 	local yaw = math.atan2(look.X, look.Z)
-	alignOri.CFrame = CFrame.new(controlPart.Position) * CFrame.Angles(0, yaw, 0)
+	alignOri.CFrame = CFrame.Angles(0, yaw, 0)
 
-	-- ตัดแรงหมุน (กันรถหมุนเอง)
-	controlPart.AssemblyAngularVelocity = Vector3.zero
+	-- 🛑 Hard stop rotation
+	angularVel.AngularVelocity = Vector3.zero
 
-	-- Movement
-	local moveDir = humanoid.MoveDirection
-	local moving = moveDir.Magnitude > 0.05
-
-	local horizontal = Vector3.new(
-		moveDir.X * HORIZONTAL_SPEED,
-		0,
-		moveDir.Z * HORIZONTAL_SPEED
-	)
-
+	local horizontal = Vector3.zero
 	local vertical = 0
-	if moving then
+
+	if seat then
+		-- 🚗 Vehicle control
+		horizontal = camera.CFrame.LookVector * seat.Throttle * HORIZONTAL_SPEED
+	else
+		-- 🧍 Character control
+		local moveDir = humanoid.MoveDirection
+		horizontal = Vector3.new(
+			moveDir.X * HORIZONTAL_SPEED,
+			0,
+			moveDir.Z * HORIZONTAL_SPEED
+		)
+	end
+
+	if horizontal.Magnitude > 0.1 then
 		if math.abs(look.Y) > CAMERA_DEADZONE then
 			vertical = look.Y * VERTICAL_SPEED
 		end
