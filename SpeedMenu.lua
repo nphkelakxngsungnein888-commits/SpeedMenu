@@ -1,141 +1,135 @@
---// ANYTHING FLY - EXPERT VERSION
---// LocalScript | Mobile Friendly | Pro Control
+--// ANYTHING FLY - EXPERT FULL VERSION
+--// LocalScript | Mobile / PC | Pro Physics
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local cam = workspace.CurrentCamera
+local camera = workspace.CurrentCamera
 
---// SETTINGS
-local MOVE_SPEED = 70
+--// SETTINGS (ปรับได้)
+local HORIZONTAL_SPEED = 70
 local VERTICAL_SPEED = 55
-local CAMERA_DEADZONE = 0.1
+local CAMERA_DEADZONE = 0.12
 
 local flying = false
-local targetModel
+local vehicleModel
 local rootPart
+local humanoid
 
-local gyro, velocity
+local alignOri, linearVel
 
---// Utility
-local function getPrimary(model)
-	if model:IsA("BasePart") then
+--// หา Model ที่ผู้เล่นกำลังใช้งาน (Seat / Weld)
+local function getControlledModel()
+	local char = player.Character
+	if not char then return end
+
+	humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not humanoid or not humanoid.SeatPart then return end
+
+	local seat = humanoid.SeatPart
+	local model = seat:FindFirstAncestorOfClass("Model")
+
+	if model and model.PrimaryPart then
 		return model
-	end
-	if model:IsA("Model") then
-		if not model.PrimaryPart then
-			model.PrimaryPart = model:FindFirstChildWhichIsA("BasePart")
-		end
-		return model.PrimaryPart
 	end
 end
 
 --// Start Fly
-local function startFly(model)
+local function startFly()
 	if flying then return end
 
-	targetModel = model
-	rootPart = getPrimary(model)
-	if not rootPart then return end
+	vehicleModel = getControlledModel()
+	if not vehicleModel then
+		warn("No controllable model found")
+		return
+	end
 
+	rootPart = vehicleModel.PrimaryPart
 	flying = true
 
-	gyro = Instance.new("BodyGyro")
-	gyro.P = 120000
-	gyro.MaxTorque = Vector3.new(1e9,1e9,1e9)
-	gyro.CFrame = rootPart.CFrame
-	gyro.Parent = rootPart
+	-- Orientation
+	alignOri = Instance.new("AlignOrientation")
+	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	alignOri.Attachment0 = Instance.new("Attachment", rootPart)
+	alignOri.MaxTorque = math.huge
+	alignOri.Responsiveness = 20
+	alignOri.Parent = rootPart
 
-	velocity = Instance.new("BodyVelocity")
-	velocity.MaxForce = Vector3.new(1e9,1e9,1e9)
-	velocity.Velocity = Vector3.zero
-	velocity.Parent = rootPart
+	-- Velocity
+	linearVel = Instance.new("LinearVelocity")
+	linearVel.Attachment0 = alignOri.Attachment0
+	linearVel.MaxForce = math.huge
+	linearVel.VectorVelocity = Vector3.zero
+	linearVel.Parent = rootPart
 end
 
 --// Stop Fly
 local function stopFly()
 	flying = false
-	if gyro then gyro:Destroy() end
-	if velocity then velocity:Destroy() end
-	targetModel = nil
-	rootPart = nil
+	if alignOri then alignOri:Destroy() end
+	if linearVel then linearVel:Destroy() end
 end
 
---// Auto Detect (นั่ง / จับ / เลือก)
-local function detectTarget()
-	local char = player.Character
-	if not char then return end
-
-	-- Priority 1: Seat
-	for _,v in pairs(workspace:GetDescendants()) do
-		if v:IsA("Seat") and v.Occupant == char:FindFirstChild("Humanoid") then
-			return v.Parent
-		end
-	end
-
-	-- Priority 2: Model touching
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if hrp then
-		for _,p in pairs(hrp:GetTouchingParts()) do
-			if p:IsA("BasePart") and p.Parent ~= char then
-				return p.Parent
-			end
-		end
-	end
-end
-
---// UI (Minimal Expert)
+--// UI (เรียบ แต่ใช้งานจริง)
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.ResetOnSpawn = false
+gui.Name = "AnythingFlyUI"
 
-local btn = Instance.new("TextButton", gui)
-btn.Size = UDim2.fromScale(0.18,0.07)
-btn.Position = UDim2.fromScale(0.02,0.45)
-btn.Text = "ANY FLY"
-btn.Font = Enum.Font.GothamBold
-btn.TextScaled = true
-btn.BackgroundColor3 = Color3.fromRGB(0,140,255)
-btn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", btn)
+local toggle = Instance.new("TextButton", gui)
+toggle.Size = UDim2.fromScale(0.22,0.08)
+toggle.Position = UDim2.fromScale(0.39,0.85)
+toggle.Text = "ANYTHING FLY : OFF"
+toggle.TextScaled = true
+toggle.Font = Enum.Font.GothamBold
+toggle.BackgroundColor3 = Color3.fromRGB(180,60,60)
+toggle.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", toggle)
 
-btn.MouseButton1Click:Connect(function()
+toggle.MouseButton1Click:Connect(function()
 	if flying then
 		stopFly()
+		toggle.Text = "ANYTHING FLY : OFF"
+		toggle.BackgroundColor3 = Color3.fromRGB(180,60,60)
 	else
-		local target = detectTarget()
-		if target then
-			startFly(target)
+		startFly()
+		if flying then
+			toggle.Text = "ANYTHING FLY : ON"
+			toggle.BackgroundColor3 = Color3.fromRGB(60,180,90)
 		end
 	end
 end)
 
---// Expert Fly Loop
+--// Main Fly Loop (EXPERT LOGIC)
 RunService.RenderStepped:Connect(function()
-	if not flying or not rootPart then return end
+	if not flying or not rootPart or not humanoid then return end
 
-	gyro.CFrame = cam.CFrame
-
-	-- ใช้ MoveDirection ของตัวละคร (รองรับมือถือ)
-	local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
-	if not humanoid then return end
+	-- หมุนตามกล้อง
+	alignOri.CFrame = camera.CFrame
 
 	local moveDir = humanoid.MoveDirection
 	local isMoving = moveDir.Magnitude > 0.05
 
+	-- แนวราบ
 	local horizontal = Vector3.new(
-		moveDir.X * MOVE_SPEED,
+		moveDir.X * HORIZONTAL_SPEED,
 		0,
-		moveDir.Z * MOVE_SPEED
+		moveDir.Z * HORIZONTAL_SPEED
 	)
 
+	-- แนวดิ่ง (ต้องขยับจอย)
 	local vertical = 0
 	if isMoving then
-		local lookY = cam.CFrame.LookVector.Y
+		local lookY = camera.CFrame.LookVector.Y
 		if math.abs(lookY) > CAMERA_DEADZONE then
 			vertical = lookY * VERTICAL_SPEED
 		end
 	end
 
-	velocity.Velocity = horizontal + Vector3.new(0, vertical, 0)
+	linearVel.VectorVelocity = horizontal + Vector3.new(0, vertical, 0)
+end)
+
+--// Safety Reset
+player.CharacterAdded:Connect(function()
+	stopFly()
 end)
