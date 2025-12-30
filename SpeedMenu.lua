@@ -1,128 +1,144 @@
---// Expert Fly LocalScript
---// By Professional Roblox Script Logic
+--// Expert Fly Script (Mobile Supported)
+--// LocalScript Only
 
 local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 
-local Player = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local player = Players.LocalPlayer
+local character, humanoid, root
 
-local Character, Humanoid, RootPart
-local Flying = false
+local flying = false
+local speed = 50
+local gyro, velocity
+local moveVector = Vector3.zero
 
--- ปรับค่าตรงนี้
-local SPEED = 70
-local CONTROL = {
-	Forward = 0,
-	Backward = 0,
-	Left = 0,
-	Right = 0,
-	Up = 0,
-	Down = 0
-}
-
-local BV, BG
-local Connection
-
--- ======================= FUNCTIONS =======================
-
-local function SetupCharacter()
-	Character = Player.Character or Player.CharacterAdded:Wait()
-	Humanoid = Character:WaitForChild("Humanoid")
-	RootPart = Character:WaitForChild("HumanoidRootPart")
+--// Character Loader
+local function loadChar()
+	character = player.Character or player.CharacterAdded:Wait()
+	humanoid = character:WaitForChild("Humanoid")
+	root = character:WaitForChild("HumanoidRootPart")
 end
+loadChar()
 
-local function StartFly()
-	if Flying then return end
-	Flying = true
-
-	BV = Instance.new("BodyVelocity")
-	BV.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-	BV.Velocity = Vector3.zero
-	BV.Parent = RootPart
-
-	BG = Instance.new("BodyGyro")
-	BG.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
-	BG.P = 9000
-	BG.CFrame = RootPart.CFrame
-	BG.Parent = RootPart
-
-	Humanoid.PlatformStand = true
-
-	Connection = RunService.RenderStepped:Connect(function()
-		if not Flying then return end
-
-		local CamCF = Camera.CFrame
-		local MoveDir =
-			(CamCF.LookVector * (CONTROL.Forward - CONTROL.Backward)) +
-			(CamCF.RightVector * (CONTROL.Right - CONTROL.Left)) +
-			(Vector3.new(0,1,0) * (CONTROL.Up - CONTROL.Down))
-
-		if MoveDir.Magnitude > 0 then
-			BV.Velocity = MoveDir.Unit * SPEED
-		else
-			BV.Velocity = Vector3.zero
-		end
-
-		BG.CFrame = CamCF
-	end)
-end
-
-local function StopFly()
-	Flying = false
-
-	if Connection then
-		Connection:Disconnect()
-		Connection = nil
-	end
-
-	if BV then BV:Destroy() BV = nil end
-	if BG then BG:Destroy() BG = nil end
-
-	if Humanoid then
-		Humanoid.PlatformStand = false
-	end
-end
-
--- ======================= INPUT =======================
-
-UserInputService.InputBegan:Connect(function(Input, GP)
-	if GP then return end
-
-	if Input.KeyCode == Enum.KeyCode.F then
-		if Flying then
-			StopFly()
-		else
-			StartFly()
-		end
-	end
-
-	if Input.KeyCode == Enum.KeyCode.W then CONTROL.Forward = 1 end
-	if Input.KeyCode == Enum.KeyCode.S then CONTROL.Backward = 1 end
-	if Input.KeyCode == Enum.KeyCode.A then CONTROL.Left = 1 end
-	if Input.KeyCode == Enum.KeyCode.D then CONTROL.Right = 1 end
-	if Input.KeyCode == Enum.KeyCode.Space then CONTROL.Up = 1 end
-	if Input.KeyCode == Enum.KeyCode.LeftControl then CONTROL.Down = 1 end
-end)
-
-UserInputService.InputEnded:Connect(function(Input)
-	if Input.KeyCode == Enum.KeyCode.W then CONTROL.Forward = 0 end
-	if Input.KeyCode == Enum.KeyCode.S then CONTROL.Backward = 0 end
-	if Input.KeyCode == Enum.KeyCode.A then CONTROL.Left = 0 end
-	if Input.KeyCode == Enum.KeyCode.D then CONTROL.Right = 0 end
-	if Input.KeyCode == Enum.KeyCode.Space then CONTROL.Up = 0 end
-	if Input.KeyCode == Enum.KeyCode.LeftControl then CONTROL.Down = 0 end
-end)
-
--- ======================= RESPAWN =======================
-
-Player.CharacterAdded:Connect(function()
+player.CharacterAdded:Connect(function()
+	flying = false
 	task.wait(0.5)
-	StopFly()
-	SetupCharacter()
+	loadChar()
 end)
 
-SetupCharacter()
+--// UI
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "FlyUI"
+gui.ResetOnSpawn = false
 
-print("✅ Expert Fly Loaded | Press F to Fly")
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.fromScale(0.45, 0.3)
+main.Position = UDim2.fromScale(0.275, 0.35)
+main.BackgroundColor3 = Color3.fromRGB(25,25,25)
+main.Active = true
+main.Draggable = true
+main.BorderSizePixel = 0
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,18)
+
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.fromScale(1,0.25)
+title.BackgroundTransparency = 1
+title.Text = "✈️ FLY CONTROL"
+title.TextScaled = true
+title.TextColor3 = Color3.new(1,1,1)
+title.Font = Enum.Font.GothamBold
+
+local toggle = Instance.new("TextButton", main)
+toggle.Position = UDim2.fromScale(0.1,0.35)
+toggle.Size = UDim2.fromScale(0.8,0.25)
+toggle.Text = "FLY : OFF"
+toggle.TextScaled = true
+toggle.Font = Enum.Font.GothamBold
+toggle.BackgroundColor3 = Color3.fromRGB(200,50,50)
+toggle.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", toggle)
+
+local speedBox = Instance.new("TextBox", main)
+speedBox.Position = UDim2.fromScale(0.25,0.68)
+speedBox.Size = UDim2.fromScale(0.5,0.2)
+speedBox.PlaceholderText = "Speed (Default 50)"
+speedBox.Text = tostring(speed)
+speedBox.TextScaled = true
+speedBox.Font = Enum.Font.Gotham
+speedBox.BackgroundColor3 = Color3.fromRGB(40,40,40)
+speedBox.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", speedBox)
+
+--// Fly Logic
+local function startFly()
+	if flying then return end
+	flying = true
+	humanoid.PlatformStand = true
+
+	gyro = Instance.new("BodyGyro", root)
+	gyro.P = 9e4
+	gyro.MaxTorque = Vector3.new(9e9,9e9,9e9)
+
+	velocity = Instance.new("BodyVelocity", root)
+	velocity.MaxForce = Vector3.new(9e9,9e9,9e9)
+end
+
+local function stopFly()
+	flying = false
+	humanoid.PlatformStand = false
+	if gyro then gyro:Destroy() end
+	if velocity then velocity:Destroy() end
+end
+
+toggle.MouseButton1Click:Connect(function()
+	if flying then
+		stopFly()
+		toggle.Text = "FLY : OFF"
+		toggle.BackgroundColor3 = Color3.fromRGB(200,50,50)
+	else
+		startFly()
+		toggle.Text = "FLY : ON"
+		toggle.BackgroundColor3 = Color3.fromRGB(50,200,50)
+	end
+end)
+
+speedBox.FocusLost:Connect(function()
+	local n = tonumber(speedBox.Text)
+	if n then speed = math.clamp(n,10,300) end
+	speedBox.Text = tostring(speed)
+end)
+
+--// Movement
+RunService.RenderStepped:Connect(function()
+	if not flying or not root then return end
+
+	local cam = workspace.CurrentCamera
+	gyro.CFrame = cam.CFrame
+
+	moveVector = humanoid.MoveDirection * speed
+
+	if UIS:IsKeyDown(Enum.KeyCode.Space) then
+		moveVector += Vector3.new(0,speed,0)
+	end
+	if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+		moveVector -= Vector3.new(0,speed,0)
+	end
+
+	velocity.Velocity = moveVector
+end)
+
+--// Hide / Show Button
+local hide = Instance.new("TextButton", gui)
+hide.Size = UDim2.fromScale(0.12,0.06)
+hide.Position = UDim2.fromScale(0.02,0.45)
+hide.Text = "UI"
+hide.TextScaled = true
+hide.Font = Enum.Font.GothamBold
+hide.BackgroundColor3 = Color3.fromRGB(0,120,255)
+hide.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", hide)
+
+hide.MouseButton1Click:Connect(function()
+	main.Visible = not main.Visible
+end)
