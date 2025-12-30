@@ -1,6 +1,5 @@
---// ANYTHING FLY - FORWARD FACE LOCK (FULL EXPERT)
---// Character faces camera forward always
---// Vehicle stable | Mobile ready | Single LocalScript
+--// ANYTHING FLY - EXPERT FULL FINAL SCRIPT
+--// Character follows camera | Vehicle stable | Mobile friendly
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -11,7 +10,7 @@ local camera = workspace.CurrentCamera
 --------------------------------------------------
 -- SETTINGS
 --------------------------------------------------
-local SPEED = 60
+local HORIZONTAL_SPEED = 60
 local VERTICAL_SPEED = 45
 local CAMERA_DEADZONE = 0.12
 
@@ -24,8 +23,8 @@ local humanoid
 local seat
 
 local attachment
-local alignOri
 local linearVel
+local alignOri
 local angularVel
 
 --------------------------------------------------
@@ -39,6 +38,8 @@ local function getControlPart()
 	if not humanoid then return end
 
 	seat = humanoid.SeatPart
+
+	-- Vehicle
 	if seat then
 		local model = seat:FindFirstAncestorOfClass("Model")
 		if model and model.PrimaryPart then
@@ -46,6 +47,7 @@ local function getControlPart()
 		end
 	end
 
+	-- Character
 	return char:FindFirstChild("HumanoidRootPart")
 end
 
@@ -59,19 +61,26 @@ local function startFly()
 	if not controlPart then return end
 	flying = true
 
-	if humanoid and not seat then
-		humanoid.PlatformStand = true
+	attachment = Instance.new("Attachment", controlPart)
+
+	-- 🧍 Character mode
+	if not seat then
+		humanoid.AutoRotate = true
+
+		linearVel = Instance.new("LinearVelocity")
+		linearVel.Attachment0 = attachment
+		linearVel.MaxForce = math.huge
+		linearVel.Parent = controlPart
+		return
 	end
 
-	attachment = Instance.new("Attachment")
-	attachment.Parent = controlPart
-
+	-- 🚗 Vehicle mode
 	alignOri = Instance.new("AlignOrientation")
 	alignOri.Attachment0 = attachment
 	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	alignOri.RigidityEnabled = true
 	alignOri.MaxTorque = math.huge
-	alignOri.Responsiveness = 18
+	alignOri.Responsiveness = 10
 	alignOri.Parent = controlPart
 
 	linearVel = Instance.new("LinearVelocity")
@@ -91,76 +100,135 @@ end
 --------------------------------------------------
 local function stopFly()
 	flying = false
-	if humanoid then
-		humanoid.PlatformStand = false
-	end
+	if humanoid then humanoid.AutoRotate = true end
 
-	for _,v in ipairs({alignOri, linearVel, angularVel, attachment}) do
+	for _,v in ipairs({linearVel, alignOri, angularVel, attachment}) do
 		if v then v:Destroy() end
 	end
 end
 
 --------------------------------------------------
--- CORE LOOP (FORWARD FACE LOCK)
+-- UI
+--------------------------------------------------
+local gui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+gui.Name = "AnythingFlyUI"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 999
+
+-- Toggle
+local toggle = Instance.new("TextButton", gui)
+toggle.Size = UDim2.fromScale(0.12, 0.06)
+toggle.Position = UDim2.fromScale(0.02, 0.6)
+toggle.Text = "FLY"
+toggle.TextScaled = true
+toggle.Font = Enum.Font.GothamBold
+toggle.BackgroundColor3 = Color3.fromRGB(0,120,255)
+toggle.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", toggle)
+
+-- Panel
+local panel = Instance.new("Frame", gui)
+panel.Size = UDim2.fromScale(0.36, 0.26)
+panel.Position = UDim2.fromScale(0.32, 0.37)
+panel.BackgroundColor3 = Color3.fromRGB(20,20,20)
+panel.Active = true
+panel.Draggable = true
+Instance.new("UICorner", panel)
+
+-- Title
+local title = Instance.new("TextLabel", panel)
+title.Size = UDim2.fromScale(1, 0.22)
+title.BackgroundTransparency = 1
+title.Text = "✈ ANYTHING FLY"
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.TextColor3 = Color3.new(1,1,1)
+
+-- Fly Button
+local flyBtn = Instance.new("TextButton", panel)
+flyBtn.Size = UDim2.fromScale(0.85, 0.28)
+flyBtn.Position = UDim2.fromScale(0.075, 0.3)
+flyBtn.Text = "FLY : OFF"
+flyBtn.TextScaled = true
+flyBtn.Font = Enum.Font.GothamBold
+flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
+flyBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", flyBtn)
+
+-- Speed
+local speedBox = Instance.new("TextBox", panel)
+speedBox.Size = UDim2.fromScale(0.6, 0.2)
+speedBox.Position = UDim2.fromScale(0.2, 0.63)
+speedBox.Text = tostring(HORIZONTAL_SPEED)
+speedBox.TextScaled = true
+speedBox.Font = Enum.Font.Gotham
+speedBox.BackgroundColor3 = Color3.fromRGB(35,35,35)
+speedBox.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", speedBox)
+
+--------------------------------------------------
+-- UI LOGIC
+--------------------------------------------------
+toggle.MouseButton1Click:Connect(function()
+	panel.Visible = not panel.Visible
+end)
+
+flyBtn.MouseButton1Click:Connect(function()
+	if flying then
+		stopFly()
+		flyBtn.Text = "FLY : OFF"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
+	else
+		startFly()
+		if flying then
+			flyBtn.Text = "FLY : ON"
+			flyBtn.BackgroundColor3 = Color3.fromRGB(60,180,90)
+		end
+	end
+end)
+
+speedBox.FocusLost:Connect(function()
+	local v = tonumber(speedBox.Text)
+	if v then
+		HORIZONTAL_SPEED = math.clamp(v, 20, 300)
+		VERTICAL_SPEED = HORIZONTAL_SPEED * 0.75
+	end
+	speedBox.Text = tostring(HORIZONTAL_SPEED)
+end)
+
+--------------------------------------------------
+-- MAIN LOOP
 --------------------------------------------------
 RunService.RenderStepped:Connect(function()
-	if not flying or not controlPart or not humanoid then return end
+	if not flying or not controlPart then return end
 
-	-- 🔒 Lock character/vehicle face to camera (Yaw only)
-	local camLook = camera.CFrame.LookVector
-	local yaw = math.atan2(camLook.X, camLook.Z)
-	alignOri.CFrame = CFrame.Angles(0, yaw, 0)
-
-	-- 🛑 Kill all rotation
-	controlPart.AssemblyAngularVelocity = Vector3.zero
-	angularVel.AngularVelocity = Vector3.zero
-
-	-- Movement (joystick / WASD)
-	local moveDir = humanoid.MoveDirection
-
-	local horizontal = Vector3.new(
-		moveDir.X * SPEED,
-		0,
-		moveDir.Z * SPEED
-	)
-
+	local look = camera.CFrame.LookVector
+	local horizontal = Vector3.zero
 	local vertical = 0
-	if moveDir.Magnitude > 0.05 then
-		local lookY = camLook.Y
-		if math.abs(lookY) > CAMERA_DEADZONE then
-			vertical = lookY * VERTICAL_SPEED
+
+	if seat then
+		-- Vehicle
+		local yaw = math.atan2(look.X, look.Z)
+		alignOri.CFrame = CFrame.Angles(0, yaw, 0)
+		angularVel.AngularVelocity = Vector3.zero
+		horizontal = camera.CFrame.LookVector * seat.Throttle * HORIZONTAL_SPEED
+	else
+		-- Character
+		local moveDir = humanoid.MoveDirection
+		horizontal = Vector3.new(
+			moveDir.X * HORIZONTAL_SPEED,
+			0,
+			moveDir.Z * HORIZONTAL_SPEED
+		)
+	end
+
+	if horizontal.Magnitude > 0.1 then
+		if math.abs(look.Y) > CAMERA_DEADZONE then
+			vertical = look.Y * VERTICAL_SPEED
 		end
 	end
 
 	linearVel.VectorVelocity = horizontal + Vector3.new(0, vertical, 0)
-end)
-
---------------------------------------------------
--- UI (SMALL & MOBILE)
---------------------------------------------------
-local gui = Instance.new("ScreenGui")
-gui.Name = "AnythingFlyUI"
-gui.ResetOnSpawn = false
-gui.Parent = game:GetService("CoreGui")
-
-local toggleBtn = Instance.new("TextButton", gui)
-toggleBtn.Size = UDim2.fromScale(0.12, 0.06)
-toggleBtn.Position = UDim2.fromScale(0.02, 0.6)
-toggleBtn.Text = "FLY"
-toggleBtn.TextScaled = true
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.BackgroundColor3 = Color3.fromRGB(0,120,255)
-toggleBtn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", toggleBtn)
-
-toggleBtn.MouseButton1Click:Connect(function()
-	if flying then
-		stopFly()
-		toggleBtn.Text = "FLY"
-	else
-		startFly()
-		toggleBtn.Text = "STOP"
-	end
 end)
 
 --------------------------------------------------
