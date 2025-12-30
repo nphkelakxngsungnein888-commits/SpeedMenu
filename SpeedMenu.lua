@@ -1,92 +1,128 @@
--- SpeedMenu.lua
--- LocalScript สำหรับบินตามตัวละคร
+--// Expert Fly LocalScript
+--// By Professional Roblox Script Logic
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
 
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local rootPart = character:WaitForChild("HumanoidRootPart")
+local Player = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
--- UI เปิด/ปิดบิน
-local screenGui = Instance.new("ScreenGui")
-screenGui.Parent = player:WaitForChild("PlayerGui")
+local Character, Humanoid, RootPart
+local Flying = false
 
-local flyButton = Instance.new("TextButton")
-flyButton.Size = UDim2.new(0,100,0,50)
-flyButton.Position = UDim2.new(0.5,-50,0.5,-25)
-flyButton.Text = "Fly"
-flyButton.BackgroundColor3 = Color3.fromRGB(0,170,255)
-flyButton.TextColor3 = Color3.fromRGB(255,255,255)
-flyButton.Parent = screenGui
-flyButton.Active = true
-flyButton.Draggable = true
+-- ปรับค่าตรงนี้
+local SPEED = 70
+local CONTROL = {
+	Forward = 0,
+	Backward = 0,
+	Left = 0,
+	Right = 0,
+	Up = 0,
+	Down = 0
+}
 
-local flying = false
-local flySpeed = 50
-local velocity
+local BV, BG
+local Connection
 
-local function startFly()
-    if velocity then velocity:Destroy() end
-    velocity = Instance.new("BodyVelocity")
-    velocity.MaxForce = Vector3.new(1e5,1e5,1e5)
-    velocity.Velocity = Vector3.new(0,0,0)
-    velocity.Parent = rootPart
+-- ======================= FUNCTIONS =======================
 
-    local conn
-    conn = RunService.RenderStepped:Connect(function()
-        if not flying or humanoid.Health <= 0 then
-            velocity:Destroy()
-            conn:Disconnect()
-            flying = false
-            return
-        end
-
-        -- ตัวละครหันตามกล้อง
-        local lookAt = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
-        if lookAt.Magnitude > 0 then
-            rootPart.CFrame = CFrame.new(rootPart.Position, rootPart.Position + lookAt)
-        end
-
-        local moveDir = humanoid.MoveDirection
-        if moveDir.Magnitude > 0 then
-            local forward = rootPart.CFrame.LookVector
-            local right = rootPart.CFrame.RightVector
-            local flyVelocity = (forward * moveDir.Z + right * moveDir.X + Vector3.new(0, moveDir.Y, 0)) * flySpeed
-            velocity.Velocity = flyVelocity
-        else
-            velocity.Velocity = Vector3.new(0,0,0)
-        end
-    end)
+local function SetupCharacter()
+	Character = Player.Character or Player.CharacterAdded:Wait()
+	Humanoid = Character:WaitForChild("Humanoid")
+	RootPart = Character:WaitForChild("HumanoidRootPart")
 end
 
-flyButton.MouseButton1Click:Connect(function()
-    flying = not flying
-    if flying then
-        flyButton.Text = "Stop"
-        startFly()
-    else
-        flyButton.Text = "Fly"
-        if velocity then velocity:Destroy() end
-    end
+local function StartFly()
+	if Flying then return end
+	Flying = true
+
+	BV = Instance.new("BodyVelocity")
+	BV.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+	BV.Velocity = Vector3.zero
+	BV.Parent = RootPart
+
+	BG = Instance.new("BodyGyro")
+	BG.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+	BG.P = 9000
+	BG.CFrame = RootPart.CFrame
+	BG.Parent = RootPart
+
+	Humanoid.PlatformStand = true
+
+	Connection = RunService.RenderStepped:Connect(function()
+		if not Flying then return end
+
+		local CamCF = Camera.CFrame
+		local MoveDir =
+			(CamCF.LookVector * (CONTROL.Forward - CONTROL.Backward)) +
+			(CamCF.RightVector * (CONTROL.Right - CONTROL.Left)) +
+			(Vector3.new(0,1,0) * (CONTROL.Up - CONTROL.Down))
+
+		if MoveDir.Magnitude > 0 then
+			BV.Velocity = MoveDir.Unit * SPEED
+		else
+			BV.Velocity = Vector3.zero
+		end
+
+		BG.CFrame = CamCF
+	end)
+end
+
+local function StopFly()
+	Flying = false
+
+	if Connection then
+		Connection:Disconnect()
+		Connection = nil
+	end
+
+	if BV then BV:Destroy() BV = nil end
+	if BG then BG:Destroy() BG = nil end
+
+	if Humanoid then
+		Humanoid.PlatformStand = false
+	end
+end
+
+-- ======================= INPUT =======================
+
+UserInputService.InputBegan:Connect(function(Input, GP)
+	if GP then return end
+
+	if Input.KeyCode == Enum.KeyCode.F then
+		if Flying then
+			StopFly()
+		else
+			StartFly()
+		end
+	end
+
+	if Input.KeyCode == Enum.KeyCode.W then CONTROL.Forward = 1 end
+	if Input.KeyCode == Enum.KeyCode.S then CONTROL.Backward = 1 end
+	if Input.KeyCode == Enum.KeyCode.A then CONTROL.Left = 1 end
+	if Input.KeyCode == Enum.KeyCode.D then CONTROL.Right = 1 end
+	if Input.KeyCode == Enum.KeyCode.Space then CONTROL.Up = 1 end
+	if Input.KeyCode == Enum.KeyCode.LeftControl then CONTROL.Down = 1 end
 end)
 
-humanoid.Died:Connect(function()
-    flying = false
-    flyButton.Text = "Fly"
-    if velocity then velocity:Destroy() end
+UserInputService.InputEnded:Connect(function(Input)
+	if Input.KeyCode == Enum.KeyCode.W then CONTROL.Forward = 0 end
+	if Input.KeyCode == Enum.KeyCode.S then CONTROL.Backward = 0 end
+	if Input.KeyCode == Enum.KeyCode.A then CONTROL.Left = 0 end
+	if Input.KeyCode == Enum.KeyCode.D then CONTROL.Right = 0 end
+	if Input.KeyCode == Enum.KeyCode.Space then CONTROL.Up = 0 end
+	if Input.KeyCode == Enum.KeyCode.LeftControl then CONTROL.Down = 0 end
 end)
 
-player.CharacterAdded:Connect(function(char)
-    character = char
-    humanoid = character:WaitForChild("Humanoid")
-    rootPart = character:WaitForChild("HumanoidRootPart")
-    humanoid.Died:Connect(function()
-        flying = false
-        flyButton.Text = "Fly"
-        if velocity then velocity:Destroy() end
-    end)
+-- ======================= RESPAWN =======================
+
+Player.CharacterAdded:Connect(function()
+	task.wait(0.5)
+	StopFly()
+	SetupCharacter()
 end)
 
+SetupCharacter()
+
+print("✅ Expert Fly Loaded | Press F to Fly")
