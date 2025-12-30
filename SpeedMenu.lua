@@ -1,36 +1,26 @@
---====================================================
--- ANYTHING FLY - SMART SYSTEM FULL VERSION (MASTER)
--- Mobile / PC | LocalScript
---====================================================
+--// ANYTHING FLY - EXPERT UI SPEED VERSION
+--// Character + Vehicle Fly | Mobile Friendly | LocalScript
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-----------------------------------------------------
--- STATE
-----------------------------------------------------
+--// SPEED SETTINGS (Dynamic)
+local H_SPEED = 60
+local V_SPEED = 45
+local DEADZONE = 0.12
+
+--// STATE
 local flying = false
-local humanoid
-local targetModel
-local controlPart
-local centerPart
-local alignOri
-local linearVel
+local humanoid, controlPart
+local alignOri, linearVel
 
-----------------------------------------------------
--- SMART SETTINGS
-----------------------------------------------------
-local BASE_SPEED = 60
-local speedMultiplier = 1
-
-----------------------------------------------------
--- 1) SMART TARGET DETECTION
-----------------------------------------------------
-local function getTarget()
+--------------------------------------------------
+-- GET CONTROL PART
+--------------------------------------------------
+local function getControlPart()
 	local char = player.Character
 	if not char then return end
 
@@ -38,86 +28,37 @@ local function getTarget()
 	if not humanoid then return end
 
 	if humanoid.SeatPart then
-		return humanoid.SeatPart:FindFirstAncestorOfClass("Model")
-	end
-
-	return char
-end
-
-----------------------------------------------------
--- 2) DYNAMIC MASS CALCULATION
-----------------------------------------------------
-local function calculateMass(model)
-	local mass = 0
-	for _,v in ipairs(model:GetDescendants()) do
-		if v:IsA("BasePart") then
-			mass += v:GetMass()
-		end
-	end
-	return math.max(mass, 1)
-end
-
-----------------------------------------------------
--- 4) SMART CENTER OF MASS
-----------------------------------------------------
-local function createCenter(model)
-	local cf = model:GetBoundingBox()
-
-	centerPart = Instance.new("Part")
-	centerPart.Size = Vector3.new(1,1,1)
-	centerPart.Transparency = 1
-	centerPart.CanCollide = false
-	centerPart.Massless = true
-	centerPart.CFrame = cf
-	centerPart.Parent = model
-
-	for _,v in ipairs(model:GetDescendants()) do
-		if v:IsA("BasePart") and v ~= centerPart then
-			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = centerPart
-			weld.Part1 = v
-			weld.Parent = centerPart
+		local model = humanoid.SeatPart:FindFirstAncestorOfClass("Model")
+		if model and model.PrimaryPart then
+			return model.PrimaryPart
 		end
 	end
 
-	model.PrimaryPart = centerPart
-	return centerPart
+	return char:FindFirstChild("HumanoidRootPart")
 end
 
-----------------------------------------------------
--- START / STOP FLY
-----------------------------------------------------
+--------------------------------------------------
+-- START / STOP
+--------------------------------------------------
 local function startFly()
 	if flying then return end
 
-	targetModel = getTarget()
-	if not targetModel then return end
-
-	if targetModel:IsA("Model") then
-		controlPart = createCenter(targetModel)
-	else
-		controlPart = targetModel:FindFirstChild("HumanoidRootPart")
-	end
+	controlPart = getControlPart()
 	if not controlPart then return end
 
 	flying = true
 	humanoid.PlatformStand = true
 
-	-- 3) ADAPTIVE RESPONSIVENESS
-	local mass = calculateMass(targetModel)
-	local responsiveness = math.clamp(20 - math.log(mass), 6, 20)
-
 	alignOri = Instance.new("AlignOrientation")
-	alignOri.Attachment0 = Instance.new("Attachment", controlPart)
 	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	alignOri.Responsiveness = responsiveness
+	alignOri.Attachment0 = Instance.new("Attachment", controlPart)
 	alignOri.MaxTorque = math.huge
+	alignOri.Responsiveness = 18
 	alignOri.Parent = controlPart
 
 	linearVel = Instance.new("LinearVelocity")
 	linearVel.Attachment0 = alignOri.Attachment0
-	linearVel.RelativeTo = Enum.ActuatorRelativeTo.Attachment0
-	linearVel.MaxForce = mass * 130
+	linearVel.MaxForce = math.huge
 	linearVel.Parent = controlPart
 end
 
@@ -126,99 +67,81 @@ local function stopFly()
 	if humanoid then humanoid.PlatformStand = false end
 	if alignOri then alignOri:Destroy() end
 	if linearVel then linearVel:Destroy() end
-	if centerPart then centerPart:Destroy() centerPart = nil end
 end
 
-----------------------------------------------------
--- 6) SMART DEADZONE
-----------------------------------------------------
-local function getDeadzone(speed)
-	return math.clamp(0.16 - (speed / 500), 0.05, 0.16)
-end
-
-----------------------------------------------------
--- MAIN LOOP (SMART CONTROL)
-----------------------------------------------------
-RunService.RenderStepped:Connect(function()
-	if not flying or not controlPart or not humanoid then return end
-
-	alignOri.CFrame = camera.CFrame
-
-	local moveDir = humanoid.MoveDirection
-	local moving = moveDir.Magnitude > 0.05
-	local speed = BASE_SPEED * speedMultiplier
-
-	-- Horizontal
-	local horizontal = Vector3.new(
-		moveDir.X * speed,
-		0,
-		moveDir.Z * speed
-	)
-
-	-- 5) VELOCITY DAMPENING
-	local damping = controlPart.AssemblyLinearVelocity * 0.15
-
-	-- Vertical
-	local vertical = 0
-	if moving then
-		local dz = getDeadzone(speed)
-		local lookY = camera.CFrame.LookVector.Y
-		if math.abs(lookY) > dz then
-			vertical = lookY * speed * 0.75
-		end
-	end
-
-	-- 7) AUTO STABILIZER
-	if not moving then
-		linearVel.VectorVelocity = damping
-	else
-		linearVel.VectorVelocity =
-			horizontal + Vector3.new(0, vertical, 0) - damping
-	end
-end)
-
-----------------------------------------------------
--- UI (SMALL / MOBILE)
-----------------------------------------------------
+--------------------------------------------------
+-- UI
+--------------------------------------------------
 local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "AnythingFlyExpertUI"
 gui.ResetOnSpawn = false
 
+-- Toggle Button
 local toggle = Instance.new("TextButton", gui)
-toggle.Size = UDim2.fromScale(0.12,0.06)
-toggle.Position = UDim2.fromScale(0.02,0.6)
+toggle.Size = UDim2.fromScale(0.12, 0.055)
+toggle.Position = UDim2.fromScale(0.02, 0.6)
 toggle.Text = "FLY"
 toggle.TextScaled = true
+toggle.Font = Enum.Font.GothamBold
 toggle.BackgroundColor3 = Color3.fromRGB(0,120,255)
 toggle.TextColor3 = Color3.new(1,1,1)
 Instance.new("UICorner", toggle)
 
+-- Panel
 local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.fromScale(0.32,0.22)
-panel.Position = UDim2.fromScale(0.34,0.38)
+panel.Size = UDim2.fromScale(0.38, 0.24)
+panel.Position = UDim2.fromScale(0.31, 0.36)
 panel.BackgroundColor3 = Color3.fromRGB(20,20,20)
 panel.Visible = false
 panel.Active = true
 panel.Draggable = true
 Instance.new("UICorner", panel)
 
+-- Title
+local title = Instance.new("TextLabel", panel)
+title.Size = UDim2.fromScale(1, 0.22)
+title.BackgroundTransparency = 1
+title.Text = "ANYTHING FLY"
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.TextColor3 = Color3.new(1,1,1)
+
+-- Fly Button
 local flyBtn = Instance.new("TextButton", panel)
-flyBtn.Size = UDim2.fromScale(0.9,0.35)
-flyBtn.Position = UDim2.fromScale(0.05,0.15)
+flyBtn.Size = UDim2.fromScale(0.8, 0.28)
+flyBtn.Position = UDim2.fromScale(0.1, 0.28)
 flyBtn.Text = "FLY : OFF"
 flyBtn.TextScaled = true
+flyBtn.Font = Enum.Font.GothamBold
 flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
 flyBtn.TextColor3 = Color3.new(1,1,1)
 Instance.new("UICorner", flyBtn)
 
-local speedBox = Instance.new("TextBox", panel)
-speedBox.Size = UDim2.fromScale(0.7,0.25)
-speedBox.Position = UDim2.fromScale(0.15,0.6)
-speedBox.Text = tostring(BASE_SPEED)
-speedBox.TextScaled = true
-speedBox.BackgroundColor3 = Color3.fromRGB(35,35,35)
-speedBox.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", speedBox)
+-- Speed Label
+local speedText = Instance.new("TextLabel", panel)
+speedText.Size = UDim2.fromScale(1, 0.15)
+speedText.Position = UDim2.fromScale(0, 0.6)
+speedText.BackgroundTransparency = 1
+speedText.Text = "Speed : 60"
+speedText.TextScaled = true
+speedText.Font = Enum.Font.Gotham
+speedText.TextColor3 = Color3.new(1,1,1)
 
+-- Slider Bar
+local bar = Instance.new("Frame", panel)
+bar.Size = UDim2.fromScale(0.8, 0.08)
+bar.Position = UDim2.fromScale(0.1, 0.78)
+bar.BackgroundColor3 = Color3.fromRGB(60,60,60)
+Instance.new("UICorner", bar)
+
+local fill = Instance.new("Frame", bar)
+fill.Size = UDim2.fromScale(0.5, 1)
+fill.BackgroundColor3 = Color3.fromRGB(0,170,255)
+Instance.new("UICorner", fill)
+
+--------------------------------------------------
+-- UI LOGIC
+--------------------------------------------------
 toggle.MouseButton1Click:Connect(function()
 	panel.Visible = not panel.Visible
 end)
@@ -230,22 +153,54 @@ flyBtn.MouseButton1Click:Connect(function()
 		flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
 	else
 		startFly()
-		if flying then
-			flyBtn.Text = "FLY : ON"
-			flyBtn.BackgroundColor3 = Color3.fromRGB(60,180,90)
+		flyBtn.Text = "FLY : ON"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(60,180,90)
+	end
+end)
+
+-- Slider Control
+local dragging = false
+bar.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.Touch then dragging = true end
+end)
+bar.InputEnded:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+end)
+
+RunService.RenderStepped:Connect(function()
+	if dragging then
+		local x = math.clamp(
+			(game:GetService("UserInputService"):GetMouseLocation().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X,
+			0, 1
+		)
+		fill.Size = UDim2.fromScale(x,1)
+		H_SPEED = math.floor(30 + (x * 120))
+		V_SPEED = H_SPEED * 0.75
+		speedText.Text = "Speed : "..H_SPEED
+	end
+end)
+
+--------------------------------------------------
+-- FLY LOOP
+--------------------------------------------------
+RunService.RenderStepped:Connect(function()
+	if not flying or not humanoid or not controlPart then return end
+
+	alignOri.CFrame = camera.CFrame
+
+	local dir = humanoid.MoveDirection
+	local moving = dir.Magnitude > 0.05
+
+	local vel = Vector3.new(dir.X * H_SPEED, 0, dir.Z * H_SPEED)
+
+	if moving then
+		local y = camera.CFrame.LookVector.Y
+		if math.abs(y) > DEADZONE then
+			vel += Vector3.new(0, y * V_SPEED, 0)
 		end
 	end
+
+	linearVel.VectorVelocity = vel
 end)
 
-speedBox.FocusLost:Connect(function()
-	local v = tonumber(speedBox.Text)
-	if v then
-		BASE_SPEED = math.clamp(v,20,300)
-	end
-	speedBox.Text = tostring(BASE_SPEED)
-end)
-
-----------------------------------------------------
--- RESET
-----------------------------------------------------
 player.CharacterAdded:Connect(stopFly)
