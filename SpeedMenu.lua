@@ -248,9 +248,4 @@ end)
 ----------------------------------------------------
 -- RESET
 ----------------------------------------------------
-player.CharacterAdded:Connect(stopFly)----------------------------------------------------------------
---// RESET
-----------------------------------------------------------------
-player.CharacterAdded:Connect(function()
-	stopFly()
-end)
+player.CharacterAdded:Connect(stopFly)
