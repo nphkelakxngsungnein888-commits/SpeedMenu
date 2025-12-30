@@ -1,5 +1,5 @@
---// ANYTHING FLY - EXPERT FULL VERSION
---// LocalScript | Mobile / PC | Pro Physics
+--// ANYTHING FLY - EXPERT FULL VERSION (ALL-IN-ONE)
+--// LocalScript | Mobile / PC | Stable UI
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,19 +7,25 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
---// SETTINGS (ปรับได้)
+--======================
+-- SETTINGS
+--======================
 local HORIZONTAL_SPEED = 70
 local VERTICAL_SPEED = 55
 local CAMERA_DEADZONE = 0.12
 
+--======================
+-- VARIABLES
+--======================
 local flying = false
 local vehicleModel
 local rootPart
 local humanoid
-
 local alignOri, linearVel
 
---// หา Model ที่ผู้เล่นกำลังใช้งาน (Seat / Weld)
+--======================
+-- FIND CONTROLLED MODEL
+--======================
 local function getControlledModel()
 	local char = player.Character
 	if not char then return end
@@ -35,20 +41,21 @@ local function getControlledModel()
 	end
 end
 
---// Start Fly
+--======================
+-- FLY FUNCTIONS
+--======================
 local function startFly()
 	if flying then return end
 
 	vehicleModel = getControlledModel()
 	if not vehicleModel then
-		warn("No controllable model found")
+		warn("AnythingFly: No model with PrimaryPart found")
 		return
 	end
 
 	rootPart = vehicleModel.PrimaryPart
 	flying = true
 
-	-- Orientation
 	alignOri = Instance.new("AlignOrientation")
 	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	alignOri.Attachment0 = Instance.new("Attachment", rootPart)
@@ -56,7 +63,6 @@ local function startFly()
 	alignOri.Responsiveness = 20
 	alignOri.Parent = rootPart
 
-	-- Velocity
 	linearVel = Instance.new("LinearVelocity")
 	linearVel.Attachment0 = alignOri.Attachment0
 	linearVel.MaxForce = math.huge
@@ -64,60 +70,106 @@ local function startFly()
 	linearVel.Parent = rootPart
 end
 
---// Stop Fly
 local function stopFly()
 	flying = false
 	if alignOri then alignOri:Destroy() end
 	if linearVel then linearVel:Destroy() end
 end
 
---// UI (เรียบ แต่ใช้งานจริง)
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.ResetOnSpawn = false
+--======================
+-- UI (FIXED & MOBILE SAFE)
+--======================
+local gui = Instance.new("ScreenGui")
 gui.Name = "AnythingFlyUI"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 999
+gui.Parent = game:GetService("CoreGui")
 
-local toggle = Instance.new("TextButton", gui)
-toggle.Size = UDim2.fromScale(0.22,0.08)
-toggle.Position = UDim2.fromScale(0.39,0.85)
-toggle.Text = "ANYTHING FLY : OFF"
-toggle.TextScaled = true
-toggle.Font = Enum.Font.GothamBold
-toggle.BackgroundColor3 = Color3.fromRGB(180,60,60)
-toggle.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", toggle)
+-- Floating toggle button
+local uiToggle = Instance.new("TextButton")
+uiToggle.Parent = gui
+uiToggle.Size = UDim2.fromScale(0.14, 0.07)
+uiToggle.Position = UDim2.fromScale(0.02, 0.6)
+uiToggle.Text = "FLY UI"
+uiToggle.TextScaled = true
+uiToggle.Font = Enum.Font.GothamBold
+uiToggle.BackgroundColor3 = Color3.fromRGB(0,120,255)
+uiToggle.TextColor3 = Color3.new(1,1,1)
+uiToggle.ZIndex = 10
+Instance.new("UICorner", uiToggle)
 
-toggle.MouseButton1Click:Connect(function()
+-- Main panel
+local panel = Instance.new("Frame")
+panel.Parent = gui
+panel.Size = UDim2.fromScale(0.45, 0.28)
+panel.Position = UDim2.fromScale(0.28, 0.35)
+panel.BackgroundColor3 = Color3.fromRGB(18,18,18)
+panel.Visible = true
+panel.Active = true
+panel.Draggable = true
+panel.ZIndex = 9
+Instance.new("UICorner", panel)
+
+local title = Instance.new("TextLabel")
+title.Parent = panel
+title.Size = UDim2.fromScale(1, 0.3)
+title.BackgroundTransparency = 1
+title.Text = "✈️ ANYTHING FLY (EXPERT)"
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.TextColor3 = Color3.new(1,1,1)
+title.ZIndex = 10
+
+local flyBtn = Instance.new("TextButton")
+flyBtn.Parent = panel
+flyBtn.Size = UDim2.fromScale(0.8, 0.35)
+flyBtn.Position = UDim2.fromScale(0.1, 0.45)
+flyBtn.Text = "ANYTHING FLY : OFF"
+flyBtn.TextScaled = true
+flyBtn.Font = Enum.Font.GothamBold
+flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
+flyBtn.TextColor3 = Color3.new(1,1,1)
+flyBtn.ZIndex = 10
+Instance.new("UICorner", flyBtn)
+
+-- UI Toggle Logic
+uiToggle.MouseButton1Click:Connect(function()
+	panel.Visible = not panel.Visible
+end)
+
+flyBtn.MouseButton1Click:Connect(function()
 	if flying then
 		stopFly()
-		toggle.Text = "ANYTHING FLY : OFF"
-		toggle.BackgroundColor3 = Color3.fromRGB(180,60,60)
+		flyBtn.Text = "ANYTHING FLY : OFF"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
 	else
 		startFly()
 		if flying then
-			toggle.Text = "ANYTHING FLY : ON"
-			toggle.BackgroundColor3 = Color3.fromRGB(60,180,90)
+			flyBtn.Text = "ANYTHING FLY : ON"
+			flyBtn.BackgroundColor3 = Color3.fromRGB(60,180,90)
 		end
 	end
 end)
 
---// Main Fly Loop (EXPERT LOGIC)
+--======================
+-- MAIN FLY LOOP (EXPERT)
+--======================
 RunService.RenderStepped:Connect(function()
 	if not flying or not rootPart or not humanoid then return end
 
-	-- หมุนตามกล้อง
 	alignOri.CFrame = camera.CFrame
 
 	local moveDir = humanoid.MoveDirection
 	local isMoving = moveDir.Magnitude > 0.05
 
-	-- แนวราบ
+	-- Horizontal movement
 	local horizontal = Vector3.new(
 		moveDir.X * HORIZONTAL_SPEED,
 		0,
 		moveDir.Z * HORIZONTAL_SPEED
 	)
 
-	-- แนวดิ่ง (ต้องขยับจอย)
+	-- Vertical movement (joystick required)
 	local vertical = 0
 	if isMoving then
 		local lookY = camera.CFrame.LookVector.Y
@@ -129,7 +181,9 @@ RunService.RenderStepped:Connect(function()
 	linearVel.VectorVelocity = horizontal + Vector3.new(0, vertical, 0)
 end)
 
---// Safety Reset
+--======================
+-- SAFETY RESET
+--======================
 player.CharacterAdded:Connect(function()
 	stopFly()
 end)
