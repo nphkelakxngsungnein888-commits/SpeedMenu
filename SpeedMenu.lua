@@ -1,5 +1,6 @@
---// ANYTHING FLY - EXPERT FULL VERSION (ALL-IN-ONE)
---// LocalScript | Mobile / PC | Stable UI
+--// ANYTHING FLY - EXPERT FULL AUTO VERSION
+--// Fly Character OR Any Vehicle Automatically
+--// LocalScript | Mobile / PC
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,87 +8,97 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
---======================
--- SETTINGS
---======================
+--// SETTINGS
 local HORIZONTAL_SPEED = 70
 local VERTICAL_SPEED = 55
 local CAMERA_DEADZONE = 0.12
 
---======================
--- VARIABLES
---======================
+--// STATES
 local flying = false
-local vehicleModel
-local rootPart
+local controlPart
 local humanoid
 local alignOri, linearVel
 
---======================
--- FIND CONTROLLED MODEL
---======================
-local function getControlledModel()
+----------------------------------------------------------------
+--// GET PART TO CONTROL (VEHICLE OR CHARACTER)
+----------------------------------------------------------------
+local function getControlPart()
 	local char = player.Character
 	if not char then return end
 
 	humanoid = char:FindFirstChildOfClass("Humanoid")
-	if not humanoid or not humanoid.SeatPart then return end
+	if not humanoid then return end
 
-	local seat = humanoid.SeatPart
-	local model = seat:FindFirstAncestorOfClass("Model")
-
-	if model and model.PrimaryPart then
-		return model
+	-- Priority 1: Vehicle / Seat
+	if humanoid.SeatPart then
+		local seat = humanoid.SeatPart
+		local model = seat:FindFirstAncestorOfClass("Model")
+		if model and model.PrimaryPart then
+			return model.PrimaryPart
+		end
 	end
+
+	-- Priority 2: Character
+	return char:FindFirstChild("HumanoidRootPart")
 end
 
---======================
--- FLY FUNCTIONS
---======================
+----------------------------------------------------------------
+--// START / STOP FLY
+----------------------------------------------------------------
 local function startFly()
 	if flying then return end
 
-	vehicleModel = getControlledModel()
-	if not vehicleModel then
-		warn("AnythingFly: No model with PrimaryPart found")
+	controlPart = getControlPart()
+	if not controlPart then
+		warn("AnythingFly: No control part found")
 		return
 	end
 
-	rootPart = vehicleModel.PrimaryPart
 	flying = true
 
+	-- Character safety
+	if humanoid then
+		humanoid.PlatformStand = true
+	end
+
+	-- Orientation
 	alignOri = Instance.new("AlignOrientation")
 	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	alignOri.Attachment0 = Instance.new("Attachment", rootPart)
+	alignOri.Attachment0 = Instance.new("Attachment", controlPart)
 	alignOri.MaxTorque = math.huge
 	alignOri.Responsiveness = 20
-	alignOri.Parent = rootPart
+	alignOri.Parent = controlPart
 
+	-- Velocity
 	linearVel = Instance.new("LinearVelocity")
 	linearVel.Attachment0 = alignOri.Attachment0
 	linearVel.MaxForce = math.huge
 	linearVel.VectorVelocity = Vector3.zero
-	linearVel.Parent = rootPart
+	linearVel.Parent = controlPart
 end
 
 local function stopFly()
 	flying = false
-	if alignOri then alignOri:Destroy() end
-	if linearVel then linearVel:Destroy() end
+
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+
+	if alignOri then alignOri:Destroy() alignOri = nil end
+	if linearVel then linearVel:Destroy() linearVel = nil end
 end
 
---======================
--- UI (FIXED & MOBILE SAFE)
---======================
+----------------------------------------------------------------
+--// UI
+----------------------------------------------------------------
 local gui = Instance.new("ScreenGui")
 gui.Name = "AnythingFlyUI"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 999
 gui.Parent = game:GetService("CoreGui")
 
--- Floating toggle button
-local uiToggle = Instance.new("TextButton")
-uiToggle.Parent = gui
+-- Floating Button
+local uiToggle = Instance.new("TextButton", gui)
 uiToggle.Size = UDim2.fromScale(0.14, 0.07)
 uiToggle.Position = UDim2.fromScale(0.02, 0.6)
 uiToggle.Text = "FLY UI"
@@ -95,44 +106,45 @@ uiToggle.TextScaled = true
 uiToggle.Font = Enum.Font.GothamBold
 uiToggle.BackgroundColor3 = Color3.fromRGB(0,120,255)
 uiToggle.TextColor3 = Color3.new(1,1,1)
-uiToggle.ZIndex = 10
+uiToggle.ZIndex = 20
 Instance.new("UICorner", uiToggle)
 
--- Main panel
-local panel = Instance.new("Frame")
-panel.Parent = gui
+-- Panel
+local panel = Instance.new("Frame", gui)
 panel.Size = UDim2.fromScale(0.45, 0.28)
 panel.Position = UDim2.fromScale(0.28, 0.35)
 panel.BackgroundColor3 = Color3.fromRGB(18,18,18)
 panel.Visible = true
 panel.Active = true
 panel.Draggable = true
-panel.ZIndex = 9
+panel.ZIndex = 15
 Instance.new("UICorner", panel)
 
-local title = Instance.new("TextLabel")
-title.Parent = panel
-title.Size = UDim2.fromScale(1, 0.3)
+-- Title
+local title = Instance.new("TextLabel", panel)
+title.Size = UDim2.fromScale(1, 0.25)
 title.BackgroundTransparency = 1
-title.Text = "✈️ ANYTHING FLY (EXPERT)"
-title.TextScaled = true
+title.Text = "✈️ ANYTHING FLY"
 title.Font = Enum.Font.GothamBold
+title.TextScaled = true
 title.TextColor3 = Color3.new(1,1,1)
-title.ZIndex = 10
+title.ZIndex = 16
 
-local flyBtn = Instance.new("TextButton")
-flyBtn.Parent = panel
+-- Fly Button
+local flyBtn = Instance.new("TextButton", panel)
 flyBtn.Size = UDim2.fromScale(0.8, 0.35)
 flyBtn.Position = UDim2.fromScale(0.1, 0.45)
-flyBtn.Text = "ANYTHING FLY : OFF"
+flyBtn.Text = "FLY : OFF"
 flyBtn.TextScaled = true
 flyBtn.Font = Enum.Font.GothamBold
 flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
 flyBtn.TextColor3 = Color3.new(1,1,1)
-flyBtn.ZIndex = 10
+flyBtn.ZIndex = 16
 Instance.new("UICorner", flyBtn)
 
--- UI Toggle Logic
+----------------------------------------------------------------
+--// UI LOGIC
+----------------------------------------------------------------
 uiToggle.MouseButton1Click:Connect(function()
 	panel.Visible = not panel.Visible
 end)
@@ -140,36 +152,37 @@ end)
 flyBtn.MouseButton1Click:Connect(function()
 	if flying then
 		stopFly()
-		flyBtn.Text = "ANYTHING FLY : OFF"
+		flyBtn.Text = "FLY : OFF"
 		flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
 	else
 		startFly()
 		if flying then
-			flyBtn.Text = "ANYTHING FLY : ON"
+			flyBtn.Text = "FLY : ON"
 			flyBtn.BackgroundColor3 = Color3.fromRGB(60,180,90)
 		end
 	end
 end)
 
---======================
--- MAIN FLY LOOP (EXPERT)
---======================
+----------------------------------------------------------------
+--// MAIN FLY LOOP (PRO CONTROL)
+----------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
-	if not flying or not rootPart or not humanoid then return end
+	if not flying or not controlPart or not humanoid then return end
 
+	-- Rotate toward camera
 	alignOri.CFrame = camera.CFrame
 
 	local moveDir = humanoid.MoveDirection
 	local isMoving = moveDir.Magnitude > 0.05
 
-	-- Horizontal movement
+	-- Horizontal
 	local horizontal = Vector3.new(
 		moveDir.X * HORIZONTAL_SPEED,
 		0,
 		moveDir.Z * HORIZONTAL_SPEED
 	)
 
-	-- Vertical movement (joystick required)
+	-- Vertical (only when moving)
 	local vertical = 0
 	if isMoving then
 		local lookY = camera.CFrame.LookVector.Y
@@ -181,9 +194,9 @@ RunService.RenderStepped:Connect(function()
 	linearVel.VectorVelocity = horizontal + Vector3.new(0, vertical, 0)
 end)
 
---======================
--- SAFETY RESET
---======================
+----------------------------------------------------------------
+--// RESET SAFETY
+----------------------------------------------------------------
 player.CharacterAdded:Connect(function()
 	stopFly()
 end)
