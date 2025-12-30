@@ -1,6 +1,5 @@
---// ANYTHING FLY - EXPERT PRO UI VERSION
---// Fly Character OR Any Vehicle
---// LocalScript | Mobile / PC
+--// ANYTHING FLY - EXPERT FULL SCRIPT
+--// Character + Vehicle | Stable | Mobile Friendly
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,20 +7,24 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
---// SETTINGS (ค่าเริ่มต้น)
+--------------------------------------------------
+-- SETTINGS
+--------------------------------------------------
 local HORIZONTAL_SPEED = 60
 local VERTICAL_SPEED = 45
 local CAMERA_DEADZONE = 0.12
 
---// STATES
+--------------------------------------------------
+-- STATE
+--------------------------------------------------
 local flying = false
 local controlPart
 local humanoid
 local alignOri, linearVel
 
-----------------------------------------------------------------
---// GET CONTROL PART (AUTO)
-----------------------------------------------------------------
+--------------------------------------------------
+-- GET CONTROL PART (AUTO)
+--------------------------------------------------
 local function getControlPart()
 	local char = player.Character
 	if not char then return end
@@ -29,7 +32,7 @@ local function getControlPart()
 	humanoid = char:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return end
 
-	-- ถ้านั่งยาน
+	-- ถ้านั่งรถ / ยาน
 	if humanoid.SeatPart then
 		local model = humanoid.SeatPart:FindFirstAncestorOfClass("Model")
 		if model and model.PrimaryPart then
@@ -37,13 +40,13 @@ local function getControlPart()
 		end
 	end
 
-	-- ตัวละคร
+	-- บินตัวละคร
 	return char:FindFirstChild("HumanoidRootPart")
 end
 
-----------------------------------------------------------------
---// START / STOP FLY
-----------------------------------------------------------------
+--------------------------------------------------
+-- START / STOP FLY
+--------------------------------------------------
 local function startFly()
 	if flying then return end
 
@@ -53,13 +56,16 @@ local function startFly()
 	flying = true
 	humanoid.PlatformStand = true
 
+	-- Align Orientation (Anti Roll / Anti Spin)
 	alignOri = Instance.new("AlignOrientation")
-	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	alignOri.Attachment0 = Instance.new("Attachment", controlPart)
+	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	alignOri.RigidityEnabled = true
 	alignOri.MaxTorque = math.huge
-	alignOri.Responsiveness = 20
+	alignOri.Responsiveness = 15
 	alignOri.Parent = controlPart
 
+	-- Linear Velocity
 	linearVel = Instance.new("LinearVelocity")
 	linearVel.Attachment0 = alignOri.Attachment0
 	linearVel.MaxForce = math.huge
@@ -69,30 +75,30 @@ end
 local function stopFly()
 	flying = false
 	if humanoid then humanoid.PlatformStand = false end
-	if alignOri then alignOri:Destroy() end
-	if linearVel then linearVel:Destroy() end
+	if alignOri then alignOri:Destroy() alignOri = nil end
+	if linearVel then linearVel:Destroy() linearVel = nil end
 end
 
-----------------------------------------------------------------
---// UI (SMALL & CLEAN)
-----------------------------------------------------------------
+--------------------------------------------------
+-- UI (SMALL & CLEAN)
+--------------------------------------------------
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "AnythingFlyUI"
 gui.DisplayOrder = 999
 gui.ResetOnSpawn = false
 
--- ปุ่มลอย
-local uiToggle = Instance.new("TextButton", gui)
-uiToggle.Size = UDim2.fromScale(0.12, 0.06)
-uiToggle.Position = UDim2.fromScale(0.02, 0.6)
-uiToggle.Text = "FLY"
-uiToggle.TextScaled = true
-uiToggle.Font = Enum.Font.GothamBold
-uiToggle.BackgroundColor3 = Color3.fromRGB(0,120,255)
-uiToggle.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", uiToggle)
+-- Toggle Button
+local toggleBtn = Instance.new("TextButton", gui)
+toggleBtn.Size = UDim2.fromScale(0.12, 0.06)
+toggleBtn.Position = UDim2.fromScale(0.02, 0.6)
+toggleBtn.Text = "FLY"
+toggleBtn.TextScaled = true
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.BackgroundColor3 = Color3.fromRGB(0,120,255)
+toggleBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", toggleBtn)
 
--- Panel เล็ก
+-- Panel
 local panel = Instance.new("Frame", gui)
 panel.Size = UDim2.fromScale(0.36, 0.26)
 panel.Position = UDim2.fromScale(0.32, 0.37)
@@ -134,10 +140,10 @@ speedBox.BackgroundColor3 = Color3.fromRGB(35,35,35)
 speedBox.TextColor3 = Color3.new(1,1,1)
 Instance.new("UICorner", speedBox)
 
-----------------------------------------------------------------
---// UI LOGIC
-----------------------------------------------------------------
-uiToggle.MouseButton1Click:Connect(function()
+--------------------------------------------------
+-- UI LOGIC
+--------------------------------------------------
+toggleBtn.MouseButton1Click:Connect(function()
 	panel.Visible = not panel.Visible
 end)
 
@@ -164,14 +170,21 @@ speedBox.FocusLost:Connect(function()
 	speedBox.Text = tostring(HORIZONTAL_SPEED)
 end)
 
-----------------------------------------------------------------
---// MAIN FLY LOOP (EXPERT)
-----------------------------------------------------------------
+--------------------------------------------------
+-- MAIN LOOP (ANTI ROTATE CORE)
+--------------------------------------------------
 RunService.RenderStepped:Connect(function()
 	if not flying or not controlPart or not humanoid then return end
 
-	alignOri.CFrame = camera.CFrame
+	-- ล็อกการหมุน (Yaw เท่านั้น)
+	local look = camera.CFrame.LookVector
+	local yaw = math.atan2(look.X, look.Z)
+	alignOri.CFrame = CFrame.new(controlPart.Position) * CFrame.Angles(0, yaw, 0)
 
+	-- ตัดแรงหมุน (กันรถหมุนเอง)
+	controlPart.AssemblyAngularVelocity = Vector3.zero
+
+	-- Movement
 	local moveDir = humanoid.MoveDirection
 	local moving = moveDir.Magnitude > 0.05
 
@@ -183,18 +196,15 @@ RunService.RenderStepped:Connect(function()
 
 	local vertical = 0
 	if moving then
-		local lookY = camera.CFrame.LookVector.Y
-		if math.abs(lookY) > CAMERA_DEADZONE then
-			vertical = lookY * VERTICAL_SPEED
+		if math.abs(look.Y) > CAMERA_DEADZONE then
+			vertical = look.Y * VERTICAL_SPEED
 		end
 	end
 
 	linearVel.VectorVelocity = horizontal + Vector3.new(0, vertical, 0)
 end)
 
-----------------------------------------------------------------
---// RESET
-----------------------------------------------------------------
-player.CharacterAdded:Connect(function()
-	stopFly()
-end)
+--------------------------------------------------
+-- RESET
+--------------------------------------------------
+player.CharacterAdded:Connect(stopFly)
