@@ -1,118 +1,134 @@
---// EXPERT FLY SCRIPT (JOYSTICK REQUIRED FOR UP/DOWN)
---// LocalScript | Mobile / PC Friendly
+--// ANYTHING FLY - EXPERT VERSION
+--// LocalScript | Mobile Friendly | Pro Control
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local character, humanoid, root
+local cam = workspace.CurrentCamera
 
---// SETTINGS (ปรับได้)
-local HORIZONTAL_SPEED = 65
+--// SETTINGS
+local MOVE_SPEED = 70
 local VERTICAL_SPEED = 55
 local CAMERA_DEADZONE = 0.1
 
 local flying = false
+local targetModel
+local rootPart
+
 local gyro, velocity
 
---// Character Load
-local function loadCharacter()
-	character = player.Character or player.CharacterAdded:Wait()
-	humanoid = character:WaitForChild("Humanoid")
-	root = character:WaitForChild("HumanoidRootPart")
+--// Utility
+local function getPrimary(model)
+	if model:IsA("BasePart") then
+		return model
+	end
+	if model:IsA("Model") then
+		if not model.PrimaryPart then
+			model.PrimaryPart = model:FindFirstChildWhichIsA("BasePart")
+		end
+		return model.PrimaryPart
+	end
 end
-loadCharacter()
 
-player.CharacterAdded:Connect(function()
-	flying = false
-	task.wait(0.4)
-	loadCharacter()
-end)
-
---// UI
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "ExpertFlyUI"
-gui.ResetOnSpawn = false
-
-local main = Instance.new("Frame", gui)
-main.Size = UDim2.fromScale(0.45, 0.3)
-main.Position = UDim2.fromScale(0.28, 0.35)
-main.BackgroundColor3 = Color3.fromRGB(18,18,18)
-main.Active = true
-main.Draggable = true
-main.BorderSizePixel = 0
-Instance.new("UICorner", main).CornerRadius = UDim.new(0,20)
-
-local title = Instance.new("TextLabel", main)
-title.Size = UDim2.fromScale(1,0.25)
-title.BackgroundTransparency = 1
-title.Text = "✈️ EXPERT FLY PRO"
-title.Font = Enum.Font.GothamBold
-title.TextScaled = true
-title.TextColor3 = Color3.new(1,1,1)
-
-local toggle = Instance.new("TextButton", main)
-toggle.Position = UDim2.fromScale(0.1,0.35)
-toggle.Size = UDim2.fromScale(0.8,0.25)
-toggle.Text = "FLY : OFF"
-toggle.Font = Enum.Font.GothamBold
-toggle.TextScaled = true
-toggle.BackgroundColor3 = Color3.fromRGB(180,60,60)
-toggle.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", toggle)
-
---// Fly Core
-local function startFly()
+--// Start Fly
+local function startFly(model)
 	if flying then return end
-	flying = true
-	humanoid.PlatformStand = true
 
-	gyro = Instance.new("BodyGyro", root)
+	targetModel = model
+	rootPart = getPrimary(model)
+	if not rootPart then return end
+
+	flying = true
+
+	gyro = Instance.new("BodyGyro")
 	gyro.P = 120000
 	gyro.MaxTorque = Vector3.new(1e9,1e9,1e9)
+	gyro.CFrame = rootPart.CFrame
+	gyro.Parent = rootPart
 
-	velocity = Instance.new("BodyVelocity", root)
+	velocity = Instance.new("BodyVelocity")
 	velocity.MaxForce = Vector3.new(1e9,1e9,1e9)
 	velocity.Velocity = Vector3.zero
+	velocity.Parent = rootPart
 end
 
+--// Stop Fly
 local function stopFly()
 	flying = false
-	humanoid.PlatformStand = false
 	if gyro then gyro:Destroy() end
 	if velocity then velocity:Destroy() end
+	targetModel = nil
+	rootPart = nil
 end
 
-toggle.MouseButton1Click:Connect(function()
+--// Auto Detect (นั่ง / จับ / เลือก)
+local function detectTarget()
+	local char = player.Character
+	if not char then return end
+
+	-- Priority 1: Seat
+	for _,v in pairs(workspace:GetDescendants()) do
+		if v:IsA("Seat") and v.Occupant == char:FindFirstChild("Humanoid") then
+			return v.Parent
+		end
+	end
+
+	-- Priority 2: Model touching
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		for _,p in pairs(hrp:GetTouchingParts()) do
+			if p:IsA("BasePart") and p.Parent ~= char then
+				return p.Parent
+			end
+		end
+	end
+end
+
+--// UI (Minimal Expert)
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.ResetOnSpawn = false
+
+local btn = Instance.new("TextButton", gui)
+btn.Size = UDim2.fromScale(0.18,0.07)
+btn.Position = UDim2.fromScale(0.02,0.45)
+btn.Text = "ANY FLY"
+btn.Font = Enum.Font.GothamBold
+btn.TextScaled = true
+btn.BackgroundColor3 = Color3.fromRGB(0,140,255)
+btn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", btn)
+
+btn.MouseButton1Click:Connect(function()
 	if flying then
 		stopFly()
-		toggle.Text = "FLY : OFF"
-		toggle.BackgroundColor3 = Color3.fromRGB(180,60,60)
 	else
-		startFly()
-		toggle.Text = "FLY : ON"
-		toggle.BackgroundColor3 = Color3.fromRGB(60,180,90)
+		local target = detectTarget()
+		if target then
+			startFly(target)
+		end
 	end
 end)
 
 --// Expert Fly Loop
 RunService.RenderStepped:Connect(function()
-	if not flying or not root then return end
+	if not flying or not rootPart then return end
 
-	local cam = workspace.CurrentCamera
 	gyro.CFrame = cam.CFrame
+
+	-- ใช้ MoveDirection ของตัวละคร (รองรับมือถือ)
+	local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+	if not humanoid then return end
 
 	local moveDir = humanoid.MoveDirection
 	local isMoving = moveDir.Magnitude > 0.05
 
-	-- แนวราบ
 	local horizontal = Vector3.new(
-		moveDir.X * HORIZONTAL_SPEED,
+		moveDir.X * MOVE_SPEED,
 		0,
-		moveDir.Z * HORIZONTAL_SPEED
+		moveDir.Z * MOVE_SPEED
 	)
 
-	-- แนวดิ่ง (ต้องขยับจอยเท่านั้น)
 	local vertical = 0
 	if isMoving then
 		local lookY = cam.CFrame.LookVector.Y
@@ -122,19 +138,4 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	velocity.Velocity = horizontal + Vector3.new(0, vertical, 0)
-end)
-
---// Hide UI
-local hide = Instance.new("TextButton", gui)
-hide.Size = UDim2.fromScale(0.12,0.06)
-hide.Position = UDim2.fromScale(0.02,0.45)
-hide.Text = "FLY"
-hide.Font = Enum.Font.GothamBold
-hide.TextScaled = true
-hide.BackgroundColor3 = Color3.fromRGB(0,120,255)
-hide.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", hide)
-
-hide.MouseButton1Click:Connect(function()
-	main.Visible = not main.Visible
 end)
