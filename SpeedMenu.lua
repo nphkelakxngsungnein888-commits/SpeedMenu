@@ -13,7 +13,7 @@ local BASE_SPEED = 60
 local SPEED_MULT = 1
 local DEADZONE = 0.12
 local flying = false
-local noclip = true -- always active
+local noclip = false -- start off
 local humanoid, controlPart, mode
 local alignOri, linearVel
 
@@ -74,8 +74,6 @@ local function applyNoClip(state)
 	end
 end
 
-applyNoClip(noclip) -- apply immediately
-
 ---------------------------------------------------
 -- START / STOP FLY
 ---------------------------------------------------
@@ -104,6 +102,8 @@ local function startFly()
 	linearVel.Attachment0 = alignOri.Attachment0
 	linearVel.MaxForce = math.huge
 	linearVel.Parent = controlPart
+
+	if noclip then applyNoClip(true) end
 end
 
 local function stopFly()
@@ -125,7 +125,7 @@ gui.ResetOnSpawn = false
 local toggle = Instance.new("TextButton", gui)
 toggle.Size = UDim2.fromScale(0.09,0.045)
 toggle.Position = UDim2.fromScale(0.02,0.62)
-toggle.Text = "FLY"
+toggle.Text = "UI"
 toggle.TextScaled = true
 toggle.Font = Enum.Font.GothamBold
 toggle.BackgroundColor3 = Color3.fromRGB(0,120,255)
@@ -153,10 +153,21 @@ flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
 flyBtn.TextColor3 = Color3.new(1,1,1)
 Instance.new("UICorner", flyBtn)
 
+-- NoClip Button
+local noclipBtn = Instance.new("TextButton", panel)
+noclipBtn.Size = UDim2.fromScale(0.8,0.18)
+noclipBtn.Position = UDim2.fromScale(0.1,0.35)
+noclipBtn.Text = "NoClip : OFF"
+noclipBtn.TextScaled = true
+noclipBtn.Font = Enum.Font.GothamBold
+noclipBtn.BackgroundColor3 = Color3.fromRGB(180,180,60)
+noclipBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", noclipBtn)
+
 -- Speed Input
 local speedBox = Instance.new("TextBox", panel)
 speedBox.Size = UDim2.fromScale(0.8,0.18)
-speedBox.Position = UDim2.fromScale(0.1,0.35)
+speedBox.Position = UDim2.fromScale(0.1,0.63)
 speedBox.PlaceholderText = "Speed Multiplier (e.g., 2)"
 speedBox.Text = tostring(SPEED_MULT)
 speedBox.TextScaled = true
@@ -184,6 +195,12 @@ flyBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+noclipBtn.MouseButton1Click:Connect(function()
+	noclip = not noclip
+	noclipBtn.Text = noclip and "NoClip : ON" or "NoClip : OFF"
+	applyNoClip(noclip)
+end)
+
 speedBox.FocusLost:Connect(function()
 	local val = tonumber(speedBox.Text)
 	if val and val > 0 then
@@ -199,7 +216,6 @@ end)
 ---------------------------------------------------
 RunService.RenderStepped:Connect(function()
 	if not controlPart or not humanoid then return end
-
 	if flying then
 		alignOri.CFrame = camera.CFrame
 		local dir = humanoid.MoveDirection
