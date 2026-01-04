@@ -1,7 +1,6 @@
 --[[ 
- ANYTHING FLY - MASTER VERSION
- Fly + NoClip + Record / Replay System
- Designed by PRO ENGINEER
+ ANYTHING FLY - FULL PRO EXPERT VERSION
+ Character + Vehicle | Mobile | Fly + NoClip Toggle
 ]]
 
 local Players = game:GetService("Players")
@@ -20,25 +19,15 @@ local DEADZONE = 0.12
 local flying = false
 local noclip = false
 
-local MODE = "MANUAL" -- MANUAL / RECORD / REPLAY
-
 local humanoid
 local controlPart
-local modeType
+local mode
 
 local alignOri
 local linearVel
 
 ------------------------------------------------
--- RECORD DATA
-------------------------------------------------
-local recordData = {}
-local recordIndex = 1
-local recording = false
-local replaying = false
-
-------------------------------------------------
--- CONTROL PART
+-- GET CONTROL PART
 ------------------------------------------------
 local function getModelCenter(model)
 	local cf = model:GetBoundingBox()
@@ -51,9 +40,10 @@ local function getModelCenter(model)
 	part.Name = "_FlyControl"
 	part.Parent = model
 
-	local weld = Instance.new("WeldConstraint", part)
+	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = part
 	weld.Part1 = model:FindFirstChildWhichIsA("BasePart")
+	weld.Parent = part
 
 	return part
 end
@@ -68,12 +58,12 @@ local function getControl()
 	if humanoid.SeatPart then
 		local model = humanoid.SeatPart:FindFirstAncestorOfClass("Model")
 		if model then
-			modeType = "VEH"
+			mode = "VEHICLE"
 			return model.PrimaryPart or getModelCenter(model)
 		end
 	end
 
-	modeType = "CHAR"
+	mode = "CHAR"
 	return char:FindFirstChild("HumanoidRootPart")
 end
 
@@ -88,18 +78,31 @@ local function applyNoClip(state)
 			end
 		end
 	end
+
+	if mode == "VEHICLE" and controlPart then
+		local model = controlPart:FindFirstAncestorOfClass("Model")
+		if model then
+			for _,v in pairs(model:GetDescendants()) do
+				if v:IsA("BasePart") then
+					v.CanCollide = not state
+				end
+			end
+		end
+	end
 end
 
 ------------------------------------------------
--- FLY CORE
+-- START / STOP FLY
 ------------------------------------------------
 local function startFly()
 	if flying then return end
+
 	controlPart = getControl()
 	if not controlPart then return end
+
 	flying = true
 
-	if modeType == "CHAR" then
+	if mode == "CHAR" then
 		humanoid.PlatformStand = true
 	end
 
@@ -111,6 +114,7 @@ local function startFly()
 
 	alignOri = Instance.new("AlignOrientation")
 	alignOri.Attachment0 = att
+	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	alignOri.MaxTorque = math.huge
 	alignOri.Responsiveness = 25
 	alignOri.Parent = controlPart
@@ -122,8 +126,13 @@ local function startFly()
 end
 
 local function stopFly()
+	if not flying then return end
 	flying = false
-	if humanoid then humanoid.PlatformStand = false end
+
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+
 	if alignOri then alignOri:Destroy() end
 	if linearVel then linearVel:Destroy() end
 end
@@ -132,48 +141,59 @@ end
 -- UI
 ------------------------------------------------
 local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "FlyFullUI"
 gui.ResetOnSpawn = false
 
-local menuBtn = Instance.new("TextButton", gui)
-menuBtn.Size = UDim2.fromScale(0.1,0.045)
-menuBtn.Position = UDim2.fromScale(0.02,0.6)
-menuBtn.Text = "∆ MODE"
-menuBtn.TextScaled = true
-menuBtn.BackgroundColor3 = Color3.fromRGB(0,120,255)
-menuBtn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", menuBtn)
+local toggleUI = Instance.new("TextButton", gui)
+toggleUI.Size = UDim2.fromScale(0.09,0.045)
+toggleUI.Position = UDim2.fromScale(0.02,0.6)
+toggleUI.Text = "MENU"
+toggleUI.TextScaled = true
+toggleUI.BackgroundColor3 = Color3.fromRGB(0,120,255)
+toggleUI.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", toggleUI)
 
 local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.fromScale(0.3,0.28)
-panel.Position = UDim2.fromScale(0.35,0.34)
+panel.Size = UDim2.fromScale(0.28,0.25)
+panel.Position = UDim2.fromScale(0.36,0.35)
 panel.Visible = false
 panel.Active = true
 panel.Draggable = true
 panel.BackgroundColor3 = Color3.fromRGB(20,20,20)
 Instance.new("UICorner", panel)
 
-local function createBtn(text,y)
-	local b = Instance.new("TextButton", panel)
-	b.Size = UDim2.fromScale(0.85,0.18)
-	b.Position = UDim2.fromScale(0.075,y)
-	b.Text = text
-	b.TextScaled = true
-	b.Font = Enum.Font.GothamBold
-	b.BackgroundColor3 = Color3.fromRGB(60,60,60)
-	b.TextColor3 = Color3.new(1,1,1)
-	Instance.new("UICorner", b)
-	return b
-end
+local flyBtn = Instance.new("TextButton", panel)
+flyBtn.Size = UDim2.fromScale(0.8,0.2)
+flyBtn.Position = UDim2.fromScale(0.1,0.05)
+flyBtn.Text = "FLY : OFF"
+flyBtn.TextScaled = true
+flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
+flyBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", flyBtn)
 
-local flyBtn = createBtn("FLY : OFF",0.05)
-local manualBtn = createBtn("MODE : MANUAL",0.28)
-local recordBtn = createBtn("● RECORD",0.51)
-local replayBtn = createBtn("▶ REPLAY",0.74)
+local noclipBtn = Instance.new("TextButton", panel)
+noclipBtn.Size = UDim2.fromScale(0.8,0.18)
+noclipBtn.Position = UDim2.fromScale(0.1,0.32)
+noclipBtn.Text = "NOCLIP : OFF"
+noclipBtn.TextScaled = true
+noclipBtn.BackgroundColor3 = Color3.fromRGB(180,180,60)
+noclipBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", noclipBtn)
+
+local speedBox = Instance.new("TextBox", panel)
+speedBox.Size = UDim2.fromScale(0.8,0.18)
+speedBox.Position = UDim2.fromScale(0.1,0.6)
+speedBox.Text = tostring(SPEED_MULT)
+speedBox.PlaceholderText = "Speed Multiplier"
+speedBox.TextScaled = true
+speedBox.BackgroundColor3 = Color3.fromRGB(60,60,60)
+speedBox.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", speedBox)
 
 ------------------------------------------------
 -- UI LOGIC
 ------------------------------------------------
-menuBtn.MouseButton1Click:Connect(function()
+toggleUI.MouseButton1Click:Connect(function()
 	panel.Visible = not panel.Visible
 end)
 
@@ -181,50 +201,33 @@ flyBtn.MouseButton1Click:Connect(function()
 	if flying then
 		stopFly()
 		flyBtn.Text = "FLY : OFF"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
 	else
 		startFly()
 		flyBtn.Text = "FLY : ON"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(60,180,90)
 	end
 end)
 
-manualBtn.MouseButton1Click:Connect(function()
-	MODE = "MANUAL"
-	manualBtn.Text = "MODE : MANUAL"
+noclipBtn.MouseButton1Click:Connect(function()
+	noclip = not noclip
+	noclipBtn.Text = noclip and "NOCLIP : ON" or "NOCLIP : OFF"
+	applyNoClip(noclip)
 end)
 
-recordBtn.MouseButton1Click:Connect(function()
-	MODE = "RECORD"
-	recordData = {}
-	recording = true
-	replaying = false
-	recordIndex = 1
-end)
-
-replayBtn.MouseButton1Click:Connect(function()
-	if #recordData == 0 then return end
-	MODE = "REPLAY"
-	recording = false
-	replaying = true
-	recordIndex = 1
-end)
-
-------------------------------------------------
--- MAIN LOOP
-------------------------------------------------
-RunService.RenderStepped:Connect(function(dt)
-	if not flying or not controlPart then return end
-
-	if MODE == "REPLAY" and replaying then
-		local frame = recordData[recordIndex]
-		if frame then
-			controlPart.CFrame = frame.cf
-			recordIndex += 1
-		else
-			replaying = false
-			MODE = "MANUAL"
-		end
-		return
+speedBox.FocusLost:Connect(function()
+	local v = tonumber(speedBox.Text)
+	if v and v > 0 then
+		SPEED_MULT = v
 	end
+	speedBox.Text = tostring(SPEED_MULT)
+end)
+
+------------------------------------------------
+-- FLY LOOP
+------------------------------------------------
+RunService.RenderStepped:Connect(function()
+	if not flying or not controlPart or not humanoid then return end
 
 	alignOri.CFrame = camera.CFrame
 
@@ -238,15 +241,9 @@ RunService.RenderStepped:Connect(function(dt)
 	if dir.Magnitude > 0.05 then
 		local y = camera.CFrame.LookVector.Y
 		if math.abs(y) > DEADZONE then
-			vel += Vector3.new(0,y*BASE_SPEED*0.75*SPEED_MULT,0)
+			vel += Vector3.new(0, y * BASE_SPEED * 0.75 * SPEED_MULT, 0)
 		end
 	end
 
 	linearVel.VectorVelocity = vel
-
-	if MODE == "RECORD" and recording then
-		table.insert(recordData,{
-			cf = controlPart.CFrame
-		})
-	end
 end)
