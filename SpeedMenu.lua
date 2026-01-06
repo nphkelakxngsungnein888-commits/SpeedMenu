@@ -1,6 +1,7 @@
 --[[ 
- ANYTHING FLY - FULL PRO EXPERT VERSION
- Character + Vehicle | Mobile | Fly + NoClip Toggle
+ HOVER FLY PRO FULL VERSION
+ Character + Vehicle + Boat
+ Stable Hover | NoClip Toggle | Mobile UI
 ]]
 
 local Players = game:GetService("Players")
@@ -18,6 +19,7 @@ local DEADZONE = 0.12
 
 local flying = false
 local noclip = false
+local hoverHeight = nil
 
 local humanoid
 local controlPart
@@ -99,7 +101,6 @@ local function startFly()
 
 	controlPart = getControl()
 	if not controlPart then return end
-
 	flying = true
 
 	if mode == "CHAR" then
@@ -109,6 +110,23 @@ local function startFly()
 	pcall(function()
 		controlPart:SetNetworkOwner(player)
 	end)
+
+	hoverHeight = controlPart.Position.Y
+
+	-- ลดผลกระทบน้ำ + ทำให้ลอยนิ่ง
+	local model = controlPart:FindFirstAncestorOfClass("Model")
+	if model then
+		for _,v in pairs(model:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.CanCollide = false
+				v.CustomPhysicalProperties = PhysicalProperties.new(
+					0.05, -- density ต่ำ = น้ำไม่ดัน
+					0,
+					0
+				)
+			end
+		end
+	end
 
 	local att = Instance.new("Attachment", controlPart)
 
@@ -138,20 +156,19 @@ local function stopFly()
 end
 
 ------------------------------------------------
--- UI
+-- UI (MINI - MOBILE)
 ------------------------------------------------
 local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "FlyFullUI"
 gui.ResetOnSpawn = false
 
-local toggleUI = Instance.new("TextButton", gui)
-toggleUI.Size = UDim2.fromScale(0.09,0.045)
-toggleUI.Position = UDim2.fromScale(0.02,0.6)
-toggleUI.Text = "MENU"
-toggleUI.TextScaled = true
-toggleUI.BackgroundColor3 = Color3.fromRGB(0,120,255)
-toggleUI.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", toggleUI)
+local menuBtn = Instance.new("TextButton", gui)
+menuBtn.Size = UDim2.fromScale(0.09,0.045)
+menuBtn.Position = UDim2.fromScale(0.02,0.6)
+menuBtn.Text = "MENU"
+menuBtn.TextScaled = true
+menuBtn.BackgroundColor3 = Color3.fromRGB(0,120,255)
+menuBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", menuBtn)
 
 local panel = Instance.new("Frame", gui)
 panel.Size = UDim2.fromScale(0.28,0.25)
@@ -184,7 +201,7 @@ local speedBox = Instance.new("TextBox", panel)
 speedBox.Size = UDim2.fromScale(0.8,0.18)
 speedBox.Position = UDim2.fromScale(0.1,0.6)
 speedBox.Text = tostring(SPEED_MULT)
-speedBox.PlaceholderText = "Speed Multiplier"
+speedBox.PlaceholderText = "Speed x"
 speedBox.TextScaled = true
 speedBox.BackgroundColor3 = Color3.fromRGB(60,60,60)
 speedBox.TextColor3 = Color3.new(1,1,1)
@@ -193,7 +210,7 @@ Instance.new("UICorner", speedBox)
 ------------------------------------------------
 -- UI LOGIC
 ------------------------------------------------
-toggleUI.MouseButton1Click:Connect(function()
+menuBtn.MouseButton1Click:Connect(function()
 	panel.Visible = not panel.Visible
 end)
 
@@ -217,14 +234,12 @@ end)
 
 speedBox.FocusLost:Connect(function()
 	local v = tonumber(speedBox.Text)
-	if v and v > 0 then
-		SPEED_MULT = v
-	end
+	if v and v > 0 then SPEED_MULT = v end
 	speedBox.Text = tostring(SPEED_MULT)
 end)
 
 ------------------------------------------------
--- FLY LOOP
+-- HOVER FLY LOOP (KEY PART)
 ------------------------------------------------
 RunService.RenderStepped:Connect(function()
 	if not flying or not controlPart or not humanoid then return end
@@ -232,18 +247,27 @@ RunService.RenderStepped:Connect(function()
 	alignOri.CFrame = camera.CFrame
 
 	local dir = humanoid.MoveDirection
-	local vel = Vector3.new(
-		dir.X * BASE_SPEED * SPEED_MULT,
-		0,
-		dir.Z * BASE_SPEED * SPEED_MULT
-	)
+	local vel = Vector3.zero
 
+	-- Horizontal movement
 	if dir.Magnitude > 0.05 then
-		local y = camera.CFrame.LookVector.Y
-		if math.abs(y) > DEADZONE then
-			vel += Vector3.new(0, y * BASE_SPEED * 0.75 * SPEED_MULT, 0)
-		end
+		vel += Vector3.new(
+			dir.X * BASE_SPEED * SPEED_MULT,
+			0,
+			dir.Z * BASE_SPEED * SPEED_MULT
+		)
 	end
 
+	-- Control height by camera
+	local lookY = camera.CFrame.LookVector.Y
+	if math.abs(lookY) > DEADZONE then
+		hoverHeight += lookY * BASE_SPEED * 0.6
+	end
+
+	-- Altitude lock (ทำให้นิ่ง)
+	local currentY = controlPart.Position.Y
+	local yForce = (hoverHeight - currentY) * 10
+
+	vel += Vector3.new(0, yForce, 0)
 	linearVel.VectorVelocity = vel
 end)
