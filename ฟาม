@@ -1,37 +1,33 @@
---// FISCH QUEST ASSIST - CORE ENGINE
---// Made for Fisch | LocalScript
+--// FISCH AUTO QUEST - READY TO USE VERSION
+--// UI FIXED | PlayerGui | LocalScript
 
+-----------------------------
+-- SERVICES
+-----------------------------
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-
 local player = Players.LocalPlayer
-local char = player.Character or player.CharacterAdded:Wait()
+local playerGui = player:WaitForChild("PlayerGui")
 
--------------------------------------------------
--- CONFIG (แก้ตรงนี้นิดเดียวใช้ได้ยาว)
--------------------------------------------------
-local QUEST_GUI_PATH = {"QuestGui"} -- ชื่อ GUI เควส
-local QUEST_TEXT_NAME = "QuestText" -- TextLabel
-local QUEST_PROGRESS_NAME = "ProgressText"
+-----------------------------
+-- CONFIG (ถ้าเกมอัปเดต ค่อยแก้)
+-----------------------------
+local QUEST_GUI_NAME = "QuestGui"
+local QUEST_TEXT_NAME = "QuestText"
+local PROGRESS_TEXT_NAME = "ProgressText"
 
--- Remote (ชื่ออาจเปลี่ยนตามแพตช์)
-local FISH_REMOTE = "CatchFish"      -- RemoteEvent
+local FISH_REMOTE_NAME = "CatchFish"
 local QUEST_ACCEPT_REMOTE = "AcceptQuest"
 local QUEST_TURNIN_REMOTE = "CompleteQuest"
 
--------------------------------------------------
--- UTILS
--------------------------------------------------
-local function findGui(path)
-	local g = player.PlayerGui
-	for _,v in ipairs(path) do
-		g = g:FindFirstChild(v)
-		if not g then return nil end
-	end
-	return g
-end
+-----------------------------
+-- STATE
+-----------------------------
+local enabled = false
 
-local function getRemote(name)
+-----------------------------
+-- UTILS
+-----------------------------
+local function findRemote(name)
 	for _,v in pairs(game:GetDescendants()) do
 		if v:IsA("RemoteEvent") and v.Name == name then
 			return v
@@ -39,15 +35,12 @@ local function getRemote(name)
 	end
 end
 
--------------------------------------------------
--- QUEST DETECTOR
--------------------------------------------------
 local function getQuestInfo()
-	local gui = findGui(QUEST_GUI_PATH)
+	local gui = playerGui:FindFirstChild(QUEST_GUI_NAME)
 	if not gui then return nil end
 
 	local questText = gui:FindFirstChild(QUEST_TEXT_NAME, true)
-	local progressText = gui:FindFirstChild(QUEST_PROGRESS_NAME, true)
+	local progressText = gui:FindFirstChild(PROGRESS_TEXT_NAME, true)
 
 	if questText and questText.Text ~= "" then
 		return {
@@ -58,41 +51,62 @@ local function getQuestInfo()
 	return nil
 end
 
--------------------------------------------------
+-----------------------------
 -- QUEST ACTIONS
--------------------------------------------------
+-----------------------------
 local function acceptQuest()
-	local r = getRemote(QUEST_ACCEPT_REMOTE)
-	if r then
-		r:FireServer()
-	end
+	local r = findRemote(QUEST_ACCEPT_REMOTE)
+	if r then r:FireServer() end
 end
 
 local function turnInQuest()
-	local r = getRemote(QUEST_TURNIN_REMOTE)
+	local r = findRemote(QUEST_TURNIN_REMOTE)
+	if r then r:FireServer() end
+end
+
+local function autoFish()
+	local r = findRemote(FISH_REMOTE_NAME)
 	if r then
-		r:FireServer()
+		r:FireServer(true) -- ข้ามมินิเกม
 	end
 end
 
--------------------------------------------------
--- AUTO FISH
--------------------------------------------------
-local function autoFishOnce()
-	local r = getRemote(FISH_REMOTE)
-	if r then
-		-- บังคับจบการตก (ไม่เล่นมินิเกม)
-		r:FireServer(true)
-	end
-end
+-----------------------------
+-- UI (FIXED 100%)
+-----------------------------
+local gui = Instance.new("ScreenGui")
+gui.Name = "FischAutoQuestUI"
+gui.ResetOnSpawn = false
+gui.Parent = playerGui
 
--------------------------------------------------
+local button = Instance.new("TextButton")
+button.Parent = gui
+button.Size = UDim2.fromScale(0.24,0.06)
+button.Position = UDim2.fromScale(0.02,0.7)
+button.Text = "AUTO QUEST : OFF"
+button.TextScaled = true
+button.Font = Enum.Font.GothamBold
+button.BackgroundColor3 = Color3.fromRGB(180,60,60)
+button.TextColor3 = Color3.new(1,1,1)
+button.BorderSizePixel = 0
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0.25,0)
+corner.Parent = button
+
+button.MouseButton1Click:Connect(function()
+	enabled = not enabled
+	button.Text = enabled and "AUTO QUEST : ON" or "AUTO QUEST : OFF"
+	button.BackgroundColor3 = enabled
+		and Color3.fromRGB(60,180,90)
+		or Color3.fromRGB(180,60,60)
+end)
+
+-----------------------------
 -- MAIN LOOP
--------------------------------------------------
-local enabled = false
-
+-----------------------------
 task.spawn(function()
-	while task.wait(1) do
+	while task.wait(0.6) do
 		if not enabled then continue end
 
 		local quest = getQuestInfo()
@@ -100,38 +114,19 @@ task.spawn(function()
 		-- ไม่มีเควส → รับ
 		if not quest then
 			acceptQuest()
-			task.wait(2)
+			task.wait(1.5)
 			continue
 		end
 
-		-- มีเควส → ตกปลา
-		autoFishOnce()
-		task.wait(0.4)
+		-- ทำเควสตกปลา
+		autoFish()
 
-		-- ถ้า progress เต็ม (ปรับ regex เองได้)
-		if quest.progress:lower():find("complete") then
+		-- เควสเสร็จ
+		if quest.progress:lower():find("complete")
+		or quest.progress:lower():find("done") then
+			task.wait(0.8)
 			turnInQuest()
-			task.wait(2)
+			task.wait(1.5)
 		end
 	end
-end)
-
--------------------------------------------------
--- SIMPLE UI
--------------------------------------------------
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.ResetOnSpawn = false
-
-local btn = Instance.new("TextButton", gui)
-btn.Size = UDim2.fromScale(0.18,0.05)
-btn.Position = UDim2.fromScale(0.02,0.7)
-btn.Text = "AUTO QUEST : OFF"
-btn.TextScaled = true
-btn.BackgroundColor3 = Color3.fromRGB(180,60,60)
-btn.TextColor3 = Color3.new(1,1,1)
-
-btn.MouseButton1Click:Connect(function()
-	enabled = not enabled
-	btn.Text = enabled and "AUTO QUEST : ON" or "AUTO QUEST : OFF"
-	btn.BackgroundColor3 = enabled and Color3.fromRGB(60,180,90) or Color3.fromRGB(180,60,60)
 end)
