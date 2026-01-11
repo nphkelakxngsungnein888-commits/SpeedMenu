@@ -1,0 +1,137 @@
+--// FISCH QUEST ASSIST - CORE ENGINE
+--// Made for Fisch | LocalScript
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+
+-------------------------------------------------
+-- CONFIG (แก้ตรงนี้นิดเดียวใช้ได้ยาว)
+-------------------------------------------------
+local QUEST_GUI_PATH = {"QuestGui"} -- ชื่อ GUI เควส
+local QUEST_TEXT_NAME = "QuestText" -- TextLabel
+local QUEST_PROGRESS_NAME = "ProgressText"
+
+-- Remote (ชื่ออาจเปลี่ยนตามแพตช์)
+local FISH_REMOTE = "CatchFish"      -- RemoteEvent
+local QUEST_ACCEPT_REMOTE = "AcceptQuest"
+local QUEST_TURNIN_REMOTE = "CompleteQuest"
+
+-------------------------------------------------
+-- UTILS
+-------------------------------------------------
+local function findGui(path)
+	local g = player.PlayerGui
+	for _,v in ipairs(path) do
+		g = g:FindFirstChild(v)
+		if not g then return nil end
+	end
+	return g
+end
+
+local function getRemote(name)
+	for _,v in pairs(game:GetDescendants()) do
+		if v:IsA("RemoteEvent") and v.Name == name then
+			return v
+		end
+	end
+end
+
+-------------------------------------------------
+-- QUEST DETECTOR
+-------------------------------------------------
+local function getQuestInfo()
+	local gui = findGui(QUEST_GUI_PATH)
+	if not gui then return nil end
+
+	local questText = gui:FindFirstChild(QUEST_TEXT_NAME, true)
+	local progressText = gui:FindFirstChild(QUEST_PROGRESS_NAME, true)
+
+	if questText and questText.Text ~= "" then
+		return {
+			name = questText.Text,
+			progress = progressText and progressText.Text or ""
+		}
+	end
+	return nil
+end
+
+-------------------------------------------------
+-- QUEST ACTIONS
+-------------------------------------------------
+local function acceptQuest()
+	local r = getRemote(QUEST_ACCEPT_REMOTE)
+	if r then
+		r:FireServer()
+	end
+end
+
+local function turnInQuest()
+	local r = getRemote(QUEST_TURNIN_REMOTE)
+	if r then
+		r:FireServer()
+	end
+end
+
+-------------------------------------------------
+-- AUTO FISH
+-------------------------------------------------
+local function autoFishOnce()
+	local r = getRemote(FISH_REMOTE)
+	if r then
+		-- บังคับจบการตก (ไม่เล่นมินิเกม)
+		r:FireServer(true)
+	end
+end
+
+-------------------------------------------------
+-- MAIN LOOP
+-------------------------------------------------
+local enabled = false
+
+task.spawn(function()
+	while task.wait(1) do
+		if not enabled then continue end
+
+		local quest = getQuestInfo()
+
+		-- ไม่มีเควส → รับ
+		if not quest then
+			acceptQuest()
+			task.wait(2)
+			continue
+		end
+
+		-- มีเควส → ตกปลา
+		autoFishOnce()
+		task.wait(0.4)
+
+		-- ถ้า progress เต็ม (ปรับ regex เองได้)
+		if quest.progress:lower():find("complete") then
+			turnInQuest()
+			task.wait(2)
+		end
+	end
+end)
+
+-------------------------------------------------
+-- SIMPLE UI
+-------------------------------------------------
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.ResetOnSpawn = false
+
+local btn = Instance.new("TextButton", gui)
+btn.Size = UDim2.fromScale(0.18,0.05)
+btn.Position = UDim2.fromScale(0.02,0.7)
+btn.Text = "AUTO QUEST : OFF"
+btn.TextScaled = true
+btn.BackgroundColor3 = Color3.fromRGB(180,60,60)
+btn.TextColor3 = Color3.new(1,1,1)
+
+btn.MouseButton1Click:Connect(function()
+	enabled = not enabled
+	btn.Text = enabled and "AUTO QUEST : ON" or "AUTO QUEST : OFF"
+	btn.BackgroundColor3 = enabled and Color3.fromRGB(60,180,90) or Color3.fromRGB(180,60,60)
+end)
