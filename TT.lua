@@ -12,9 +12,9 @@ local running = true
 local smoothness = 50
 
 local currentTarget = nil
-local cameraOffset = Vector3.new(0, 5, -10) -- 🔥 ระยะกล้องหลังตัว
+local cameraOffset = Vector3.new(0, 5, -10)
 
--- UI
+-- UI (เหมือนเดิม)
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
 gui.Name = "LockUI"
 
@@ -78,7 +78,7 @@ deleteBtn.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
 
--- หา target
+-- find target
 local function findTarget()
     local closest = nil
     local shortest = math.huge
@@ -124,16 +124,18 @@ RunService.RenderStepped:Connect(function(dt)
         local root = char.HumanoidRootPart
         local targetPos = target.HumanoidRootPart.Position
 
-        -- 🔥 วางกล้องหลังตัวละคร
-        local camPos = root.Position + root.CFrame:VectorToWorldSpace(cameraOffset)
+        -- 🔥 สร้าง rotation ใหม่ของตัวละคร
+        local lookCF = CFrame.new(root.Position, targetPos)
 
-        -- 🔥 มองไปที่ target
+        -- 🔥 apply offset ตาม rotation ใหม่
+        local camPos = lookCF:ToWorldSpace(CFrame.new(cameraOffset)).Position
+
         local desiredCF = CFrame.new(camPos, targetPos)
 
         local alpha = math.clamp(dt * smoothness, 0.5, 1)
         camera.CFrame = camera.CFrame:Lerp(desiredCF, alpha)
 
-        -- 🔥 ตัวละครหันตาม
-        root.CFrame = CFrame.new(root.Position, targetPos)
+        -- 🔥 หมุนตัวละคร
+        root.CFrame = lookCF
     end
 end)
