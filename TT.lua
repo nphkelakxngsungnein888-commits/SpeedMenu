@@ -9,9 +9,9 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local force = 3 -- ความแรงล็อค
+local smoothness = 12 -- 🔥 เพิ่มความแรง
 
--- UI (ย้ายไปมุม)
+-- UI
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
 gui.Name = "LockUI"
 
@@ -36,7 +36,7 @@ deleteBtn.Position = UDim2.new(0,0,0,100)
 deleteBtn.Size = UDim2.new(1,0,0,40)
 deleteBtn.Text = "DELETE"
 
--- วงกลม (เส้นล้วน)
+-- circle
 local circle = Instance.new("Frame", gui)
 circle.AnchorPoint = Vector2.new(0.5,0.5)
 circle.Position = UDim2.new(0.5,0,0.5,0)
@@ -50,13 +50,11 @@ local stroke = Instance.new("UIStroke", circle)
 stroke.Color = Color3.fromRGB(0,255,0)
 stroke.Thickness = 2
 
--- toggle
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
 end)
 
--- slider
 slider.MouseButton1Click:Connect(function()
     radius += 25
     if radius > 400 then radius = 50 end
@@ -64,13 +62,12 @@ slider.MouseButton1Click:Connect(function()
     circle.Size = UDim2.new(0, radius*2, 0, radius*2)
 end)
 
--- delete
 deleteBtn.MouseButton1Click:Connect(function()
     running = false
     gui:Destroy()
 end)
 
--- หา target (ใกล้จริง)
+-- target
 local function getTarget()
     local closest = nil
     local shortest = math.huge
@@ -101,7 +98,6 @@ local function getTarget()
     return closest
 end
 
--- main loop
 RunService.RenderStepped:Connect(function(dt)
     if not running or not enabled then return end
 
@@ -112,12 +108,17 @@ RunService.RenderStepped:Connect(function(dt)
     if target then
         local targetPos = target.HumanoidRootPart.Position
 
-        -- smooth camera
-        local camCF = CFrame.new(camera.CFrame.Position, targetPos)
-        camera.CFrame = camera.CFrame:Lerp(camCF, dt * smoothness)
+        -- 🔥 ใช้ CFrame เดียว
+        local targetCF = CFrame.new(char.HumanoidRootPart.Position, targetPos)
 
-        -- smooth character
-        local charCF = CFrame.new(char.HumanoidRootPart.Position, targetPos)
-        char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame:Lerp(charCF, dt * smoothness)
+        -- 🔥 clamp speed (กันช้า)
+        local alpha = math.clamp(dt * smoothness, 0.2, 1)
+
+        -- sync ทั้งคู่
+        char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame:Lerp(targetCF, alpha)
+        camera.CFrame = camera.CFrame:Lerp(
+            CFrame.new(camera.CFrame.Position, targetPos),
+            alpha
+        )
     end
 end)
