@@ -13,7 +13,7 @@ local running = true
 local smoothness = 50
 
 local currentTarget = nil
-local cameraOffset = Vector3.new(0, 2, -8) -- 🔥 ปรับไม่ให้ลอย
+local cameraOffset = Vector3.new(2, 1, -6) -- 🔥 shoulder + ไม่ลอย
 
 -- mouse control
 local yaw = 0
@@ -93,7 +93,7 @@ UIS.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement then
         yaw -= input.Delta.X * sensitivity
         pitch -= input.Delta.Y * sensitivity
-        pitch = math.clamp(pitch, -80, 80)
+        pitch = math.clamp(pitch, -45, 45) -- 🔥 ลดการก้ม/เงย
     end
 end)
 
@@ -157,7 +157,9 @@ RunService.RenderStepped:Connect(function(dt)
     if target then    
         local root = char.HumanoidRootPart    
         local head = char:FindFirstChild("Head")
-        local basePos = head and head.Position or root.Position
+
+        -- 🔥 ดึง base ลง (แก้ลอยจริง)
+        local basePos = (head and head.Position or root.Position) - Vector3.new(0, 0.7, 0)
 
         local eyeTargetPos = getEyePosition(target)
         if not eyeTargetPos then return end
