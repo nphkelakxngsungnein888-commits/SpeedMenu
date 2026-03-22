@@ -9,15 +9,15 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local lockStrength = 1 -- 1 = slow, 3 = fast
+local smoothness = 3 -- ความแรงล็อค
 
--- UI
+-- UI (ย้ายไปมุม)
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
 gui.Name = "LockUI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 200)
-frame.Position = UDim2.new(0.1, 0, 0.5, -100)
+frame.Size = UDim2.new(0, 200, 0, 150)
+frame.Position = UDim2.new(0, 20, 0, 200)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 frame.Active = true
 frame.Draggable = true
@@ -31,17 +31,12 @@ slider.Position = UDim2.new(0,0,0,50)
 slider.Size = UDim2.new(1,0,0,40)
 slider.Text = "Radius: 150"
 
-local strengthBtn = Instance.new("TextButton", frame)
-strengthBtn.Position = UDim2.new(0,0,0,100)
-strengthBtn.Size = UDim2.new(1,0,0,40)
-strengthBtn.Text = "Strength: 1"
-
 local deleteBtn = Instance.new("TextButton", frame)
-deleteBtn.Position = UDim2.new(0,0,0,150)
+deleteBtn.Position = UDim2.new(0,0,0,100)
 deleteBtn.Size = UDim2.new(1,0,0,40)
 deleteBtn.Text = "DELETE"
 
--- circle (outline only)
+-- วงกลม (เส้นล้วน)
 local circle = Instance.new("Frame", gui)
 circle.AnchorPoint = Vector2.new(0.5,0.5)
 circle.Position = UDim2.new(0.5,0,0.5,0)
@@ -61,19 +56,12 @@ toggle.MouseButton1Click:Connect(function()
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
 end)
 
--- radius
+-- slider
 slider.MouseButton1Click:Connect(function()
     radius += 25
     if radius > 400 then radius = 50 end
     slider.Text = "Radius: "..radius
     circle.Size = UDim2.new(0, radius*2, 0, radius*2)
-end)
-
--- strength
-strengthBtn.MouseButton1Click:Connect(function()
-    lockStrength += 1
-    if lockStrength > 3 then lockStrength = 1 end
-    strengthBtn.Text = "Strength: "..lockStrength
 end)
 
 -- delete
@@ -82,28 +70,28 @@ deleteBtn.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
 
--- get closest target (3D distance)
+-- หา target (ใกล้จริง)
 local function getTarget()
     local closest = nil
     local shortest = math.huge
 
     local char = player.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
     local myPos = char.HumanoidRootPart.Position
 
     for _, v in pairs(workspace:GetDescendants()) do
         if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
             if v.Humanoid.Health > 0 and v ~= char then
-                local dist3D = (v.HumanoidRootPart.Position - myPos).Magnitude
-                if dist3D < shortest then
-                    -- check if inside circle (screen)
-                    local pos, onScreen = camera:WorldToViewportPoint(v.HumanoidRootPart.Position)
-                    if onScreen then
-                        local screenDist = (Vector2.new(pos.X, pos.Y) - camera.ViewportSize/2).Magnitude
-                        if screenDist <= radius then
-                            shortest = dist3D
-                            closest = v
-                        end
+                local targetPos = v.HumanoidRootPart.Position
+                local dist3D = (myPos - targetPos).Magnitude
+
+                local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
+                if onScreen then
+                    local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - camera.ViewportSize/2).Magnitude
+                    if dist2D <= radius and dist3D < shortest then
+                        shortest = dist3D
+                        closest = v
                     end
                 end
             end
@@ -113,15 +101,8 @@ local function getTarget()
     return closest
 end
 
--- strength mapping
-local function getLerpAlpha()
-    if lockStrength == 1 then return 0.1 end
-    if lockStrength == 2 then return 0.2 end
-    if lockStrength == 3 then return 0.35 end
-end
-
 -- main loop
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(dt)
     if not running or not enabled then return end
 
     local char = player.Character
@@ -130,15 +111,13 @@ RunService.RenderStepped:Connect(function()
     local target = getTarget()
     if target then
         local targetPos = target.HumanoidRootPart.Position
-        local alpha = getLerpAlpha()
 
         -- smooth camera
-        local newCam = CFrame.new(camera.CFrame.Position, targetPos)
-        camera.CFrame = camera.CFrame:Lerp(newCam, alpha)
+        local camCF = CFrame.new(camera.CFrame.Position, targetPos)
+        camera.CFrame = camera.CFrame:Lerp(camCF, dt * smoothness)
 
         -- smooth character
-        local root = char.HumanoidRootPart
-        local newChar = CFrame.new(root.Position, targetPos)
-        root.CFrame = root.CFrame:Lerp(newChar, alpha)
+        local charCF = CFrame.new(char.HumanoidRootPart.Position, targetPos)
+        char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame:Lerp(charCF, dt * smoothness)
     end
 end)
