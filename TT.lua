@@ -9,7 +9,7 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local smoothness = 12 -- 🔥 เพิ่มความแรง
+local smoothness = 15 -- 🔥 แรงขึ้นให้ดึงเข้ากลางไว
 
 -- UI
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
@@ -91,6 +91,48 @@ local function getTarget()
                         closest = v
                     end
                 end
+            end
+        end
+    end
+
+    return closest
+end
+
+RunService.RenderStepped:Connect(function(dt)
+    if not running or not enabled then return end
+
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+    local target = getTarget()
+    if target then
+        local targetPos = target.HumanoidRootPart.Position
+
+        local screenPos, _ = camera:WorldToViewportPoint(targetPos)
+        local center = camera.ViewportSize / 2
+
+        local offset = Vector2.new(screenPos.X, screenPos.Y) - center
+
+        -- 🔥 แปลง offset เป็นมุมหมุน
+        local adjust = CFrame.Angles(
+            math.rad(-offset.Y * 0.05),
+            math.rad(-offset.X * 0.05),
+            0
+        )
+
+        local desiredCF = CFrame.new(camera.CFrame.Position, targetPos) * adjust
+
+        local alpha = math.clamp(dt * smoothness, 0.25, 1)
+
+        camera.CFrame = camera.CFrame:Lerp(desiredCF, alpha)
+
+        -- sync character
+        char.HumanoidRootPart.CFrame = CFrame.new(
+            char.HumanoidRootPart.Position,
+            camera.CFrame.LookVector * 1000 + char.HumanoidRootPart.Position
+        )
+    end
+end)                end
             end
         end
     end
