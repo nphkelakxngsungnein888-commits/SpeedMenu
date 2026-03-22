@@ -13,7 +13,7 @@ local running = true
 local smoothness = 50
 
 local currentTarget = nil
-local cameraOffset = Vector3.new(0, 5, -10)
+local cameraOffset = Vector3.new(0, 2, -8) -- 🔥 ปรับไม่ให้ลอย
 
 -- mouse control
 local yaw = 0
@@ -97,7 +97,7 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
--- 🔥 get eye position (HEAD priority)
+-- get eye position
 local function getEyePosition(character)
     local head = character:FindFirstChild("Head")
     if head then
@@ -156,11 +156,15 @@ RunService.RenderStepped:Connect(function(dt)
     local target = currentTarget    
     if target then    
         local root = char.HumanoidRootPart    
+        local head = char:FindFirstChild("Head")
+        local basePos = head and head.Position or root.Position
+
         local eyeTargetPos = getEyePosition(target)
         if not eyeTargetPos then return end
 
         local camRot = CFrame.Angles(0, math.rad(yaw), 0) * CFrame.Angles(math.rad(pitch), 0, 0)    
-        local camPos = root.Position + camRot:VectorToWorldSpace(cameraOffset)    
+
+        local camPos = basePos + camRot:VectorToWorldSpace(cameraOffset)    
 
         local desiredCF = CFrame.new(camPos, eyeTargetPos)    
 
