@@ -2,6 +2,7 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -9,10 +10,15 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local lockStrength = 0.85
+local smoothness = 50
 
 local currentTarget = nil
-local cameraOffset = Vector3.new(0, 5, -10) -- 🔥 ระยะหลังตัว
+local cameraDistance = 10
+local cameraHeight = 5
+
+-- 🔥 มุมกล้อง
+local yaw = 0
+local pitch = 0
 
 -- UI (เหมือนเดิม)
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
@@ -53,12 +59,27 @@ local stroke = Instance.new("UIStroke", circle)
 stroke.Color = Color3.fromRGB(0,255,0)
 stroke.Thickness = 2
 
+-- input (หมุนกล้อง)
+UIS.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        yaw -= input.Delta.X * 0.3
+        pitch -= input.Delta.Y * 0.3
+        pitch = math.clamp(pitch, -80, 80)
+    end
+end)
+
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
 
-    camera.CameraType = Enum.CameraType.Scriptable -- 🔥 เราคุมเองเต็ม
-    currentTarget = nil
+    if enabled then
+        camera.CameraType = Enum.CameraType.Scriptable
+        UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+    else
+        camera.CameraType = Enum.CameraType.Custom
+        UIS.MouseBehavior = Enum.MouseBehavior.Default
+        currentTarget = nil
+    end
 end)
 
 slider.MouseButton1Click:Connect(function()
@@ -71,6 +92,7 @@ end)
 deleteBtn.MouseButton1Click:Connect(function()
     running = false
     camera.CameraType = Enum.CameraType.Custom
+    UIS.MouseBehavior = Enum.MouseBehavior.Default
     gui:Destroy()
 end)
 
@@ -120,17 +142,21 @@ RunService.RenderStepped:Connect(function(dt)
         local root = char.HumanoidRootPart
         local targetPos = target.HumanoidRootPart.Position
 
-        -- 🔥 หมุนตัวละคร
+        -- 🔥 หมุนตัวละครเข้าหา target
         local lookCF = CFrame.new(root.Position, targetPos)
         root.CFrame = lookCF
 
-        -- 🔥 กล้องตามหลังตัวละคร (ไม่หลุด)
-        local camPos = lookCF:ToWorldSpace(CFrame.new(cameraOffset)).Position
+        -- 🔥 สร้าง rotation จากเมาส์
+        local rot = CFrame.Angles(0, math.rad(yaw), 0) * CFrame.Angles(math.rad(pitch), 0, 0)
 
-        -- 🎯 lock rotation
-        local targetLook = CFrame.new(camPos, targetPos)
+        -- 🔥 offset กล้อง
+        local offset = rot:VectorToWorldSpace(Vector3.new(0, cameraHeight, -cameraDistance))
+        local camPos = root.Position + offset
 
-        -- 🎮 blend
-        camera.CFrame = camera.CFrame:Lerp(targetLook, lockStrength)
+        -- 🔥 กล้องมอง target
+        local desiredCF = CFrame.new(camPos, targetPos)
+
+        local alpha = math.clamp(dt * smoothness, 0.5, 1)
+        camera.CFrame = camera.CFrame:Lerp(desiredCF, alpha)
     end
 end)
