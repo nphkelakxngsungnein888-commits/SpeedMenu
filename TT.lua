@@ -9,7 +9,7 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local smoothness = 3 -- ความแรงล็อค
+local force = 3 -- ความแรงล็อค
 
 -- UI (ย้ายไปมุม)
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
