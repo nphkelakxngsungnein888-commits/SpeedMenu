@@ -13,14 +13,14 @@ local running = true
 local smoothness = 50
 
 local currentTarget = nil
-local cameraDistance = 10
-local cameraHeight = 5
+local cameraOffset = Vector3.new(0, 5, -10)
 
--- 🔥 มุมกล้อง
+-- 🔥 mouse control
 local yaw = 0
 local pitch = 0
+local sensitivity = 0.2
 
--- UI (เหมือนเดิม)
+-- UI
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
 gui.Name = "LockUI"
 
@@ -59,15 +59,6 @@ local stroke = Instance.new("UIStroke", circle)
 stroke.Color = Color3.fromRGB(0,255,0)
 stroke.Thickness = 2
 
--- input (หมุนกล้อง)
-UIS.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        yaw -= input.Delta.X * 0.3
-        pitch -= input.Delta.Y * 0.3
-        pitch = math.clamp(pitch, -80, 80)
-    end
-end)
-
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
@@ -94,6 +85,16 @@ deleteBtn.MouseButton1Click:Connect(function()
     camera.CameraType = Enum.CameraType.Custom
     UIS.MouseBehavior = Enum.MouseBehavior.Default
     gui:Destroy()
+end)
+
+-- mouse input
+UIS.InputChanged:Connect(function(input)
+    if not enabled then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        yaw -= input.Delta.X * sensitivity
+        pitch -= input.Delta.Y * sensitivity
+        pitch = math.clamp(pitch, -80, 80)
+    end
 end)
 
 -- find target
@@ -142,21 +143,18 @@ RunService.RenderStepped:Connect(function(dt)
         local root = char.HumanoidRootPart
         local targetPos = target.HumanoidRootPart.Position
 
-        -- 🔥 หมุนตัวละครเข้าหา target
-        local lookCF = CFrame.new(root.Position, targetPos)
-        root.CFrame = lookCF
+        -- 🔥 base rotation จาก mouse
+        local camRot = CFrame.Angles(0, math.rad(yaw), 0) * CFrame.Angles(math.rad(pitch), 0, 0)
 
-        -- 🔥 สร้าง rotation จากเมาส์
-        local rot = CFrame.Angles(0, math.rad(yaw), 0) * CFrame.Angles(math.rad(pitch), 0, 0)
+        -- 🔥 offset ตาม rotation
+        local camPos = root.Position + camRot:VectorToWorldSpace(cameraOffset)
 
-        -- 🔥 offset กล้อง
-        local offset = rot:VectorToWorldSpace(Vector3.new(0, cameraHeight, -cameraDistance))
-        local camPos = root.Position + offset
-
-        -- 🔥 กล้องมอง target
+        -- 🔥 blend มอง target
         local desiredCF = CFrame.new(camPos, targetPos)
 
-        local alpha = math.clamp(dt * smoothness, 0.5, 1)
-        camera.CFrame = camera.CFrame:Lerp(desiredCF, alpha)
+        camera.CFrame = camera.CFrame:Lerp(desiredCF, math.clamp(dt * smoothness, 0.3, 1))
+
+        -- 🔥 ตัวละครยังล็อคเป้า
+        root.CFrame = CFrame.new(root.Position, targetPos)
     end
 end)
