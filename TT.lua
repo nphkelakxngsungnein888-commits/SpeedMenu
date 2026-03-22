@@ -9,9 +9,10 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local lockStrength = 0.85 -- 🔥 0-1 (ยิ่งสูงยิ่งล็อคแน่น)
+local lockStrength = 0.85
 
 local currentTarget = nil
+local cameraOffset = Vector3.new(0, 5, -10) -- 🔥 ตำแหน่งหลังตัว
 
 -- UI (เหมือนเดิม)
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
@@ -55,8 +56,6 @@ stroke.Thickness = 2
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
-
-    camera.CameraType = Enum.CameraType.Custom
     currentTarget = nil
 end)
 
@@ -109,6 +108,8 @@ RunService.RenderStepped:Connect(function()
     local char = player.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
+    local root = char.HumanoidRootPart
+
     if not currentTarget or currentTarget.Humanoid.Health <= 0 then
         currentTarget = findTarget()
     end
@@ -117,17 +118,17 @@ RunService.RenderStepped:Connect(function()
     if target then
         local targetPos = target.HumanoidRootPart.Position
 
-        -- 🎯 target rotation
-        local desiredLook = CFrame.new(camera.CFrame.Position, targetPos)
+        -- 🔥 กล้องอยู่หลังตัวเสมอ
+        local baseCF = root.CFrame
+        local camPos = baseCF:ToWorldSpace(CFrame.new(cameraOffset)).Position
 
-        -- 🎮 current player camera
-        local current = camera.CFrame
+        -- 🎯 หมุนไปหา target
+        local desiredLook = CFrame.new(camPos, targetPos)
 
-        -- 🔥 blend player input + lock
-        camera.CFrame = current:Lerp(desiredLook, lockStrength)
+        -- 🔥 blend rotation เท่านั้น
+        camera.CFrame = camera.CFrame:Lerp(desiredLook, lockStrength)
 
-        -- 🧍‍♂️ character follow camera
-        local root = char.HumanoidRootPart
+        -- 🧍‍♂️ ตัวละครหันตามกล้อง
         root.CFrame = CFrame.new(
             root.Position,
             camera.CFrame.LookVector * 1000 + root.Position
