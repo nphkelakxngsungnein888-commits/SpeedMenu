@@ -9,9 +9,10 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local smoothness = 50 -- 🔥 แรงจัด (แทบ instant)
+local smoothness = 50
 
-local currentTarget = nil -- 🔥 sticky
+local currentTarget = nil
+local cameraOffset = Vector3.new(0, 5, -10) -- 🔥 ระยะกล้องหลังตัว
 
 -- UI
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
@@ -57,7 +58,7 @@ toggle.MouseButton1Click:Connect(function()
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
 
     if enabled then
-        camera.CameraType = Enum.CameraType.Scriptable -- 🔥 lock กล้อง
+        camera.CameraType = Enum.CameraType.Scriptable
     else
         camera.CameraType = Enum.CameraType.Custom
         currentTarget = nil
@@ -114,27 +115,25 @@ RunService.RenderStepped:Connect(function(dt)
     local char = player.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
-    -- 🔥 sticky target
     if not currentTarget or currentTarget.Humanoid.Health <= 0 then
         currentTarget = findTarget()
     end
 
     local target = currentTarget
     if target then
+        local root = char.HumanoidRootPart
         local targetPos = target.HumanoidRootPart.Position
 
-        -- 🔥 direct lock (center 100%)
-        local camPos = camera.CFrame.Position
+        -- 🔥 วางกล้องหลังตัวละคร
+        local camPos = root.Position + root.CFrame:VectorToWorldSpace(cameraOffset)
+
+        -- 🔥 มองไปที่ target
         local desiredCF = CFrame.new(camPos, targetPos)
 
         local alpha = math.clamp(dt * smoothness, 0.5, 1)
-
         camera.CFrame = camera.CFrame:Lerp(desiredCF, alpha)
 
-        -- 🔥 character sync
-        char.HumanoidRootPart.CFrame = CFrame.new(
-            char.HumanoidRootPart.Position,
-            targetPos
-        )
+        -- 🔥 ตัวละครหันตาม
+        root.CFrame = CFrame.new(root.Position, targetPos)
     end
 end)
