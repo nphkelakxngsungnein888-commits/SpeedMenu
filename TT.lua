@@ -9,7 +9,9 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local smoothness = 100 -- 🔥 แรงขึ้นให้ดึงเข้ากลางไว
+local smoothness = 50 -- 🔥 แรงจัด (แทบ instant)
+
+local currentTarget = nil -- 🔥 sticky
 
 -- UI
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
@@ -53,6 +55,13 @@ stroke.Thickness = 2
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
+
+    if enabled then
+        camera.CameraType = Enum.CameraType.Scriptable -- 🔥 lock กล้อง
+    else
+        camera.CameraType = Enum.CameraType.Custom
+        currentTarget = nil
+    end
 end)
 
 slider.MouseButton1Click:Connect(function()
@@ -64,11 +73,12 @@ end)
 
 deleteBtn.MouseButton1Click:Connect(function()
     running = false
+    camera.CameraType = Enum.CameraType.Custom
     gui:Destroy()
 end)
 
--- target
-local function getTarget()
+-- หา target
+local function findTarget()
     local closest = nil
     local shortest = math.huge
 
@@ -104,63 +114,27 @@ RunService.RenderStepped:Connect(function(dt)
     local char = player.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
-    local target = getTarget()
+    -- 🔥 sticky target
+    if not currentTarget or currentTarget.Humanoid.Health <= 0 then
+        currentTarget = findTarget()
+    end
+
+    local target = currentTarget
     if target then
         local targetPos = target.HumanoidRootPart.Position
 
-        local screenPos, _ = camera:WorldToViewportPoint(targetPos)
-        local center = camera.ViewportSize / 2
+        -- 🔥 direct lock (center 100%)
+        local camPos = camera.CFrame.Position
+        local desiredCF = CFrame.new(camPos, targetPos)
 
-        local offset = Vector2.new(screenPos.X, screenPos.Y) - center
-
-        -- 🔥 แปลง offset เป็นมุมหมุน
-        local adjust = CFrame.Angles(
-            math.rad(-offset.Y * 0.05),
-            math.rad(-offset.X * 0.05),
-            0
-        )
-
-        local desiredCF = CFrame.new(camera.CFrame.Position, targetPos) * adjust
-
-        local alpha = math.clamp(dt * smoothness, 0.25, 1)
+        local alpha = math.clamp(dt * smoothness, 0.5, 1)
 
         camera.CFrame = camera.CFrame:Lerp(desiredCF, alpha)
 
-        -- sync character
+        -- 🔥 character sync
         char.HumanoidRootPart.CFrame = CFrame.new(
             char.HumanoidRootPart.Position,
-            camera.CFrame.LookVector * 1000 + char.HumanoidRootPart.Position
-        )
-    end
-end)                end
-            end
-        end
-    end
-
-    return closest
-end
-
-RunService.RenderStepped:Connect(function(dt)
-    if not running or not enabled then return end
-
-    local char = player.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-
-    local target = getTarget()
-    if target then
-        local targetPos = target.HumanoidRootPart.Position
-
-        -- 🔥 ใช้ CFrame เดียว
-        local targetCF = CFrame.new(char.HumanoidRootPart.Position, targetPos)
-
-        -- 🔥 clamp speed (กันช้า)
-        local alpha = math.clamp(dt * smoothness, 0.2, 1)
-
-        -- sync ทั้งคู่
-        char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame:Lerp(targetCF, alpha)
-        camera.CFrame = camera.CFrame:Lerp(
-            CFrame.new(camera.CFrame.Position, targetPos),
-            alpha
+            targetPos
         )
     end
 end)
