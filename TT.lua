@@ -22,6 +22,9 @@ local sensitivity = 0.2
 
 local circleDragEnabled = false  
 local dragging = false  
+local resizing = false  
+
+local resizeThreshold = 12  
 
 -- UI  
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))  
@@ -68,7 +71,21 @@ local stroke = Instance.new("UIStroke", circle)
 stroke.Color = Color3.fromRGB(0,255,0)  
 stroke.Thickness = 2  
 
--- toggle lock  
+-- helpers
+local function getMousePos()
+    local m = UIS:GetMouseLocation()
+    local inset = GuiService:GetGuiInset()
+    return Vector2.new(m.X - inset.X, m.Y - inset.Y)
+end
+
+local function getCircleCenter()
+    return Vector2.new(
+        circle.AbsolutePosition.X + circle.AbsoluteSize.X/2,
+        circle.AbsolutePosition.Y + circle.AbsoluteSize.Y/2
+    )
+end
+
+-- toggle
 toggle.MouseButton1Click:Connect(function()  
     enabled = not enabled  
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"  
@@ -81,76 +98,81 @@ toggle.MouseButton1Click:Connect(function()
         UIS.MouseBehavior = Enum.MouseBehavior.Default  
         currentTarget = nil  
     end  
-end)  
+end)
 
--- radius  
+-- slider click
 slider.MouseButton1Click:Connect(function()  
     radius += 25  
     if radius > 400 then radius = 50 end  
-    slider.Text = "Radius: "..radius  
     circle.Size = UDim2.new(0, radius*2, 0, radius*2)  
-end)  
+    slider.Text = "Radius: "..radius  
+end)
 
--- drag toggle  
+-- drag toggle
 dragToggle.MouseButton1Click:Connect(function()  
     circleDragEnabled = not circleDragEnabled  
     dragToggle.Text = circleDragEnabled and "Drag: ON" or "Drag: OFF"  
-end)  
+end)
 
--- drag start  
-circle.InputBegan:Connect(function(input)  
-    if not circleDragEnabled then return end  
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then  
-        dragging = true  
-    end  
-end)  
+-- input begin
+circle.InputBegan:Connect(function(input)
+    if not circleDragEnabled then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mouse = getMousePos()
+        local center = getCircleCenter()
+        local dist = (mouse - center).Magnitude
 
--- drag end  
-circle.InputEnded:Connect(function(input)  
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then  
-        dragging = false  
-    end  
-end)  
+        if math.abs(dist - radius) <= resizeThreshold then
+            resizing = true
+        else
+            dragging = true
+        end
+    end
+end)
 
--- drag move (FIXED)
-UIS.InputChanged:Connect(function(input)  
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then  
-        local mousePos = UIS:GetMouseLocation()  
-        local inset = GuiService:GetGuiInset()  
+-- input end
+circle.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+        resizing = false
+    end
+end)
 
-        local x = mousePos.X - inset.X  
-        local y = mousePos.Y - inset.Y  
+-- 🔥 single input handler (no conflict)
+UIS.InputChanged:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
 
-        circle.Position = UDim2.new(0, x, 0, y)  
-    end  
-end)  
+    -- camera rotate
+    if enabled then
+        yaw -= input.Delta.X * sensitivity  
+        pitch -= input.Delta.Y * sensitivity  
+        pitch = math.clamp(pitch, -80, 80)  
+    end
 
+    if not circleDragEnabled then return end
+
+    local mouse = getMousePos()
+
+    if resizing then
+        local center = getCircleCenter()
+        radius = math.clamp((mouse - center).Magnitude, 50, 400)
+        circle.Size = UDim2.new(0, radius*2, 0, radius*2)
+        slider.Text = "Radius: "..math.floor(radius)
+
+    elseif dragging then
+        circle.Position = UDim2.new(0, mouse.X, 0, mouse.Y)
+    end
+end)
+
+-- delete
 deleteBtn.MouseButton1Click:Connect(function()  
     running = false  
     camera.CameraType = Enum.CameraType.Custom  
     UIS.MouseBehavior = Enum.MouseBehavior.Default  
     gui:Destroy()  
-end)  
+end)
 
--- mouse input  
-UIS.InputChanged:Connect(function(input)  
-    if not enabled then return end  
-    if input.UserInputType == Enum.UserInputType.MouseMovement then  
-        yaw -= input.Delta.X * sensitivity  
-        pitch -= input.Delta.Y * sensitivity  
-        pitch = math.clamp(pitch, -80, 80)  
-    end  
-end)  
-
--- circle center  
-local function getCircleCenter()  
-    return Vector2.new(  
-        circle.AbsolutePosition.X + circle.AbsoluteSize.X/2,  
-        circle.AbsolutePosition.Y + circle.AbsoluteSize.Y/2  
-    )  
-end  
-
--- find target  
+-- find target
 local function findTarget()  
     local closest = nil  
     local shortest = math.huge  
@@ -190,7 +212,6 @@ RunService.RenderStepped:Connect(function(dt)
 
     local circleCenter = getCircleCenter()  
 
-    -- 🔥 reset ถ้าออกวง
     if currentTarget then  
         local pos, onScreen = camera:WorldToViewportPoint(currentTarget.HumanoidRootPart.Position)  
         if not onScreen or (Vector2.new(pos.X, pos.Y) - circleCenter).Magnitude > radius then  
@@ -210,8 +231,8 @@ RunService.RenderStepped:Connect(function(dt)
         local camPos = root.Position + camRot:VectorToWorldSpace(cameraOffset)  
 
         local desiredCF = CFrame.new(camPos, targetPos)  
-
         camera.CFrame = camera.CFrame:Lerp(desiredCF, math.clamp(dt * smoothness, 0.3, 1))  
+
         root.CFrame = CFrame.new(root.Position, targetPos)  
     end  
 end)
