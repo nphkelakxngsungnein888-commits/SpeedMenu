@@ -1,96 +1,86 @@
-local player = game.Players.LocalPlayer
+-- StarterPlayerScripts/LockTarget.lua
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-local character = player.Character or player.CharacterAdded:Wait()
-local root = character:WaitForChild("HumanoidRootPart")
+local enabled = false
+local radius = 150
+local running = true
 
--- ================= GUI =================
+-- UI
+local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+gui.Name = "LockUI"
 
-local gui = Instance.new("ScreenGui")
-gui.Parent = game.CoreGui
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 200, 0, 150)
+frame.Position = UDim2.new(0.5, -100, 0.5, -75)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+frame.Active = true
+frame.Draggable = true
 
-local circle = Instance.new("Frame")
-circle.Parent = gui
-circle.Size = UDim2.new(0,220,0,220)
-circle.Position = UDim2.new(0.5,-110,0.5,-110)
-circle.BackgroundTransparency = 1
-circle.BorderSizePixel = 3
-circle.BorderColor3 = Color3.fromRGB(255,255,255)
+local toggle = Instance.new("TextButton", frame)
+toggle.Size = UDim2.new(1,0,0,40)
+toggle.Text = "Toggle: OFF"
 
-local corner = Instance.new("UICorner")
-corner.Parent = circle
+local slider = Instance.new("TextButton", frame)
+slider.Position = UDim2.new(0,0,0,50)
+slider.Size = UDim2.new(1,0,0,40)
+slider.Text = "Radius: 150"
+
+local deleteBtn = Instance.new("TextButton", frame)
+deleteBtn.Position = UDim2.new(0,0,0,100)
+deleteBtn.Size = UDim2.new(1,0,0,40)
+deleteBtn.Text = "DELETE"
+
+-- circle
+local circle = Instance.new("Frame", gui)
+circle.AnchorPoint = Vector2.new(0.5,0.5)
+circle.Position = UDim2.new(0.5,0,0.5,0)
+circle.Size = UDim2.new(0, radius*2, 0, radius*2)
+circle.BackgroundTransparency = 0.7
+circle.BackgroundColor3 = Color3.fromRGB(0,255,0)
+
+local corner = Instance.new("UICorner", circle)
 corner.CornerRadius = UDim.new(1,0)
 
--- ปุ่มเปิด/ปิด
-local toggle = Instance.new("TextButton")
-toggle.Parent = gui
-toggle.Size = UDim2.new(0,130,0,40)
-toggle.Position = UDim2.new(0,30,0.7,0)
-toggle.Text = "LOCK : OFF"
-toggle.BackgroundColor3 = Color3.fromRGB(40,40,40)
-toggle.TextColor3 = Color3.new(1,1,1)
-
--- ช่องปรับขนาด
-local sizeBox = Instance.new("TextBox")
-sizeBox.Parent = gui
-sizeBox.Size = UDim2.new(0,130,0,40)
-sizeBox.Position = UDim2.new(0,30,0.8,0)
-sizeBox.Text = "220"
-sizeBox.PlaceholderText = "Circle Size"
-
--- ลบ GUI
-local delete = Instance.new("TextButton")
-delete.Parent = gui
-delete.Size = UDim2.new(0,130,0,40)
-delete.Position = UDim2.new(0,30,0.9,0)
-delete.Text = "DELETE"
-delete.BackgroundColor3 = Color3.fromRGB(70,0,0)
-delete.TextColor3 = Color3.new(1,1,1)
-
--- ================= SETTINGS =================
-
-local enabled = false
-
+-- toggle
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
-    toggle.Text = enabled and "LOCK : ON" or "LOCK : OFF"
+    toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
 end)
 
-delete.MouseButton1Click:Connect(function()
+-- slider (click to increase)
+slider.MouseButton1Click:Connect(function()
+    radius += 25
+    if radius > 400 then radius = 50 end
+    slider.Text = "Radius: "..radius
+    circle.Size = UDim2.new(0, radius*2, 0, radius*2)
+end)
+
+-- delete
+deleteBtn.MouseButton1Click:Connect(function()
+    running = false
     gui:Destroy()
 end)
 
-sizeBox.FocusLost:Connect(function()
-    local n = tonumber(sizeBox.Text)
-    if n then
-        circle.Size = UDim2.new(0,n,0,n)
-        circle.Position = UDim2.new(0.5,-n/2,0.5,-n/2)
-    end
-end)
-
--- ================= หาเป้า =================
-
+-- find target
 local function getTarget()
     local closest = nil
-    local shortest = math.huge
+    local shortest = radius
 
-    for _,v in pairs(workspace:GetChildren()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v ~= character then
-
-            local hrp = v:FindFirstChild("HumanoidRootPart")
-            if hrp then
-
-                local pos, visible = camera:WorldToViewportPoint(hrp.Position)
-
-                if visible then
-                    local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-                    local dist = (Vector2.new(pos.X,pos.Y) - center).Magnitude
-
-                    if dist < circle.AbsoluteSize.X/2 then
-                        if dist < shortest then
-                            shortest = dist
-                            closest = v
-                        end
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+            if v.Humanoid.Health > 0 and v ~= player.Character then
+                local pos, onScreen = camera:WorldToViewportPoint(v.HumanoidRootPart.Position)
+                if onScreen then
+                    local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)).Magnitude
+                    if dist < shortest then
+                        shortest = dist
+                        closest = v
                     end
                 end
             end
@@ -100,25 +90,22 @@ local function getTarget()
     return closest
 end
 
--- ================= ล็อคเป้า =================
-
-game:GetService("RunService").RenderStepped:Connect(function()
-
+-- main loop
+RunService.RenderStepped:Connect(function()
+    if not running then return end
     if not enabled then return end
 
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
     local target = getTarget()
-    if not target then return end
+    if target then
+        local targetPos = target.HumanoidRootPart.Position
 
-    local hrp = target:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+        -- rotate camera
+        camera.CFrame = CFrame.new(camera.CFrame.Position, targetPos)
 
-    -- หันตัวละครไปทางเป้า
-    root.CFrame = CFrame.lookAt(root.Position, hrp.Position)
-
-    -- กล้องหมุนตามเป้า (ไม่หลุดเวลาเดิน)
-    camera.CFrame = CFrame.lookAt(
-        camera.CFrame.Position,
-        hrp.Position
-    )
-
+        -- rotate character
+        char.HumanoidRootPart.CFrame = CFrame.new(char.HumanoidRootPart.Position, targetPos)
+    end
 end)
