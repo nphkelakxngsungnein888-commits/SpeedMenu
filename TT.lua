@@ -12,7 +12,7 @@ local running = true
 local lockStrength = 0.85
 
 local currentTarget = nil
-local cameraOffset = Vector3.new(0, 5, -10) -- 🔥 ตำแหน่งหลังตัว
+local cameraOffset = Vector3.new(0, 5, -10) -- 🔥 ระยะหลังตัว
 
 -- UI (เหมือนเดิม)
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
@@ -56,6 +56,8 @@ stroke.Thickness = 2
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
+
+    camera.CameraType = Enum.CameraType.Scriptable -- 🔥 เราคุมเองเต็ม
     currentTarget = nil
 end)
 
@@ -68,6 +70,7 @@ end)
 
 deleteBtn.MouseButton1Click:Connect(function()
     running = false
+    camera.CameraType = Enum.CameraType.Custom
     gui:Destroy()
 end)
 
@@ -102,13 +105,11 @@ local function findTarget()
     return closest
 end
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(dt)
     if not running or not enabled then return end
 
     local char = player.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-
-    local root = char.HumanoidRootPart
 
     if not currentTarget or currentTarget.Humanoid.Health <= 0 then
         currentTarget = findTarget()
@@ -116,22 +117,20 @@ RunService.RenderStepped:Connect(function()
 
     local target = currentTarget
     if target then
+        local root = char.HumanoidRootPart
         local targetPos = target.HumanoidRootPart.Position
 
-        -- 🔥 กล้องอยู่หลังตัวเสมอ
-        local baseCF = root.CFrame
-        local camPos = baseCF:ToWorldSpace(CFrame.new(cameraOffset)).Position
+        -- 🔥 หมุนตัวละคร
+        local lookCF = CFrame.new(root.Position, targetPos)
+        root.CFrame = lookCF
 
-        -- 🎯 หมุนไปหา target
-        local desiredLook = CFrame.new(camPos, targetPos)
+        -- 🔥 กล้องตามหลังตัวละคร (ไม่หลุด)
+        local camPos = lookCF:ToWorldSpace(CFrame.new(cameraOffset)).Position
 
-        -- 🔥 blend rotation เท่านั้น
-        camera.CFrame = camera.CFrame:Lerp(desiredLook, lockStrength)
+        -- 🎯 lock rotation
+        local targetLook = CFrame.new(camPos, targetPos)
 
-        -- 🧍‍♂️ ตัวละครหันตามกล้อง
-        root.CFrame = CFrame.new(
-            root.Position,
-            camera.CFrame.LookVector * 1000 + root.Position
-        )
+        -- 🎮 blend
+        camera.CFrame = camera.CFrame:Lerp(targetLook, lockStrength)
     end
 end)
