@@ -3,6 +3,7 @@
 local Players = game:GetService("Players")  
 local RunService = game:GetService("RunService")  
 local UIS = game:GetService("UserInputService")  
+local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer  
 local camera = workspace.CurrentCamera  
@@ -19,9 +20,8 @@ local yaw = 0
 local pitch = 0  
 local sensitivity = 0.2  
 
--- 🔥 circle drag state
-local circleDragEnabled = false
-local dragging = false
+local circleDragEnabled = false  
+local dragging = false  
 
 -- UI  
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))  
@@ -43,11 +43,10 @@ slider.Position = UDim2.new(0,0,0,50)
 slider.Size = UDim2.new(1,0,0,40)  
 slider.Text = "Radius: 150"  
 
--- 🔥 NEW BUTTON
-local dragToggle = Instance.new("TextButton", frame)
-dragToggle.Position = UDim2.new(0,0,0,100)
-dragToggle.Size = UDim2.new(1,0,0,40)
-dragToggle.Text = "Drag: OFF"
+local dragToggle = Instance.new("TextButton", frame)  
+dragToggle.Position = UDim2.new(0,0,0,100)  
+dragToggle.Size = UDim2.new(1,0,0,40)  
+dragToggle.Text = "Drag: OFF"  
 
 local deleteBtn = Instance.new("TextButton", frame)  
 deleteBtn.Position = UDim2.new(0,0,0,150)  
@@ -60,7 +59,7 @@ circle.AnchorPoint = Vector2.new(0.5,0.5)
 circle.Position = UDim2.new(0.5,0,0.5,0)  
 circle.Size = UDim2.new(0, radius*2, 0, radius*2)  
 circle.BackgroundTransparency = 1  
-circle.Active = true
+circle.Active = true  
 
 local corner = Instance.new("UICorner", circle)  
 corner.CornerRadius = UDim.new(1,0)  
@@ -69,7 +68,7 @@ local stroke = Instance.new("UIStroke", circle)
 stroke.Color = Color3.fromRGB(0,255,0)  
 stroke.Thickness = 2  
 
--- toggle lock
+-- toggle lock  
 toggle.MouseButton1Click:Connect(function()  
     enabled = not enabled  
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"  
@@ -84,7 +83,7 @@ toggle.MouseButton1Click:Connect(function()
     end  
 end)  
 
--- radius
+-- radius  
 slider.MouseButton1Click:Connect(function()  
     radius += 25  
     if radius > 400 then radius = 50 end  
@@ -92,32 +91,39 @@ slider.MouseButton1Click:Connect(function()
     circle.Size = UDim2.new(0, radius*2, 0, radius*2)  
 end)  
 
--- 🔥 toggle drag
-dragToggle.MouseButton1Click:Connect(function()
-    circleDragEnabled = not circleDragEnabled
-    dragToggle.Text = circleDragEnabled and "Drag: ON" or "Drag: OFF"
-end)
+-- drag toggle  
+dragToggle.MouseButton1Click:Connect(function()  
+    circleDragEnabled = not circleDragEnabled  
+    dragToggle.Text = circleDragEnabled and "Drag: ON" or "Drag: OFF"  
+end)  
 
--- 🔥 drag logic
-circle.InputBegan:Connect(function(input)
-    if not circleDragEnabled then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-    end
-end)
+-- drag start  
+circle.InputBegan:Connect(function(input)  
+    if not circleDragEnabled then return end  
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then  
+        dragging = true  
+    end  
+end)  
 
-circle.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
+-- drag end  
+circle.InputEnded:Connect(function(input)  
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then  
+        dragging = false  
+    end  
+end)  
 
-UIS.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local mousePos = UIS:GetMouseLocation()
-        circle.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y)
-    end
-end)
+-- drag move (FIXED)
+UIS.InputChanged:Connect(function(input)  
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then  
+        local mousePos = UIS:GetMouseLocation()  
+        local inset = GuiService:GetGuiInset()  
+
+        local x = mousePos.X - inset.X  
+        local y = mousePos.Y - inset.Y  
+
+        circle.Position = UDim2.new(0, x, 0, y)  
+    end  
+end)  
 
 deleteBtn.MouseButton1Click:Connect(function()  
     running = false  
@@ -136,11 +142,13 @@ UIS.InputChanged:Connect(function(input)
     end  
 end)  
 
--- 🔥 get circle center
-local function getCircleCenter()
-    return Vector2.new(circle.AbsolutePosition.X + circle.AbsoluteSize.X/2,
-                       circle.AbsolutePosition.Y + circle.AbsoluteSize.Y/2)
-end
+-- circle center  
+local function getCircleCenter()  
+    return Vector2.new(  
+        circle.AbsolutePosition.X + circle.AbsoluteSize.X/2,  
+        circle.AbsolutePosition.Y + circle.AbsoluteSize.Y/2  
+    )  
+end  
 
 -- find target  
 local function findTarget()  
@@ -151,7 +159,7 @@ local function findTarget()
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end  
 
     local myPos = char.HumanoidRootPart.Position  
-    local circleCenter = getCircleCenter()
+    local circleCenter = getCircleCenter()  
 
     for _, v in pairs(workspace:GetDescendants()) do  
         if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then  
@@ -180,14 +188,23 @@ RunService.RenderStepped:Connect(function(dt)
     local char = player.Character  
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end  
 
-    if not currentTarget or currentTarget.Humanoid.Health <= 0 then  
+    local circleCenter = getCircleCenter()  
+
+    -- 🔥 reset ถ้าออกวง
+    if currentTarget then  
+        local pos, onScreen = camera:WorldToViewportPoint(currentTarget.HumanoidRootPart.Position)  
+        if not onScreen or (Vector2.new(pos.X, pos.Y) - circleCenter).Magnitude > radius then  
+            currentTarget = nil  
+        end  
+    end  
+
+    if not currentTarget then  
         currentTarget = findTarget()  
     end  
 
-    local target = currentTarget  
-    if target then  
+    if currentTarget then  
         local root = char.HumanoidRootPart  
-        local targetPos = target.HumanoidRootPart.Position  
+        local targetPos = currentTarget.HumanoidRootPart.Position  
 
         local camRot = CFrame.Angles(0, math.rad(yaw), 0) * CFrame.Angles(math.rad(pitch), 0, 0)  
         local camPos = root.Position + camRot:VectorToWorldSpace(cameraOffset)  
