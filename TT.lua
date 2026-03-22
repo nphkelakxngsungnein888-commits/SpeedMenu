@@ -48,7 +48,7 @@ deleteBtn.Text = "DELETE"
 -- circle
 local circle = Instance.new("Frame", gui)
 circle.AnchorPoint = Vector2.new(0.5,0.5)
-circle.Position = UDim2.new(0.5,0,0.5,-56)
+circle.Position = UDim2.new(0.5,0,0.5, -56)
 circle.Size = UDim2.new(0, radius*2, 0, radius*2)
 circle.BackgroundTransparency = 1
 
