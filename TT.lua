@@ -9,10 +9,9 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local smoothness = 50
+local lockStrength = 0.85 -- 🔥 0-1 (ยิ่งสูงยิ่งล็อคแน่น)
 
 local currentTarget = nil
-local cameraOffset = Vector3.new(0, 5, -10)
 
 -- UI (เหมือนเดิม)
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
@@ -57,12 +56,8 @@ toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
 
-    if enabled then
-        camera.CameraType = Enum.CameraType.Scriptable
-    else
-        camera.CameraType = Enum.CameraType.Custom
-        currentTarget = nil
-    end
+    camera.CameraType = Enum.CameraType.Custom
+    currentTarget = nil
 end)
 
 slider.MouseButton1Click:Connect(function()
@@ -74,7 +69,6 @@ end)
 
 deleteBtn.MouseButton1Click:Connect(function()
     running = false
-    camera.CameraType = Enum.CameraType.Custom
     gui:Destroy()
 end)
 
@@ -109,7 +103,7 @@ local function findTarget()
     return closest
 end
 
-RunService.RenderStepped:Connect(function(dt)
+RunService.RenderStepped:Connect(function()
     if not running or not enabled then return end
 
     local char = player.Character
@@ -121,21 +115,22 @@ RunService.RenderStepped:Connect(function(dt)
 
     local target = currentTarget
     if target then
-        local root = char.HumanoidRootPart
         local targetPos = target.HumanoidRootPart.Position
 
-        -- 🔥 สร้าง rotation ใหม่ของตัวละคร
-        local lookCF = CFrame.new(root.Position, targetPos)
+        -- 🎯 target rotation
+        local desiredLook = CFrame.new(camera.CFrame.Position, targetPos)
 
-        -- 🔥 apply offset ตาม rotation ใหม่
-        local camPos = lookCF:ToWorldSpace(CFrame.new(cameraOffset)).Position
+        -- 🎮 current player camera
+        local current = camera.CFrame
 
-        local desiredCF = CFrame.new(camPos, targetPos)
+        -- 🔥 blend player input + lock
+        camera.CFrame = current:Lerp(desiredLook, lockStrength)
 
-        local alpha = math.clamp(dt * smoothness, 0.5, 1)
-        camera.CFrame = camera.CFrame:Lerp(desiredCF, alpha)
-
-        -- 🔥 หมุนตัวละคร
-        root.CFrame = lookCF
+        -- 🧍‍♂️ character follow camera
+        local root = char.HumanoidRootPart
+        root.CFrame = CFrame.new(
+            root.Position,
+            camera.CFrame.LookVector * 1000 + root.Position
+        )
     end
 end)
