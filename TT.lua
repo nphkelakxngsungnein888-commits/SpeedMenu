@@ -16,10 +16,7 @@ local lockEnabled = false
 local connection = nil
 local isLarge = true
 
--- Settings
-local predictionStrength = 0.15
-
--- ================= AIMBOT =================
+-- ================= AIMBOT (NO PREDICT / NO RECOIL) =================
 
 local function isEnemy(model)
 	if not model:FindFirstChild("Humanoid") then return false end
@@ -66,9 +63,7 @@ local function startLock()
 		local targetPart = getBestTarget(root)
 		if not targetPart then return end
 
-		local velocity = targetPart.Velocity
-		local predictedPos = targetPart.Position + (velocity * predictionStrength)
-		local aimPos = predictedPos + Vector3.new(0, 0.5, 0)
+		local aimPos = targetPart.Position + Vector3.new(0, 0.5, 0)
 
 		root.CFrame = CFrame.new(root.Position, aimPos)
 		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
@@ -95,6 +90,7 @@ frame.BorderSizePixel = 0
 frame.Parent = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0,12)
 
+-- Title (ใช้ลาก)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1,0,0,40)
 title.Text = "⚡ PRO LOCK MENU"
@@ -104,14 +100,13 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.Parent = frame
 
--- Toggle Button
+-- Toggle
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0.8,0,0,40)
 toggleBtn.Position = UDim2.new(0.1,0,0.3,0)
 toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 toggleBtn.TextColor3 = Color3.new(1,1,1)
-toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.Parent = frame
 Instance.new("UICorner", toggleBtn)
 
@@ -135,7 +130,7 @@ closeBtn.TextColor3 = Color3.new(1,1,1)
 closeBtn.Parent = frame
 Instance.new("UICorner", closeBtn)
 
--- Toggle Logic (เชื่อม AIMBOT)
+-- Toggle Logic
 toggleBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	
@@ -150,7 +145,7 @@ toggleBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Resize Logic
+-- Resize
 resizeBtn.MouseButton1Click:Connect(function()
 	isLarge = not isLarge
 	frame.Size = isLarge and UDim2.new(0,300,0,200) or UDim2.new(0,200,0,140)
@@ -162,14 +157,15 @@ closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
 
--- Drag
+-- 🔥 DRAG (เฉพาะ Title = เนียน)
 local dragging, dragInput, dragStart, startPos
 
-frame.InputBegan:Connect(function(input)
+title.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = true
 		dragStart = input.Position
 		startPos = frame.Position
+
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
 				dragging = false
@@ -178,7 +174,7 @@ frame.InputBegan:Connect(function(input)
 	end
 end)
 
-frame.InputChanged:Connect(function(input)
+title.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement then
 		dragInput = input
 	end
