@@ -1,119 +1,105 @@
 -- Services
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 -- Player
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
-
-local function getCharacter()
-	return player.Character or player.CharacterAdded:Wait()
-end
 
 -- State
 local lockEnabled = false
-local connection = nil
+local isLarge = true
 
--- Settings
-local predictionStrength = 0.15 -- 🔥 ปรับการยิงนำ (0.1 - 0.3 ดีสุด)
-
--- UI
+-- UI Root
 local gui = Instance.new("ScreenGui")
+gui.Name = "ProMenu"
 gui.Parent = player:WaitForChild("PlayerGui")
 
-local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 200, 0, 50)
-button.Position = UDim2.new(0, 20, 0, 20)
-button.Text = "Lock Head: OFF"
-button.BackgroundColor3 = Color3.fromRGB(200,50,50)
-button.Parent = gui
+-- Main Frame
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 300, 0, 200)
+frame.Position = UDim2.new(0.5, -150, 0.5, -100)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BorderSizePixel = 0
+frame.Parent = gui
 
--- Enemy check
-local function isEnemy(model)
-	if not model:FindFirstChild("Humanoid") then return false end
-	if Players:GetPlayerFromCharacter(model) then return false end
-	return true
-end
+-- UI Corner
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = frame
 
--- Target part
-local function getTargetPart(model)
-	return model:FindFirstChild("Head")
-		or model:FindFirstChild("HumanoidRootPart")
-		or model:FindFirstChild("Torso")
-end
+-- Title
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 40)
+title.Text = "⚡ PRO LOCK MENU"
+title.TextColor3 = Color3.fromRGB(255,255,255)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.Parent = frame
 
--- หา target กลางจอ
-local function getBestTarget(root)
-	local closestPart = nil
-	local shortest = math.huge
+-- Toggle Button
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.8, 0, 0, 40)
+toggleBtn.Position = UDim2.new(0.1, 0, 0.3, 0)
+toggleBtn.Text = "Lock: OFF"
+toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+toggleBtn.TextColor3 = Color3.new(1,1,1)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 16
+toggleBtn.Parent = frame
 
-	local screenCenter = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+Instance.new("UICorner", toggleBtn)
 
-	for _, obj in pairs(workspace:GetDescendants()) do
-		if obj:IsA("Model") and obj ~= root.Parent and isEnemy(obj) then
-			
-			local part = getTargetPart(obj)
-			if part then
-				local screenPos, visible = camera:WorldToViewportPoint(part.Position)
+-- Resize Button
+local resizeBtn = Instance.new("TextButton")
+resizeBtn.Size = UDim2.new(0.8, 0, 0, 40)
+resizeBtn.Position = UDim2.new(0.1, 0, 0.55, 0)
+resizeBtn.Text = "Resize Menu"
+resizeBtn.BackgroundColor3 = Color3.fromRGB(50,150,250)
+resizeBtn.TextColor3 = Color3.new(1,1,1)
+resizeBtn.Font = Enum.Font.GothamBold
+resizeBtn.TextSize = 16
+resizeBtn.Parent = frame
 
-				if visible then
-					local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-					if dist < shortest then
-						shortest = dist
-						closestPart = part
-					end
-				end
-			end
-		end
-	end
+Instance.new("UICorner", resizeBtn)
 
-	return closestPart
-end
+-- Close Button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.Text = "X"
+closeBtn.BackgroundColor3 = Color3.fromRGB(255,60,60)
+closeBtn.TextColor3 = Color3.new(1,1,1)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.Parent = frame
 
--- Start
-local function startLock()
-	connection = RunService.RenderStepped:Connect(function()
-		local character = getCharacter()
-		local root = character:FindFirstChild("HumanoidRootPart")
-		if not root then return end
+Instance.new("UICorner", closeBtn)
 
-		local targetPart = getBestTarget(root)
-		if not targetPart then return end
-
-		-- 🔥 Predict movement
-		local velocity = targetPart.Velocity
-		local predictedPos = targetPart.Position + (velocity * predictionStrength)
-
-		-- 🎯 ยิงหัว + offset
-		local aimPos = predictedPos + Vector3.new(0, 0.5, 0)
-
-		-- หมุนตัว
-		root.CFrame = CFrame.new(root.Position, aimPos)
-
-		-- 🔥 No recoil (ล็อคกล้อง)
-		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
-	end)
-end
-
--- Stop
-local function stopLock()
-	if connection then
-		connection:Disconnect()
-		connection = nil
-	end
-end
-
--- Toggle
-button.MouseButton1Click:Connect(function()
+-- Toggle Logic
+toggleBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	
 	if lockEnabled then
-		button.Text = "Lock Head: ON"
-		button.BackgroundColor3 = Color3.fromRGB(50,200,50)
-		startLock()
+		toggleBtn.Text = "Lock: ON"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(50,200,50)
 	else
-		button.Text = "Lock Head: OFF"
-		button.BackgroundColor3 = Color3.fromRGB(200,50,50)
-		stopLock()
+		toggleBtn.Text = "Lock: OFF"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 	end
+end)
+
+-- Resize Logic
+resizeBtn.MouseButton1Click:Connect(function()
+	isLarge = not isLarge
+	
+	if isLarge then
+		frame.Size = UDim2.new(0, 300, 0, 200)
+	else
+		frame.Size = UDim2.new(0, 200, 0, 140)
+	end
+end)
+
+-- Close Logic
+closeBtn.MouseButton1Click:Connect(function()
+	gui:Destroy()
 end)
