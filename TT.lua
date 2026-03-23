@@ -25,10 +25,9 @@ local function isEnemy(model)
 	return true
 end
 
+-- 🔥 ล็อค "ตัว" เท่านั้น
 local function getTargetPart(model)
-	return model:FindFirstChild("Head")
-		or model:FindFirstChild("HumanoidRootPart")
-		or model:FindFirstChild("Torso")
+	return model:FindFirstChild("HumanoidRootPart")
 end
 
 local function getBestTarget(root)
@@ -62,6 +61,7 @@ local function startLock()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
+		-- 🔥 ถ้าตาย → เปลี่ยนเป้าทันที
 		if not currentTarget or not isAlive(currentTarget) then
 			currentTarget = getBestTarget(root)
 		end
@@ -71,8 +71,9 @@ local function startLock()
 		local part = getTargetPart(currentTarget)
 		if not part then return end
 
-		local aimPos = part.Position + Vector3.new(0, 0.5, 0)
+		local aimPos = part.Position
 
+		-- 🎯 บังคับหัน + aim ตรงเป้า 100%
 		root.CFrame = CFrame.new(root.Position, aimPos)
 		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
 	end)
@@ -98,7 +99,6 @@ frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.Parent = gui
 Instance.new("UICorner", frame)
 
--- Title (ลาก)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1,0,0,40)
 title.Text = "⚡ PRO LOCK MENU"
@@ -107,7 +107,6 @@ title.TextColor3 = Color3.new(1,1,1)
 title.Parent = frame
 title.Active = true
 
--- Toggle
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0.8,0,0,40)
 toggleBtn.Position = UDim2.new(0.1,0,0.3,0)
@@ -115,21 +114,18 @@ toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 toggleBtn.Parent = frame
 
--- Resize
 local resizeBtn = Instance.new("TextButton")
 resizeBtn.Size = UDim2.new(0.8,0,0,40)
 resizeBtn.Position = UDim2.new(0.1,0,0.55,0)
 resizeBtn.Text = "Resize"
 resizeBtn.Parent = frame
 
--- Close
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0,30,0,30)
 closeBtn.Position = UDim2.new(1,-35,0,5)
 closeBtn.Text = "X"
 closeBtn.Parent = frame
 
--- Toggle
 toggleBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	
@@ -142,19 +138,17 @@ toggleBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Resize
 resizeBtn.MouseButton1Click:Connect(function()
 	isLarge = not isLarge
 	frame.Size = isLarge and UDim2.new(0,300,0,200) or UDim2.new(0,200,0,140)
 end)
 
--- Close
 closeBtn.MouseButton1Click:Connect(function()
 	stopLock()
 	gui:Destroy()
 end)
 
--- ================= DRAG (มือถือ + PC) =================
+-- ================= DRAG =================
 
 local dragging = false
 local dragInput = nil
@@ -200,4 +194,4 @@ UserInputService.InputChanged:Connect(function(input)
 			startPos.Y.Offset + delta.Y
 		)
 	end
-end)
+end)d
