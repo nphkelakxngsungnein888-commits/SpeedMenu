@@ -58,6 +58,14 @@ toggle.MouseButton1Click:Connect(function()
 
     camera.CameraType = Enum.CameraType.Custom
 
+    local char = player.Character
+    if char then
+        local humanoid = char:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid.AutoRotate = not enabled -- 🔥 สำคัญ
+        end
+    end
+
     if enabled then    
         UIS.MouseBehavior = Enum.MouseBehavior.LockCenter    
     else    
@@ -134,7 +142,6 @@ RunService.RenderStepped:Connect(function()
     local humanoid = char:FindFirstChild("Humanoid")
     if not root or not humanoid then return end
 
-    -- 🔥 shoulder cam (ไม่ใช้ Scriptable)
     humanoid.CameraOffset = Vector3.new(2, 1, 0)
 
     if not currentTarget or currentTarget.Humanoid.Health <= 0 then    
@@ -146,10 +153,13 @@ RunService.RenderStepped:Connect(function()
         local eyeTargetPos = getEyePosition(target)
         if not eyeTargetPos then return end
 
-        -- 🔥 หมุนตัวละครหาเป้า
         root.CFrame = CFrame.new(root.Position, eyeTargetPos)
 
-        -- 🔥 วงตามเป้า
+        -- 🔥 กล้องหันตามตัวละคร (smooth)
+        local camPos = camera.CFrame.Position
+        local targetCF = CFrame.new(camPos, camPos + root.CFrame.LookVector)
+        camera.CFrame = camera.CFrame:Lerp(targetCF, 0.2)
+
         local screenPos, onScreen = camera:WorldToViewportPoint(eyeTargetPos)
         if onScreen then
             circle.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y)
