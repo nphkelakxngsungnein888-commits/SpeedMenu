@@ -14,6 +14,9 @@ end
 local lockEnabled = false
 local connection = nil
 
+-- Settings
+local predictionStrength = 0.15 -- 🔥 ปรับการยิงนำ (0.1 - 0.3 ดีสุด)
+
 -- UI
 local gui = Instance.new("ScreenGui")
 gui.Parent = player:WaitForChild("PlayerGui")
@@ -32,7 +35,7 @@ local function isEnemy(model)
 	return true
 end
 
--- 🔥 เลือก HEAD ก่อน
+-- Target part
 local function getTargetPart(model)
 	return model:FindFirstChild("Head")
 		or model:FindFirstChild("HumanoidRootPart")
@@ -77,13 +80,17 @@ local function startLock()
 		local targetPart = getBestTarget(root)
 		if not targetPart then return end
 
-		-- 🎯 offset ขึ้นเล็กน้อย (หัวแม่นขึ้น)
-		local aimPos = targetPart.Position + Vector3.new(0, 0.5, 0)
+		-- 🔥 Predict movement
+		local velocity = targetPart.Velocity
+		local predictedPos = targetPart.Position + (velocity * predictionStrength)
+
+		-- 🎯 ยิงหัว + offset
+		local aimPos = predictedPos + Vector3.new(0, 0.5, 0)
 
 		-- หมุนตัว
 		root.CFrame = CFrame.new(root.Position, aimPos)
 
-		-- หมุนกล้อง
+		-- 🔥 No recoil (ล็อคกล้อง)
 		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
 	end)
 end
