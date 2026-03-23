@@ -15,7 +15,7 @@ end
 local lockEnabled = false
 local connection = nil
 local isLarge = true
-local currentTarget = nil -- 🔥 target ที่ล็อคอยู่
+local currentTarget = nil
 
 -- ================= AIMBOT =================
 
@@ -62,7 +62,6 @@ local function startLock()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		-- 🔥 ถ้ายังไม่มี target หรือมันตาย → หาใหม่
 		if not currentTarget or not isAlive(currentTarget) then
 			currentTarget = getBestTarget(root)
 		end
@@ -106,7 +105,7 @@ title.Text = "⚡ PRO LOCK MENU"
 title.BackgroundTransparency = 1
 title.TextColor3 = Color3.new(1,1,1)
 title.Parent = frame
-title.Active = true -- 🔥 สำคัญมาก
+title.Active = true
 
 -- Toggle
 local toggleBtn = Instance.new("TextButton")
@@ -155,29 +154,45 @@ closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
 
--- 🔥 DRAG FIX (ใช้ delta จริง)
+-- ================= DRAG (มือถือ + PC) =================
+
 local dragging = false
+local dragInput = nil
 local dragStart
 local startPos
 
 title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		
 		dragging = true
 		dragStart = input.Position
 		startPos = frame.Position
+		dragInput = input
+	end
+end)
+
+title.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+	or input.UserInputType == Enum.UserInputType.Touch then
+		
+		dragInput = input
 	end
 end)
 
 title.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		
 		dragging = false
+		dragInput = nil
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+	if dragging and input == dragInput then
 		local delta = input.Position - dragStart
-
+		
 		frame.Position = UDim2.new(
 			startPos.X.Scale,
 			startPos.X.Offset + delta.X,
