@@ -13,7 +13,7 @@ local running = true
 local smoothness = 50
 
 local currentTarget = nil
-local cameraOffset = Vector3.new(2, 1, -6) -- 🔥 shoulder + ไม่ลอย
+local cameraOffset = Vector3.new(2, 1, -6)
 
 -- mouse control
 local yaw = 0
@@ -87,17 +87,15 @@ deleteBtn.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
 
--- mouse input
 UIS.InputChanged:Connect(function(input)
     if not enabled then return end
     if input.UserInputType == Enum.UserInputType.MouseMovement then
         yaw -= input.Delta.X * sensitivity
         pitch -= input.Delta.Y * sensitivity
-        pitch = math.clamp(pitch, -45, 45) -- 🔥 ลดการก้ม/เงย
+        pitch = math.clamp(pitch, -45, 45)
     end
 end)
 
--- get eye position
 local function getEyePosition(character)
     local head = character:FindFirstChild("Head")
     if head then
@@ -112,7 +110,6 @@ local function getEyePosition(character)
     return nil
 end
 
--- find target
 local function findTarget()
     local closest = nil
     local shortest = math.huge
@@ -158,20 +155,25 @@ RunService.RenderStepped:Connect(function(dt)
         local root = char.HumanoidRootPart    
         local head = char:FindFirstChild("Head")
 
-        -- 🔥 ดึง base ลง (แก้ลอยจริง)
         local basePos = (head and head.Position or root.Position) - Vector3.new(0, 0.7, 0)
 
         local eyeTargetPos = getEyePosition(target)
         if not eyeTargetPos then return end
 
         local camRot = CFrame.Angles(0, math.rad(yaw), 0) * CFrame.Angles(math.rad(pitch), 0, 0)    
-
         local camPos = basePos + camRot:VectorToWorldSpace(cameraOffset)    
 
         local desiredCF = CFrame.new(camPos, eyeTargetPos)    
-
         camera.CFrame = camera.CFrame:Lerp(desiredCF, math.clamp(dt * smoothness, 0.3, 1))    
 
-        root.CFrame = CFrame.new(root.Position, eyeTargetPos)    
+        root.CFrame = CFrame.new(root.Position, eyeTargetPos)
+
+        -- 🔥 วงตามจุดล็อค
+        local screenPos, onScreen = camera:WorldToViewportPoint(eyeTargetPos)
+        if onScreen then
+            circle.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y)
+        end
+    else
+        circle.Position = UDim2.new(0.5, 0, 0.5, 0)
     end
 end)
