@@ -25,49 +25,74 @@ button.Text = "Lock Target: OFF"
 button.BackgroundColor3 = Color3.fromRGB(200,50,50)
 button.Parent = gui
 
--- หา NPC ใกล้สุด
-local function getClosestNPC(root)
-	local closest = nil
+-- 🔥 เช็คว่าเป็นศัตรู (ไม่ใช่ player)
+local function isEnemy(model)
+	if not model:FindFirstChild("Humanoid") then
+		return false
+	end
+
+	-- ถ้าเป็น player → ไม่ใช่ศัตรู
+	if Players:GetPlayerFromCharacter(model) then
+		return false
+	end
+
+	return true
+end
+
+-- 🔥 หา part สำหรับเล็ง
+local function getTargetPart(model)
+	return model:FindFirstChild("HumanoidRootPart")
+		or model:FindFirstChild("Head")
+		or model:FindFirstChild("Torso")
+end
+
+-- 🔥 หา target (กลางจอ + ทุกมอน)
+local function getBestTarget(root)
+	local closestPart = nil
 	local shortest = math.huge
 
-	for _, obj in pairs(workspace:GetChildren()) do
-		if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj ~= root.Parent then
-			local hrp = obj:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				local dist = (hrp.Position - root.Position).Magnitude
-				if dist < shortest then
-					shortest = dist
-					closest = obj
+	local screenCenter = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and obj ~= root.Parent and isEnemy(obj) then
+			
+			local part = getTargetPart(obj)
+			if part then
+				local screenPos, visible = camera:WorldToViewportPoint(part.Position)
+
+				if visible then
+					local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+					if dist < shortest then
+						shortest = dist
+						closestPart = part
+					end
 				end
 			end
 		end
 	end
 
-	return closest
+	return closestPart
 end
 
--- เริ่มล็อค
+-- Start
 local function startLock()
 	connection = RunService.RenderStepped:Connect(function()
 		local character = getCharacter()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		local target = getClosestNPC(root)
-		if not target then return end
+		local targetPart = getBestTarget(root)
+		if not targetPart then return end
 
-		local targetHRP = target:FindFirstChild("HumanoidRootPart")
-		if not targetHRP then return end
-
-		-- หมุนตัวละคร
-		root.CFrame = CFrame.new(root.Position, targetHRP.Position)
+		-- หมุนตัว
+		root.CFrame = CFrame.new(root.Position, targetPart.Position)
 
 		-- หมุนกล้อง
-		camera.CFrame = CFrame.new(camera.CFrame.Position, targetHRP.Position)
+		camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
 	end)
 end
 
--- หยุดล็อค
+-- Stop
 local function stopLock()
 	if connection then
 		connection:Disconnect()
