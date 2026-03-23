@@ -15,8 +15,9 @@ end
 local lockEnabled = false
 local connection = nil
 local isLarge = true
+local currentTarget = nil -- 🔥 target ที่ล็อคอยู่
 
--- ================= AIMBOT (NO PREDICT / NO RECOIL) =================
+-- ================= AIMBOT =================
 
 local function isEnemy(model)
 	if not model:FindFirstChild("Humanoid") then return false end
@@ -31,27 +32,28 @@ local function getTargetPart(model)
 end
 
 local function getBestTarget(root)
-	local closestPart = nil
+	local closest = nil
 	local shortest = math.huge
-	local screenCenter = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
 
 	for _, obj in pairs(workspace:GetDescendants()) do
 		if obj:IsA("Model") and obj ~= root.Parent and isEnemy(obj) then
 			local part = getTargetPart(obj)
 			if part then
-				local screenPos, visible = camera:WorldToViewportPoint(part.Position)
-				if visible then
-					local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-					if dist < shortest then
-						shortest = dist
-						closestPart = part
-					end
+				local dist = (part.Position - root.Position).Magnitude
+				if dist < shortest then
+					shortest = dist
+					closest = obj
 				end
 			end
 		end
 	end
 
-	return closestPart
+	return closest
+end
+
+local function isAlive(model)
+	local hum = model and model:FindFirstChild("Humanoid")
+	return hum and hum.Health > 0
 end
 
 local function startLock()
@@ -60,10 +62,17 @@ local function startLock()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		local targetPart = getBestTarget(root)
-		if not targetPart then return end
+		-- 🔥 ถ้ายังไม่มี target หรือมันตาย → หาใหม่
+		if not currentTarget or not isAlive(currentTarget) then
+			currentTarget = getBestTarget(root)
+		end
 
-		local aimPos = targetPart.Position + Vector3.new(0, 0.5, 0)
+		if not currentTarget then return end
+
+		local part = getTargetPart(currentTarget)
+		if not part then return end
+
+		local aimPos = part.Position + Vector3.new(0, 0.5, 0)
 
 		root.CFrame = CFrame.new(root.Position, aimPos)
 		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
@@ -75,6 +84,7 @@ local function stopLock()
 		connection:Disconnect()
 		connection = nil
 	end
+	currentTarget = nil
 end
 
 -- ================= MENU =================
@@ -86,19 +96,17 @@ local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 300, 0, 200)
 frame.Position = UDim2.new(0.5, -150, 0.5, -100)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-frame.BorderSizePixel = 0
 frame.Parent = gui
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0,12)
+Instance.new("UICorner", frame)
 
--- Title (ใช้ลาก)
+-- Title (ลาก)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1,0,0,40)
 title.Text = "⚡ PRO LOCK MENU"
 title.BackgroundTransparency = 1
 title.TextColor3 = Color3.new(1,1,1)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 18
 title.Parent = frame
+title.Active = true -- 🔥 สำคัญมาก
 
 -- Toggle
 local toggleBtn = Instance.new("TextButton")
@@ -106,41 +114,31 @@ toggleBtn.Size = UDim2.new(0.8,0,0,40)
 toggleBtn.Position = UDim2.new(0.1,0,0.3,0)
 toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-toggleBtn.TextColor3 = Color3.new(1,1,1)
 toggleBtn.Parent = frame
-Instance.new("UICorner", toggleBtn)
 
 -- Resize
 local resizeBtn = Instance.new("TextButton")
 resizeBtn.Size = UDim2.new(0.8,0,0,40)
 resizeBtn.Position = UDim2.new(0.1,0,0.55,0)
 resizeBtn.Text = "Resize"
-resizeBtn.BackgroundColor3 = Color3.fromRGB(50,150,250)
-resizeBtn.TextColor3 = Color3.new(1,1,1)
 resizeBtn.Parent = frame
-Instance.new("UICorner", resizeBtn)
 
 -- Close
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0,30,0,30)
 closeBtn.Position = UDim2.new(1,-35,0,5)
 closeBtn.Text = "X"
-closeBtn.BackgroundColor3 = Color3.fromRGB(255,60,60)
-closeBtn.TextColor3 = Color3.new(1,1,1)
 closeBtn.Parent = frame
-Instance.new("UICorner", closeBtn)
 
--- Toggle Logic
+-- Toggle
 toggleBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	
 	if lockEnabled then
 		toggleBtn.Text = "Lock: ON"
-		toggleBtn.BackgroundColor3 = Color3.fromRGB(50,200,50)
 		startLock()
 	else
 		toggleBtn.Text = "Lock: OFF"
-		toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 		stopLock()
 	end
 end)
@@ -157,32 +155,29 @@ closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
 
--- 🔥 DRAG (เฉพาะ Title = เนียน)
-local dragging, dragInput, dragStart, startPos
+-- 🔥 DRAG FIX (ใช้ delta จริง)
+local dragging = false
+local dragStart
+local startPos
 
 title.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = true
 		dragStart = input.Position
 		startPos = frame.Position
-
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
 	end
 end)
 
-title.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		dragInput = input
+title.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if input == dragInput and dragging then
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 		local delta = input.Position - dragStart
+
 		frame.Position = UDim2.new(
 			startPos.X.Scale,
 			startPos.X.Offset + delta.X,
