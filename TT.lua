@@ -21,32 +21,25 @@ gui.Parent = player:WaitForChild("PlayerGui")
 local button = Instance.new("TextButton")
 button.Size = UDim2.new(0, 200, 0, 50)
 button.Position = UDim2.new(0, 20, 0, 20)
-button.Text = "Lock Target: OFF"
+button.Text = "Lock Head: OFF"
 button.BackgroundColor3 = Color3.fromRGB(200,50,50)
 button.Parent = gui
 
--- 🔥 เช็คว่าเป็นศัตรู (ไม่ใช่ player)
+-- Enemy check
 local function isEnemy(model)
-	if not model:FindFirstChild("Humanoid") then
-		return false
-	end
-
-	-- ถ้าเป็น player → ไม่ใช่ศัตรู
-	if Players:GetPlayerFromCharacter(model) then
-		return false
-	end
-
+	if not model:FindFirstChild("Humanoid") then return false end
+	if Players:GetPlayerFromCharacter(model) then return false end
 	return true
 end
 
--- 🔥 หา part สำหรับเล็ง
+-- 🔥 เลือก HEAD ก่อน
 local function getTargetPart(model)
-	return model:FindFirstChild("HumanoidRootPart")
-		or model:FindFirstChild("Head")
+	return model:FindFirstChild("Head")
+		or model:FindFirstChild("HumanoidRootPart")
 		or model:FindFirstChild("Torso")
 end
 
--- 🔥 หา target (กลางจอ + ทุกมอน)
+-- หา target กลางจอ
 local function getBestTarget(root)
 	local closestPart = nil
 	local shortest = math.huge
@@ -84,11 +77,14 @@ local function startLock()
 		local targetPart = getBestTarget(root)
 		if not targetPart then return end
 
+		-- 🎯 offset ขึ้นเล็กน้อย (หัวแม่นขึ้น)
+		local aimPos = targetPart.Position + Vector3.new(0, 0.5, 0)
+
 		-- หมุนตัว
-		root.CFrame = CFrame.new(root.Position, targetPart.Position)
+		root.CFrame = CFrame.new(root.Position, aimPos)
 
 		-- หมุนกล้อง
-		camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
+		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
 	end)
 end
 
@@ -105,11 +101,11 @@ button.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	
 	if lockEnabled then
-		button.Text = "Lock Target: ON"
+		button.Text = "Lock Head: ON"
 		button.BackgroundColor3 = Color3.fromRGB(50,200,50)
 		startLock()
 	else
-		button.Text = "Lock Target: OFF"
+		button.Text = "Lock Head: OFF"
 		button.BackgroundColor3 = Color3.fromRGB(200,50,50)
 		stopLock()
 	end
