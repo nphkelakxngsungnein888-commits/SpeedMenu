@@ -25,7 +25,7 @@ local function isEnemy(model)
 	return true
 end
 
--- 🔥 ล็อค "ตัว" เท่านั้น
+-- 🔥 ล็อค "ตัว"
 local function getTargetPart(model)
 	return model:FindFirstChild("HumanoidRootPart")
 end
@@ -61,7 +61,7 @@ local function startLock()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		-- 🔥 ถ้าตาย → เปลี่ยนเป้าทันที
+		-- 🔥 เปลี่ยนเป้าทันทีเมื่อไม่มี/ตาย
 		if not currentTarget or not isAlive(currentTarget) then
 			currentTarget = getBestTarget(root)
 		end
@@ -69,11 +69,14 @@ local function startLock()
 		if not currentTarget then return end
 
 		local part = getTargetPart(currentTarget)
-		if not part then return end
+		if not part then 
+			currentTarget = nil
+			return 
+		end
 
 		local aimPos = part.Position
 
-		-- 🎯 บังคับหัน + aim ตรงเป้า 100%
+		-- 🎯 Aim ตรงเป้า
 		root.CFrame = CFrame.new(root.Position, aimPos)
 		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
 	end)
@@ -126,6 +129,7 @@ closeBtn.Position = UDim2.new(1,-35,0,5)
 closeBtn.Text = "X"
 closeBtn.Parent = frame
 
+-- Toggle
 toggleBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	
@@ -138,17 +142,19 @@ toggleBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- Resize
 resizeBtn.MouseButton1Click:Connect(function()
 	isLarge = not isLarge
 	frame.Size = isLarge and UDim2.new(0,300,0,200) or UDim2.new(0,200,0,140)
 end)
 
+-- Close
 closeBtn.MouseButton1Click:Connect(function()
 	stopLock()
 	gui:Destroy()
 end)
 
--- ================= DRAG =================
+-- ================= DRAG (มือถือ + PC) =================
 
 local dragging = false
 local dragInput = nil
@@ -169,7 +175,6 @@ end)
 title.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement
 	or input.UserInputType == Enum.UserInputType.Touch then
-		
 		dragInput = input
 	end
 end)
@@ -177,7 +182,6 @@ end)
 title.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 	or input.UserInputType == Enum.UserInputType.Touch then
-		
 		dragging = false
 		dragInput = nil
 	end
@@ -194,4 +198,4 @@ UserInputService.InputChanged:Connect(function(input)
 			startPos.Y.Offset + delta.Y
 		)
 	end
-end)d
+end)
