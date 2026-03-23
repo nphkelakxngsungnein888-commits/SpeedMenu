@@ -10,15 +10,8 @@ local camera = workspace.CurrentCamera
 local enabled = false
 local radius = 150
 local running = true
-local smoothness = 50
 
 local currentTarget = nil
-local cameraOffset = Vector3.new(2, 1, -6)
-
--- mouse control
-local yaw = 0
-local pitch = 0
-local sensitivity = 0.2
 
 -- UI
 local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
@@ -63,11 +56,11 @@ toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "Toggle: ON" or "Toggle: OFF"
 
+    camera.CameraType = Enum.CameraType.Custom
+
     if enabled then    
-        camera.CameraType = Enum.CameraType.Scriptable    
         UIS.MouseBehavior = Enum.MouseBehavior.LockCenter    
     else    
-        camera.CameraType = Enum.CameraType.Custom    
         UIS.MouseBehavior = Enum.MouseBehavior.Default    
         currentTarget = nil    
     end
@@ -87,19 +80,10 @@ deleteBtn.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
 
-UIS.InputChanged:Connect(function(input)
-    if not enabled then return end
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        yaw -= input.Delta.X * sensitivity
-        pitch -= input.Delta.Y * sensitivity
-        pitch = math.clamp(pitch, -45, 45)
-    end
-end)
-
 local function getEyePosition(character)
     local head = character:FindFirstChild("Head")
     if head then
-        return head.Position + Vector3.new(0, 0.5, 0)
+        return head.Position + Vector3.new(0, 1.2, 0)
     end
     
     local hrp = character:FindFirstChild("HumanoidRootPart")
@@ -140,11 +124,18 @@ local function findTarget()
     return closest
 end
 
-RunService.RenderStepped:Connect(function(dt)
+RunService.RenderStepped:Connect(function()
     if not running or not enabled then return end
 
     local char = player.Character    
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end    
+    if not char then return end    
+
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not root or not humanoid then return end
+
+    -- 🔥 shoulder cam (ไม่ใช้ Scriptable)
+    humanoid.CameraOffset = Vector3.new(2, 1, 0)
 
     if not currentTarget or currentTarget.Humanoid.Health <= 0 then    
         currentTarget = findTarget()    
@@ -152,23 +143,13 @@ RunService.RenderStepped:Connect(function(dt)
 
     local target = currentTarget    
     if target then    
-        local root = char.HumanoidRootPart    
-        local head = char:FindFirstChild("Head")
-
-        local basePos = (head and head.Position or root.Position) - Vector3.new(0, 0.7, 0)
-
         local eyeTargetPos = getEyePosition(target)
         if not eyeTargetPos then return end
 
-        local camRot = CFrame.Angles(0, math.rad(yaw), 0) * CFrame.Angles(math.rad(pitch), 0, 0)    
-        local camPos = basePos + camRot:VectorToWorldSpace(cameraOffset)    
-
-        local desiredCF = CFrame.new(camPos, eyeTargetPos)    
-        camera.CFrame = camera.CFrame:Lerp(desiredCF, math.clamp(dt * smoothness, 0.3, 1))    
-
+        -- 🔥 หมุนตัวละครหาเป้า
         root.CFrame = CFrame.new(root.Position, eyeTargetPos)
 
-        -- 🔥 วงตามจุดล็อค
+        -- 🔥 วงตามเป้า
         local screenPos, onScreen = camera:WorldToViewportPoint(eyeTargetPos)
         if onScreen then
             circle.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y)
