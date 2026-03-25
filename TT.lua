@@ -16,6 +16,7 @@ local lockEnabled = false
 local connection = nil
 local isLarge = true
 local currentTarget = nil
+local isFirstLock = true -- 🔥 เพิ่ม
 
 -- ================= AIMBOT =================
 
@@ -25,17 +26,45 @@ local function isEnemy(model)
 	return true
 end
 
--- 🔥 ล็อค "ตัว"
 local function getTargetPart(model)
 	return model:FindFirstChild("HumanoidRootPart")
 end
 
+local function isAlive(model)
+	local hum = model and model:FindFirstChild("Humanoid")
+	return hum and hum.Health > 0
+end
+
+-- 🔥 เลือกตัวหน้ากล้อง (ตอนเปิด)
+local function getFrontTarget(root)
+	local best = nil
+	local bestDot = -1
+
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and obj ~= root.Parent and isEnemy(obj) and isAlive(obj) then
+			local part = getTargetPart(obj)
+			if part then
+				local direction = (part.Position - camera.CFrame.Position).Unit
+				local dot = camera.CFrame.LookVector:Dot(direction)
+
+				if dot > bestDot then
+					bestDot = dot
+					best = obj
+				end
+			end
+		end
+	end
+
+	return best
+end
+
+-- 🔥 เลือกตัวใกล้สุด (ใช้หลังจากฆ่า)
 local function getBestTarget(root)
 	local closest = nil
 	local shortest = math.huge
 
 	for _, obj in pairs(workspace:GetDescendants()) do
-		if obj:IsA("Model") and obj ~= root.Parent and isEnemy(obj) then
+		if obj:IsA("Model") and obj ~= root.Parent and isEnemy(obj) and isAlive(obj) then
 			local part = getTargetPart(obj)
 			if part then
 				local dist = (part.Position - root.Position).Magnitude
@@ -50,18 +79,19 @@ local function getBestTarget(root)
 	return closest
 end
 
-local function isAlive(model)
-	local hum = model and model:FindFirstChild("Humanoid")
-	return hum and hum.Health > 0
-end
-
 local function startLock()
 	connection = RunService.RenderStepped:Connect(function()
 		local character = getCharacter()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		-- 🔥 เปลี่ยนเป้าทันทีเมื่อไม่มี/ตาย
+		-- 🟢 เปิดใหม่ → ล็อคตัวหน้ากล้อง
+		if isFirstLock then
+			currentTarget = getFrontTarget(root)
+			isFirstLock = false
+		end
+
+		-- 🔁 ถ้าตาย → ล็อคตัวใกล้สุดทันที
 		if not currentTarget or not isAlive(currentTarget) then
 			currentTarget = getBestTarget(root)
 		end
@@ -69,14 +99,10 @@ local function startLock()
 		if not currentTarget then return end
 
 		local part = getTargetPart(currentTarget)
-		if not part then 
-			currentTarget = nil
-			return 
-		end
+		if not part then return end
 
 		local aimPos = part.Position
 
-		-- 🎯 Aim ตรงเป้า
 		root.CFrame = CFrame.new(root.Position, aimPos)
 		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
 	end)
@@ -134,6 +160,8 @@ toggleBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	
 	if lockEnabled then
+		currentTarget = nil
+		isFirstLock = true -- 🔥 สำคัญ
 		toggleBtn.Text = "Lock: ON"
 		startLock()
 	else
@@ -154,7 +182,7 @@ closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
 
--- ================= DRAG (มือถือ + PC) =================
+-- ================= DRAG =================
 
 local dragging = false
 local dragInput = nil
