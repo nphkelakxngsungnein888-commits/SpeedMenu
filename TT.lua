@@ -17,7 +17,7 @@ local connection = nil
 local isLarge = true  
 local currentTarget = nil  
 
--- 🔥 MODE
+-- MODE
 local targetMode = "Monster" -- "Player" / "Monster"
 
 -- ESP  
@@ -26,38 +26,48 @@ local espObjects = {}
 
 -- ================= AIMBOT =================  
 
-local function isValidTarget(model)
-	local hum = model:FindFirstChild("Humanoid")
-	if not hum or hum.Health <= 0 then return false end
-
-	local plr = Players:GetPlayerFromCharacter(model)
-
-	if targetMode == "Monster" then
-		return plr == nil
-	elseif targetMode == "Player" then
-		return plr ~= nil and plr ~= player
-	end
-
-	return false
+local function isAlive(model)
+	local hum = model and model:FindFirstChild("Humanoid")
+	return hum and hum.Health > 0
 end
 
 local function getTargetPart(model)
 	return model:FindFirstChild("HumanoidRootPart")
 end
 
--- 🔥 ใกล้สุดเท่านั้น
+-- 🔥 OPTIMIZED TARGET FIND
 local function getClosestTarget(root)
 	local closest = nil
 	local shortest = math.huge
 
-	for _, obj in pairs(workspace:GetDescendants()) do
-		if obj:IsA("Model") and obj ~= root.Parent and isValidTarget(obj) then
-			local part = getTargetPart(obj)
-			if part then
-				local dist = (part.Position - root.Position).Magnitude
-				if dist < shortest then
-					shortest = dist
-					closest = obj
+	if targetMode == "Player" then
+		-- ✅ เบามาก (แก้แลค)
+		for _, plr in pairs(Players:GetPlayers()) do
+			if plr ~= player and plr.Character and isAlive(plr.Character) then
+				local part = getTargetPart(plr.Character)
+				if part then
+					local dist = (part.Position - root.Position).Magnitude
+					if dist < shortest then
+						shortest = dist
+						closest = plr.Character
+					end
+				end
+			end
+		end
+
+	else
+		-- Monster
+		for _, obj in pairs(workspace:GetDescendants()) do
+			if obj:IsA("Model") and obj ~= root.Parent and isAlive(obj) then
+				if not Players:GetPlayerFromCharacter(obj) then
+					local part = getTargetPart(obj)
+					if part then
+						local dist = (part.Position - root.Position).Magnitude
+						if dist < shortest then
+							shortest = dist
+							closest = obj
+						end
+					end
 				end
 			end
 		end
@@ -72,7 +82,6 @@ local function startLock()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		-- 🔥 ล็อคใกล้สุดตลอด
 		currentTarget = getClosestTarget(root)
 		if not currentTarget then return end
 
@@ -122,12 +131,11 @@ toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)  
 toggleBtn.Parent = frame  
 
--- Mode Switch 🔥
+-- Mode
 local modeBtn = Instance.new("TextButton")
 modeBtn.Size = UDim2.new(0.8,0,0,40)
 modeBtn.Position = UDim2.new(0.1,0,0.4,0)
 modeBtn.Text = "Mode: Monster"
-modeBtn.BackgroundColor3 = Color3.fromRGB(150,150,150)
 modeBtn.Parent = frame
 
 -- ESP
@@ -164,29 +172,11 @@ toggleBtn.MouseButton1Click:Connect(function()
 	end  
 end)  
 
--- 🔥 Toggle Mode
+-- Toggle Mode
 modeBtn.MouseButton1Click:Connect(function()
-	if targetMode == "Monster" then
-		targetMode = "Player"
-	else
-		targetMode = "Monster"
-	end
+	targetMode = (targetMode == "Monster") and "Player" or "Monster"
 	modeBtn.Text = "Mode: " .. targetMode
 end)
-
--- ESP  
-espBtn.MouseButton1Click:Connect(function()  
-	espEnabled = not espEnabled  
-	if espEnabled then  
-		espBtn.Text = "ESP: ON"  
-		espBtn.BackgroundColor3 = Color3.fromRGB(50,200,50)  
-	else  
-		espBtn.Text = "ESP: OFF"  
-		espBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)  
-		for _, v in pairs(espObjects) do v:Destroy() end  
-		espObjects = {}  
-	end  
-end)  
 
 -- Resize  
 resizeBtn.MouseButton1Click:Connect(function()  
@@ -197,7 +187,6 @@ end)
 -- Close  
 closeBtn.MouseButton1Click:Connect(function()  
 	stopLock()  
-	for _, v in pairs(espObjects) do v:Destroy() end  
 	gui:Destroy()  
 end)  
 
