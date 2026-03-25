@@ -16,7 +16,11 @@ local lockEnabled = false
 local connection = nil
 local isLarge = true
 local currentTarget = nil
-local isFirstLock = true -- 🔥 เพิ่ม
+local isFirstLock = true
+
+-- 🔴 ESP STATE
+local espEnabled = false
+local espObjects = {}
 
 -- ================= AIMBOT =================
 
@@ -35,7 +39,6 @@ local function isAlive(model)
 	return hum and hum.Health > 0
 end
 
--- 🔥 เลือกตัวหน้ากล้อง (ตอนเปิด)
 local function getFrontTarget(root)
 	local best = nil
 	local bestDot = -1
@@ -58,7 +61,6 @@ local function getFrontTarget(root)
 	return best
 end
 
--- 🔥 เลือกตัวใกล้สุด (ใช้หลังจากฆ่า)
 local function getBestTarget(root)
 	local closest = nil
 	local shortest = math.huge
@@ -85,13 +87,11 @@ local function startLock()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		-- 🟢 เปิดใหม่ → ล็อคตัวหน้ากล้อง
 		if isFirstLock then
 			currentTarget = getFrontTarget(root)
 			isFirstLock = false
 		end
 
-		-- 🔁 ถ้าตาย → ล็อคตัวใกล้สุดทันที
 		if not currentTarget or not isAlive(currentTarget) then
 			currentTarget = getBestTarget(root)
 		end
@@ -116,14 +116,56 @@ local function stopLock()
 	currentTarget = nil
 end
 
+-- ================= ESP =================
+
+local function createESP(part)
+	if espObjects[part] then return end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Size = UDim2.new(0, 10, 0, 10)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = part
+	billboard.Parent = part
+
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.new(1,0,1,0)
+	dot.BackgroundColor3 = Color3.fromRGB(255,0,0)
+	dot.BorderSizePixel = 0
+	dot.Parent = billboard
+
+	Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)
+
+	espObjects[part] = billboard
+end
+
+local function clearESP()
+	for _, gui in pairs(espObjects) do
+		if gui then gui:Destroy() end
+	end
+	espObjects = {}
+end
+
+RunService.RenderStepped:Connect(function()
+	if not espEnabled then return end
+
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and isEnemy(obj) and isAlive(obj) then
+			local part = getTargetPart(obj)
+			if part then
+				createESP(part)
+			end
+		end
+	end
+end)
+
 -- ================= MENU =================
 
 local gui = Instance.new("ScreenGui")
 gui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 300, 0, 200)
-frame.Position = UDim2.new(0.5, -150, 0.5, -100)
+frame.Size = UDim2.new(0, 300, 0, 240)
+frame.Position = UDim2.new(0.5, -150, 0.5, -120)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.Parent = gui
 Instance.new("UICorner", frame)
@@ -138,14 +180,21 @@ title.Active = true
 
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0.8,0,0,40)
-toggleBtn.Position = UDim2.new(0.1,0,0.3,0)
+toggleBtn.Position = UDim2.new(0.1,0,0.25,0)
 toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 toggleBtn.Parent = frame
 
+local espBtn = Instance.new("TextButton")
+espBtn.Size = UDim2.new(0.8,0,0,40)
+espBtn.Position = UDim2.new(0.1,0,0.45,0)
+espBtn.Text = "ESP: OFF"
+espBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+espBtn.Parent = frame
+
 local resizeBtn = Instance.new("TextButton")
 resizeBtn.Size = UDim2.new(0.8,0,0,40)
-resizeBtn.Position = UDim2.new(0.1,0,0.55,0)
+resizeBtn.Position = UDim2.new(0.1,0,0.65,0)
 resizeBtn.Text = "Resize"
 resizeBtn.Parent = frame
 
@@ -155,13 +204,13 @@ closeBtn.Position = UDim2.new(1,-35,0,5)
 closeBtn.Text = "X"
 closeBtn.Parent = frame
 
--- Toggle
+-- Toggle Lock
 toggleBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	
 	if lockEnabled then
 		currentTarget = nil
-		isFirstLock = true -- 🔥 สำคัญ
+		isFirstLock = true
 		toggleBtn.Text = "Lock: ON"
 		startLock()
 	else
@@ -170,15 +219,30 @@ toggleBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- Toggle ESP
+espBtn.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	
+	if espEnabled then
+		espBtn.Text = "ESP: ON"
+		espBtn.BackgroundColor3 = Color3.fromRGB(50,200,50)
+	else
+		espBtn.Text = "ESP: OFF"
+		espBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+		clearESP()
+	end
+end)
+
 -- Resize
 resizeBtn.MouseButton1Click:Connect(function()
 	isLarge = not isLarge
-	frame.Size = isLarge and UDim2.new(0,300,0,200) or UDim2.new(0,200,0,140)
+	frame.Size = isLarge and UDim2.new(0,300,0,240) or UDim2.new(0,200,0,160)
 end)
 
 -- Close
 closeBtn.MouseButton1Click:Connect(function()
 	stopLock()
+	clearESP()
 	gui:Destroy()
 end)
 
