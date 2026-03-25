@@ -16,175 +16,83 @@ local lockEnabled = false
 local connection = nil  
 local isLarge = true  
 local currentTarget = nil  
-local isFirstLock = true  
+
+-- 🔥 MODE
+local targetMode = "Monster" -- "Player" / "Monster"
 
 -- ESP  
 local espEnabled = false  
 local espObjects = {}  
 
--- ESP SETTINGS  
-local ESP_UPDATE_RATE = 0.2  
-local MAX_ESP = 20  
-local MAX_DISTANCE = 200  
-local lastUpdate = 0  
-
 -- ================= AIMBOT =================  
 
-local function isEnemy(model)  
-	if not model:FindFirstChild("Humanoid") then return false end  
-	if Players:GetPlayerFromCharacter(model) then return false end  
-	return true  
-end  
+local function isValidTarget(model)
+	local hum = model:FindFirstChild("Humanoid")
+	if not hum or hum.Health <= 0 then return false end
 
-local function getTargetPart(model)  
-	return model:FindFirstChild("HumanoidRootPart")  
-end  
+	local plr = Players:GetPlayerFromCharacter(model)
 
-local function isAlive(model)  
-	local hum = model and model:FindFirstChild("Humanoid")  
-	return hum and hum.Health > 0  
-end  
+	if targetMode == "Monster" then
+		return plr == nil
+	elseif targetMode == "Player" then
+		return plr ~= nil and plr ~= player
+	end
 
-local function getFrontTarget(root)  
-	local best = nil  
-	local bestDot = -1  
+	return false
+end
 
-	for _, obj in pairs(workspace:GetDescendants()) do  
-		if obj:IsA("Model") and obj ~= root.Parent and isEnemy(obj) and isAlive(obj) then  
-			local part = getTargetPart(obj)  
-			if part then  
-				local direction = (part.Position - camera.CFrame.Position).Unit  
-				local dot = camera.CFrame.LookVector:Dot(direction)  
-				if dot > bestDot then  
-					bestDot = dot  
-					best = obj  
-				end  
-			end  
-		end  
-	end  
-	return best  
-end  
+local function getTargetPart(model)
+	return model:FindFirstChild("HumanoidRootPart")
+end
 
-local function getBestTarget(root)  
-	local closest = nil  
-	local shortest = math.huge  
+-- 🔥 ใกล้สุดเท่านั้น
+local function getClosestTarget(root)
+	local closest = nil
+	local shortest = math.huge
 
-	for _, obj in pairs(workspace:GetDescendants()) do  
-		if obj:IsA("Model") and obj ~= root.Parent and isEnemy(obj) and isAlive(obj) then  
-			local part = getTargetPart(obj)  
-			if part then  
-				local dist = (part.Position - root.Position).Magnitude  
-				if dist < shortest then  
-					shortest = dist  
-					closest = obj  
-				end  
-			end  
-		end  
-	end  
-	return closest  
-end  
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and obj ~= root.Parent and isValidTarget(obj) then
+			local part = getTargetPart(obj)
+			if part then
+				local dist = (part.Position - root.Position).Magnitude
+				if dist < shortest then
+					shortest = dist
+					closest = obj
+				end
+			end
+		end
+	end
 
-local function startLock()  
-	connection = RunService.RenderStepped:Connect(function()  
-		local character = getCharacter()  
-		local root = character:FindFirstChild("HumanoidRootPart")  
-		if not root then return end  
+	return closest
+end
 
-		if isFirstLock then  
-			currentTarget = getFrontTarget(root)  
-			isFirstLock = false  
-		end  
+local function startLock()
+	connection = RunService.RenderStepped:Connect(function()
+		local character = getCharacter()
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if not root then return end
 
-		if not currentTarget or not isAlive(currentTarget) then  
-			currentTarget = getBestTarget(root)  
-		end  
+		-- 🔥 ล็อคใกล้สุดตลอด
+		currentTarget = getClosestTarget(root)
+		if not currentTarget then return end
 
-		if not currentTarget then return end  
+		local part = getTargetPart(currentTarget)
+		if not part then return end
 
-		local part = getTargetPart(currentTarget)  
-		if not part then return end  
+		local aimPos = part.Position
 
-		local aimPos = part.Position  
+		root.CFrame = CFrame.new(root.Position, aimPos)
+		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
+	end)
+end
 
-		root.CFrame = CFrame.new(root.Position, aimPos)  
-		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)  
-	end)  
-end  
-
-local function stopLock()  
-	if connection then  
-		connection:Disconnect()  
-		connection = nil  
-	end  
-	currentTarget = nil  
-end  
-
--- ================= ESP (OPTIMIZED) =================  
-
-local function createESP(part)  
-	if espObjects[part] then return end  
-
-	local billboard = Instance.new("BillboardGui")  
-	billboard.Size = UDim2.new(0, 8, 0, 8)  
-	billboard.AlwaysOnTop = true  
-	billboard.Adornee = part  
-	billboard.Parent = part  
-
-	local dot = Instance.new("Frame")  
-	dot.Size = UDim2.new(1,0,1,0)  
-	dot.BackgroundColor3 = Color3.fromRGB(255,0,0)  
-	dot.BorderSizePixel = 0  
-	dot.Parent = billboard  
-
-	Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)  
-
-	espObjects[part] = billboard  
-end  
-
-local function clearFarESP(root)  
-	for part, gui in pairs(espObjects) do  
-		if not part or not part.Parent then  
-			gui:Destroy()  
-			espObjects[part] = nil  
-		else  
-			local dist = (part.Position - root.Position).Magnitude  
-			if dist > MAX_DISTANCE then  
-				gui:Destroy()  
-				espObjects[part] = nil  
-			end  
-		end  
-	end  
-end  
-
-RunService.RenderStepped:Connect(function()  
-	if not espEnabled then return end  
-
-	if tick() - lastUpdate < ESP_UPDATE_RATE then return end  
-	lastUpdate = tick()  
-
-	local character = getCharacter()  
-	local root = character:FindFirstChild("HumanoidRootPart")  
-	if not root then return end  
-
-	clearFarESP(root)  
-
-	local count = 0  
-
-	for _, obj in pairs(workspace:GetDescendants()) do  
-		if count >= MAX_ESP then break end  
-
-		if obj:IsA("Model") and isEnemy(obj) and isAlive(obj) then  
-			local part = getTargetPart(obj)  
-			if part then  
-				local dist = (part.Position - root.Position).Magnitude  
-				if dist <= MAX_DISTANCE then  
-					createESP(part)  
-					count += 1  
-				end  
-			end  
-		end  
-	end  
-end)  
+local function stopLock()
+	if connection then
+		connection:Disconnect()
+		connection = nil
+	end
+	currentTarget = nil
+end
 
 -- ================= MENU =================  
 
@@ -192,8 +100,8 @@ local gui = Instance.new("ScreenGui")
 gui.Parent = player:WaitForChild("PlayerGui")  
 
 local frame = Instance.new("Frame")  
-frame.Size = UDim2.new(0, 300, 0, 240)  
-frame.Position = UDim2.new(0.5, -150, 0.5, -120)  
+frame.Size = UDim2.new(0, 300, 0, 280)  
+frame.Position = UDim2.new(0.5, -150, 0.5, -140)  
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)  
 frame.Parent = gui  
 Instance.new("UICorner", frame)  
@@ -206,37 +114,48 @@ title.TextColor3 = Color3.new(1,1,1)
 title.Parent = frame  
 title.Active = true  
 
+-- Lock
 local toggleBtn = Instance.new("TextButton")  
 toggleBtn.Size = UDim2.new(0.8,0,0,40)  
-toggleBtn.Position = UDim2.new(0.1,0,0.25,0)  
+toggleBtn.Position = UDim2.new(0.1,0,0.2,0)  
 toggleBtn.Text = "Lock: OFF"  
 toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)  
 toggleBtn.Parent = frame  
 
+-- Mode Switch 🔥
+local modeBtn = Instance.new("TextButton")
+modeBtn.Size = UDim2.new(0.8,0,0,40)
+modeBtn.Position = UDim2.new(0.1,0,0.4,0)
+modeBtn.Text = "Mode: Monster"
+modeBtn.BackgroundColor3 = Color3.fromRGB(150,150,150)
+modeBtn.Parent = frame
+
+-- ESP
 local espBtn = Instance.new("TextButton")  
 espBtn.Size = UDim2.new(0.8,0,0,40)  
-espBtn.Position = UDim2.new(0.1,0,0.45,0)  
+espBtn.Position = UDim2.new(0.1,0,0.6,0)  
 espBtn.Text = "ESP: OFF"  
 espBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)  
 espBtn.Parent = frame  
 
+-- Resize
 local resizeBtn = Instance.new("TextButton")  
 resizeBtn.Size = UDim2.new(0.8,0,0,40)  
-resizeBtn.Position = UDim2.new(0.1,0,0.65,0)  
+resizeBtn.Position = UDim2.new(0.1,0,0.8,0)  
 resizeBtn.Text = "Resize"  
 resizeBtn.Parent = frame  
 
+-- Close
 local closeBtn = Instance.new("TextButton")  
 closeBtn.Size = UDim2.new(0,30,0,30)  
 closeBtn.Position = UDim2.new(1,-35,0,5)  
 closeBtn.Text = "X"  
 closeBtn.Parent = frame  
 
+-- Toggle Lock  
 toggleBtn.MouseButton1Click:Connect(function()  
 	lockEnabled = not lockEnabled  
 	if lockEnabled then  
-		currentTarget = nil  
-		isFirstLock = true  
 		toggleBtn.Text = "Lock: ON"  
 		startLock()  
 	else  
@@ -245,6 +164,17 @@ toggleBtn.MouseButton1Click:Connect(function()
 	end  
 end)  
 
+-- 🔥 Toggle Mode
+modeBtn.MouseButton1Click:Connect(function()
+	if targetMode == "Monster" then
+		targetMode = "Player"
+	else
+		targetMode = "Monster"
+	end
+	modeBtn.Text = "Mode: " .. targetMode
+end)
+
+-- ESP  
 espBtn.MouseButton1Click:Connect(function()  
 	espEnabled = not espEnabled  
 	if espEnabled then  
@@ -258,11 +188,13 @@ espBtn.MouseButton1Click:Connect(function()
 	end  
 end)  
 
+-- Resize  
 resizeBtn.MouseButton1Click:Connect(function()  
 	isLarge = not isLarge  
-	frame.Size = isLarge and UDim2.new(0,300,0,240) or UDim2.new(0,200,0,160)  
+	frame.Size = isLarge and UDim2.new(0,300,0,280) or UDim2.new(0,200,0,180)  
 end)  
 
+-- Close  
 closeBtn.MouseButton1Click:Connect(function()  
 	stopLock()  
 	for _, v in pairs(espObjects) do v:Destroy() end  
