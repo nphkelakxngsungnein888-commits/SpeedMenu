@@ -21,7 +21,6 @@ player.CharacterAdded:Connect(setupCharacter)
 local enabled = false  
 local mode = "Player"  
 local safeDistance = 20  
-local SPEED = 45  
 
 -- UI  
 local gui = Instance.new("ScreenGui", game.CoreGui)  
@@ -73,7 +72,6 @@ task.spawn(function()
     while true do
         task.wait(0.5)
         local newCache = {}
-
         for _,v in pairs(workspace:GetChildren()) do
             if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") then
                 local hum = v:FindFirstChild("Humanoid")
@@ -82,15 +80,9 @@ task.spawn(function()
                 end
             end
         end
-
         monsterCache = newCache
     end
 end)
-
--- RAYCAST  
-local rayParams = RaycastParams.new()  
-rayParams.FilterType = Enum.RaycastFilterType.Blacklist  
-rayParams.FilterDescendantsInstances = {char}  
 
 -- GET THREATS  
 local function getThreats()  
@@ -117,46 +109,17 @@ local function getThreats()
         end  
     end  
 
-    table.sort(threats, function(a,b)
-        return (root.Position - a.HumanoidRootPart.Position).Magnitude <
-               (root.Position - b.HumanoidRootPart.Position).Magnitude
-    end)
-
-    while #threats > 5 do
-        table.remove(threats)
-    end
-
     return threats  
 end  
 
--- SAFE CHECK  
-local function isSafeDirection(dir)  
-    local origin = root.Position  
-
-    local forwardRay = workspace:Raycast(origin, dir * 6, rayParams)  
-    if forwardRay then return false end  
-
-    local downRay = workspace:Raycast(origin + dir * 4, Vector3.new(0,-10,0), rayParams)  
-    if not downRay then return false end  
-
-    return true  
-end  
-
--- MAIN LOOP (FINAL)
+-- MAIN LOOP (FINAL FIX)
 RunService.Heartbeat:Connect(function()  
     if not enabled or not root or not humanoid then return end  
 
     local threats = getThreats()  
-
-    if #threats == 0 then
-        humanoid:Move(Vector3.zero, false)
-        root.AssemblyLinearVelocity = Vector3.zero
-        return
-    end  
+    if #threats == 0 then return end  
 
     local totalDirection = Vector3.zero  
-    local closestTarget = nil  
-    local closestDist = math.huge  
 
     for _,target in pairs(threats) do  
         local tRoot = target:FindFirstChild("HumanoidRootPart")  
@@ -166,45 +129,20 @@ RunService.Heartbeat:Connect(function()
             local offset = root.Position - tRoot.Position  
             local dist = offset.Magnitude  
 
-            if dist < 0.1 then continue end  
-
-            if dist < closestDist then  
-                closestDist = dist  
-                closestTarget = tRoot  
-            end  
-
-            totalDirection += offset.Unit / dist  
-        end  
-    end  
-
-    if totalDirection.Magnitude < 0.01 then
-        humanoid:Move(Vector3.zero, false)
-        return
-    end
-
-    local baseDir = totalDirection.Unit  
-    local moveDir = baseDir  
-
-    if not isSafeDirection(moveDir) then  
-        local angles = {30, -30, 60, -60, 90, -90}  
-        for _,angle in ipairs(angles) do  
-            local rotated = (CFrame.Angles(0, math.rad(angle), 0):VectorToWorldSpace(baseDir))  
-            if isSafeDirection(rotated) then  
-                moveDir = rotated  
-                break  
+            if dist > 0.1 then  
+                totalDirection += offset.Unit / dist  
             end  
         end  
     end  
 
-    local flatDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+    if totalDirection.Magnitude == 0 then return end  
 
-    if flatDir.Magnitude > 0 then  
-        root.AssemblyLinearVelocity = Vector3.zero  
-        humanoid.WalkSpeed = SPEED  
-        humanoid:Move(flatDir.Unit, false)
-    end  
+    local moveDir = totalDirection.Unit  
 
-    if closestTarget then  
-        root.CFrame = CFrame.lookAt(root.Position, closestTarget.Position)  
-    end  
+    -- 🔥 MoveTo (หลัก)
+    local targetPos = root.Position + (moveDir * 20)
+    humanoid:MoveTo(targetPos)
+
+    -- 🔥 fallback วาร์ปนิด (กันโดนล็อค)
+    root.CFrame = root.CFrame + (moveDir * 0.5)
 end)
