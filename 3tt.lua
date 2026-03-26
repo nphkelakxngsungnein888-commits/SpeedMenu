@@ -21,6 +21,7 @@ player.CharacterAdded:Connect(setupCharacter)
 local enabled = false  
 local mode = "Player"  
 local safeDistance = 20  
+local SPEED = 40  
 
 -- UI  
 local gui = Instance.new("ScreenGui", game.CoreGui)  
@@ -65,12 +66,35 @@ box.FocusLost:Connect(function()
     if num then safeDistance = num end  
 end)  
 
--- RAYCAST PARAM  
+-- 🔥 MONSTER CACHE (ลดแลค)
+local monsterCache = {}
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+
+        monsterCache = {}
+
+        for _,v in pairs(workspace:GetChildren()) do
+            if v:IsA("Model")
+            and v:FindFirstChild("Humanoid")
+            and v:FindFirstChild("HumanoidRootPart")
+            and not Players:GetPlayerFromCharacter(v)
+            then
+                if v.Humanoid.Health > 0 then
+                    table.insert(monsterCache, v)
+                end
+            end
+        end
+    end
+end)
+
+-- RAYCAST  
 local rayParams = RaycastParams.new()  
 rayParams.FilterType = Enum.RaycastFilterType.Blacklist  
 rayParams.FilterDescendantsInstances = {char}  
 
--- GET THREATS (FIXED)  
+-- GET THREATS  
 local function getThreats()  
     local threats = {}  
 
@@ -87,23 +111,23 @@ local function getThreats()
             end  
         end  
     else  
-        for _,v in pairs(workspace:GetDescendants()) do  
-            if v:IsA("Model")  
-            and v ~= char  
-            and v:FindFirstChild("Humanoid")  
-            and v:FindFirstChild("HumanoidRootPart")  
-            and not Players:GetPlayerFromCharacter(v)  
-            then  
-                local hum = v:FindFirstChild("Humanoid")
-                if hum and hum.Health > 0 then
-                    local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude  
-                    if dist < safeDistance then  
-                        table.insert(threats, v)  
-                    end  
-                end
+        for _,v in pairs(monsterCache) do
+            local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude  
+            if dist < safeDistance then  
+                table.insert(threats, v)  
             end  
         end  
     end  
+
+    -- 🔥 จำกัดแค่ 5 ตัวใกล้สุด
+    table.sort(threats, function(a,b)
+        return (root.Position - a.HumanoidRootPart.Position).Magnitude <
+               (root.Position - b.HumanoidRootPart.Position).Magnitude
+    end)
+
+    while #threats > 5 do
+        table.remove(threats)
+    end
 
     return threats  
 end  
@@ -121,7 +145,7 @@ local function isSafeDirection(dir)
     return true  
 end  
 
--- MAIN LOOP (UPDATED)
+-- MAIN LOOP  
 RunService.Heartbeat:Connect(function()  
     if not enabled or not root or not humanoid then return end  
 
@@ -153,7 +177,7 @@ RunService.Heartbeat:Connect(function()
         local baseDir = totalDirection.Unit  
         local moveDir = baseDir  
 
-        if not isSafeDirection(moveDir) then  
+        if #threats <= 2 and not isSafeDirection(moveDir) then  
             local angles = {30, -30, 60, -60, 90, -90}  
             for _,angle in ipairs(angles) do  
                 local rotated = (CFrame.Angles(0, math.rad(angle), 0):VectorToWorldSpace(baseDir))  
@@ -164,14 +188,12 @@ RunService.Heartbeat:Connect(function()
             end  
         end  
 
-        -- 🔥 ใช้ Velocity แทน MoveTo (แก้แมพรถไฟ)
         local flatDir = Vector3.new(moveDir.X, 0, moveDir.Z)
 
         if flatDir.Magnitude > 0 then  
-            root.AssemblyLinearVelocity = flatDir.Unit * 25  
+            root.AssemblyLinearVelocity = flatDir.Unit * SPEED  
         end  
 
-        -- fallback
         if root.AssemblyLinearVelocity.Magnitude < 1 then  
             humanoid:Move(moveDir, false)  
         end  
