@@ -21,6 +21,7 @@ player.CharacterAdded:Connect(setupCharacter)
 local enabled = false  
 local mode = "Player"  
 local safeDistance = 20  
+local STEP = 1.0 -- 🔥 ความเร็วหนี (ปรับได้)
 
 -- UI  
 local gui = Instance.new("ScreenGui", game.CoreGui)  
@@ -112,9 +113,9 @@ local function getThreats()
     return threats  
 end  
 
--- MAIN LOOP (FINAL FIX)
+-- MAIN LOOP (CFrame evade)
 RunService.Heartbeat:Connect(function()  
-    if not enabled or not root or not humanoid then return end  
+    if not enabled or not root then return end  
 
     local threats = getThreats()  
     if #threats == 0 then return end  
@@ -139,10 +140,23 @@ RunService.Heartbeat:Connect(function()
 
     local moveDir = totalDirection.Unit  
 
-    -- 🔥 MoveTo (หลัก)
-    local targetPos = root.Position + (moveDir * 20)
-    humanoid:MoveTo(targetPos)
+    -- 🔥 เดินหนีด้วย CFrame (ใช้ได้ทุกแมพ)
+    root.CFrame = root.CFrame + (moveDir * STEP)
 
-    -- 🔥 fallback วาร์ปนิด (กันโดนล็อค)
-    root.CFrame = root.CFrame + (moveDir * 0.5)
+    -- 🔥 หันหน้าหาศัตรูที่ใกล้สุด
+    local closest, closestDist = nil, math.huge
+    for _,t in pairs(threats) do
+        local tr = t:FindFirstChild("HumanoidRootPart")
+        if tr then
+            local d = (root.Position - tr.Position).Magnitude
+            if d < closestDist then
+                closestDist = d
+                closest = tr
+            end
+        end
+    end
+
+    if closest then
+        root.CFrame = CFrame.lookAt(root.Position, closest.Position)
+    end  
 end)
