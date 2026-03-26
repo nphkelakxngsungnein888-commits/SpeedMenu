@@ -5,13 +5,22 @@ local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
-local char = player.Character or player.CharacterAdded:Wait()
-local humanoid = char:WaitForChild("Humanoid")
-local root = char:WaitForChild("HumanoidRootPart")
+
+-- character refs (fix respawn)
+local char, humanoid, root
+
+local function setupCharacter(c)
+    char = c
+    humanoid = c:WaitForChild("Humanoid")
+    root = c:WaitForChild("HumanoidRootPart")
+end
+
+setupCharacter(player.Character or player.CharacterAdded:Wait())
+player.CharacterAdded:Connect(setupCharacter)
 
 -- CONFIG
 local enabled = false
-local mode = "Player" -- "Player" / "Monster"
+local mode = "Player"
 local safeDistance = 20
 
 -- UI
@@ -25,31 +34,26 @@ frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
 frame.Active = true
 frame.Draggable = true
 
-local corner = Instance.new("UICorner", frame)
-corner.CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
 
--- Toggle Button
 local toggle = Instance.new("TextButton", frame)
 toggle.Size = UDim2.new(1, -20, 0, 30)
 toggle.Position = UDim2.new(0,10,0,10)
 toggle.Text = "OFF"
 toggle.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
--- Mode Button
 local modeBtn = Instance.new("TextButton", frame)
 modeBtn.Size = UDim2.new(1, -20, 0, 30)
 modeBtn.Position = UDim2.new(0,10,0,50)
 modeBtn.Text = "Mode: Player"
 modeBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
--- Distance Box
 local box = Instance.new("TextBox", frame)
 box.Size = UDim2.new(1, -20, 0, 30)
 box.Position = UDim2.new(0,10,0,90)
 box.Text = tostring(safeDistance)
-box.PlaceholderText = "Distance"
 
--- Resize
+-- resize
 local resizing = false
 frame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -69,7 +73,7 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
--- UI Logic
+-- UI logic
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
     toggle.Text = enabled and "ON" or "OFF"
@@ -85,10 +89,9 @@ box.FocusLost:Connect(function()
     if num then safeDistance = num end
 end)
 
--- TARGET FINDER
+-- target finder
 local function getNearestTarget()
-    local nearest = nil
-    local shortest = math.huge
+    local nearest, shortest = nil, math.huge
 
     if mode == "Player" then
         for _,p in pairs(Players:GetPlayers()) do
@@ -115,10 +118,9 @@ local function getNearestTarget()
     return nearest, shortest
 end
 
--- MAIN LOOP
+-- MAIN LOOP (FIXED)
 RunService.Heartbeat:Connect(function()
-    if not enabled then return end
-    if not char or not root then return end
+    if not enabled or not root or not humanoid then return end
 
     local target, dist = getNearestTarget()
 
@@ -128,10 +130,9 @@ RunService.Heartbeat:Connect(function()
 
         local direction = (root.Position - targetRoot.Position).Unit
 
-        -- move backward
-        humanoid:Move(direction, true)
+        local moveToPos = root.Position + (direction * 10)
+        humanoid:MoveTo(moveToPos)
 
-        -- face target
         root.CFrame = CFrame.lookAt(root.Position, targetRoot.Position)
     end
 end)
