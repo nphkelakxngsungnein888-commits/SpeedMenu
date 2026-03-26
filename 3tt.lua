@@ -66,13 +66,14 @@ box.FocusLost:Connect(function()
     if num then safeDistance = num end  
 end)  
 
--- 🔥 MONSTER CACHE (แก้แลค)
+-- MONSTER CACHE  
 local monsterCache = {}
 
 task.spawn(function()
     while true do
         task.wait(0.5)
         local newCache = {}
+
         for _,v in pairs(workspace:GetChildren()) do
             if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") then
                 local hum = v:FindFirstChild("Humanoid")
@@ -81,6 +82,7 @@ task.spawn(function()
                 end
             end
         end
+
         monsterCache = newCache
     end
 end)
@@ -115,7 +117,6 @@ local function getThreats()
         end  
     end  
 
-    -- 🔥 จำกัดแค่ 5 ตัวใกล้สุด
     table.sort(threats, function(a,b)
         return (root.Position - a.HumanoidRootPart.Position).Magnitude <
                (root.Position - b.HumanoidRootPart.Position).Magnitude
@@ -131,6 +132,7 @@ end
 -- SAFE CHECK  
 local function isSafeDirection(dir)  
     local origin = root.Position  
+
     local forwardRay = workspace:Raycast(origin, dir * 6, rayParams)  
     if forwardRay then return false end  
 
@@ -140,12 +142,17 @@ local function isSafeDirection(dir)
     return true  
 end  
 
--- MAIN LOOP (แก้หนีช้า + fallback)  
+-- MAIN LOOP (FINAL)
 RunService.Heartbeat:Connect(function()  
     if not enabled or not root or not humanoid then return end  
 
     local threats = getThreats()  
-    if #threats == 0 then return end  
+
+    if #threats == 0 then
+        humanoid:Move(Vector3.zero, false)
+        root.AssemblyLinearVelocity = Vector3.zero
+        return
+    end  
 
     local totalDirection = Vector3.zero  
     local closestTarget = nil  
@@ -158,7 +165,8 @@ RunService.Heartbeat:Connect(function()
         if tRoot and hum and hum.Health > 0 then  
             local offset = root.Position - tRoot.Position  
             local dist = offset.Magnitude  
-            if dist < 0.1 then continue end
+
+            if dist < 0.1 then continue end  
 
             if dist < closestDist then  
                 closestDist = dist  
@@ -169,36 +177,34 @@ RunService.Heartbeat:Connect(function()
         end  
     end  
 
-    -- fallback ถ้า vector = 0
-    if totalDirection.Magnitude < 0.01 and closestTarget then
-        totalDirection = (root.Position - closestTarget.Position)
+    if totalDirection.Magnitude < 0.01 then
+        humanoid:Move(Vector3.zero, false)
+        return
     end
 
-    if totalDirection.Magnitude > 0 then  
-        local baseDir = totalDirection.Unit  
-        local moveDir = baseDir  
+    local baseDir = totalDirection.Unit  
+    local moveDir = baseDir  
 
-        if not isSafeDirection(moveDir) then  
-            local angles = {30, -30, 60, -60, 90, -90}  
-            for _,angle in ipairs(angles) do  
-                local rotated = (CFrame.Angles(0, math.rad(angle), 0):VectorToWorldSpace(baseDir))  
-                if isSafeDirection(rotated) then  
-                    moveDir = rotated  
-                    break  
-                end  
+    if not isSafeDirection(moveDir) then  
+        local angles = {30, -30, 60, -60, 90, -90}  
+        for _,angle in ipairs(angles) do  
+            local rotated = (CFrame.Angles(0, math.rad(angle), 0):VectorToWorldSpace(baseDir))  
+            if isSafeDirection(rotated) then  
+                moveDir = rotated  
+                break  
             end  
         end  
+    end  
 
-        local flatDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+    local flatDir = Vector3.new(moveDir.X, 0, moveDir.Z)
 
-        if flatDir.Magnitude > 0 then  
-            root.AssemblyLinearVelocity = flatDir.Unit * SPEED  
-        end  
+    if flatDir.Magnitude > 0 then  
+        root.AssemblyLinearVelocity = Vector3.zero  
+        humanoid.WalkSpeed = SPEED  
+        humanoid:Move(flatDir.Unit, false)
+    end  
 
-        humanoid:Move(flatDir, false)
-
-        if closestTarget then  
-            root.CFrame = CFrame.lookAt(root.Position, closestTarget.Position)  
-        end  
+    if closestTarget then  
+        root.CFrame = CFrame.lookAt(root.Position, closestTarget.Position)  
     end  
 end)
