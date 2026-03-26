@@ -5,156 +5,133 @@ local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local humanoid = char:WaitForChild("Humanoid")
+local root = char:WaitForChild("HumanoidRootPart")
 
 -- CONFIG
-local state = {
-    enabled = false,
-    distance = 20,
-    mode = "Players" -- "Players" | "Monsters"
-}
+local enabled = false
+local mode = "Player" -- "Player" / "Monster"
+local safeDistance = 20
 
--- UI SETUP
-local gui = Instance.new("ScreenGui")
+-- UI
+local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "EvadeUI"
-gui.Parent = game.CoreGui
 
-local frame = Instance.new("Frame")
+local frame = Instance.new("Frame", gui)
 frame.Size = UDim2.new(0, 220, 0, 140)
-frame.Position = UDim2.new(0.1, 0, 0.2, 0)
+frame.Position = UDim2.new(0.5, -110, 0.5, -70)
 frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
-frame.Parent = gui
 frame.Active = true
 frame.Draggable = true
 
--- toggle
-local toggle = Instance.new("TextButton")
+local corner = Instance.new("UICorner", frame)
+corner.CornerRadius = UDim.new(0, 10)
+
+-- Toggle Button
+local toggle = Instance.new("TextButton", frame)
 toggle.Size = UDim2.new(1, -20, 0, 30)
-toggle.Position = UDim2.new(0, 10, 0, 10)
+toggle.Position = UDim2.new(0,10,0,10)
 toggle.Text = "OFF"
-toggle.Parent = frame
+toggle.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
--- distance input
-local box = Instance.new("TextBox")
-box.Size = UDim2.new(1, -20, 0, 25)
-box.Position = UDim2.new(0, 10, 0, 50)
+-- Mode Button
+local modeBtn = Instance.new("TextButton", frame)
+modeBtn.Size = UDim2.new(1, -20, 0, 30)
+modeBtn.Position = UDim2.new(0,10,0,50)
+modeBtn.Text = "Mode: Player"
+modeBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+
+-- Distance Box
+local box = Instance.new("TextBox", frame)
+box.Size = UDim2.new(1, -20, 0, 30)
+box.Position = UDim2.new(0,10,0,90)
+box.Text = tostring(safeDistance)
 box.PlaceholderText = "Distance"
-box.Text = tostring(state.distance)
-box.Parent = frame
 
--- mode switch
-local modeBtn = Instance.new("TextButton")
-modeBtn.Size = UDim2.new(1, -20, 0, 25)
-modeBtn.Position = UDim2.new(0, 10, 0, 80)
-modeBtn.Text = "Mode: Players"
-modeBtn.Parent = frame
-
--- close
-local close = Instance.new("TextButton")
-close.Size = UDim2.new(0, 25, 0, 25)
-close.Position = UDim2.new(1, -30, 0, 5)
-close.Text = "X"
-close.Parent = frame
-
--- resize handle
-local resize = Instance.new("Frame")
-resize.Size = UDim2.new(0, 15, 0, 15)
-resize.Position = UDim2.new(1, -15, 1, -15)
-resize.BackgroundColor3 = Color3.fromRGB(80,80,80)
-resize.Parent = frame
-
--- UI EVENTS
-toggle.MouseButton1Click:Connect(function()
-    state.enabled = not state.enabled
-    toggle.Text = state.enabled and "ON" or "OFF"
-end)
-
-modeBtn.MouseButton1Click:Connect(function()
-    state.mode = (state.mode == "Players") and "Monsters" or "Players"
-    modeBtn.Text = "Mode: " .. state.mode
-end)
-
-box.FocusLost:Connect(function()
-    local num = tonumber(box.Text)
-    if num then
-        state.distance = num
-    end
-end)
-
-close.MouseButton1Click:Connect(function()
-    gui:Destroy()
-end)
-
--- resize logic
+-- Resize
 local resizing = false
-resize.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
         resizing = true
     end
 end)
 
-UIS.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
         resizing = false
     end
 end)
 
-UIS.InputChanged:Connect(function(i)
-    if resizing and i.UserInputType == Enum.UserInputType.MouseMovement then
-        frame.Size = UDim2.new(0, i.Position.X - frame.AbsolutePosition.X, 0, i.Position.Y - frame.AbsolutePosition.Y)
+UIS.InputChanged:Connect(function(input)
+    if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
+        frame.Size += UDim2.new(0, input.Delta.X, 0, input.Delta.Y)
     end
 end)
 
--- CORE LOGIC
-local function getCharacter()
-    return player.Character
-end
+-- UI Logic
+toggle.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    toggle.Text = enabled and "ON" or "OFF"
+end)
 
-local function getRoot(char)
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
+modeBtn.MouseButton1Click:Connect(function()
+    mode = (mode == "Player") and "Monster" or "Player"
+    modeBtn.Text = "Mode: "..mode
+end)
 
-local function getTargets()
-    local targets = {}
+box.FocusLost:Connect(function()
+    local num = tonumber(box.Text)
+    if num then safeDistance = num end
+end)
 
-    if state.mode == "Players" then
+-- TARGET FINDER
+local function getNearestTarget()
+    local nearest = nil
+    local shortest = math.huge
+
+    if mode == "Player" then
         for _,p in pairs(Players:GetPlayers()) do
-            if p ~= player and p.Character then
-                table.insert(targets, p.Character)
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                if dist < shortest then
+                    shortest = dist
+                    nearest = p.Character
+                end
             end
         end
     else
         for _,v in pairs(workspace:GetDescendants()) do
-            if v:IsA("Model") and v:FindFirstChild("Humanoid") then
-                table.insert(targets, v)
+            if v:IsA("Model") and v ~= char and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+                local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude
+                if dist < shortest then
+                    shortest = dist
+                    nearest = v
+                end
             end
         end
     end
 
-    return targets
+    return nearest, shortest
 end
 
+-- MAIN LOOP
 RunService.Heartbeat:Connect(function()
-    if not state.enabled then return end
+    if not enabled then return end
+    if not char or not root then return end
 
-    local char = getCharacter()
-    local root = getRoot(char)
-    if not root then return end
+    local target, dist = getNearestTarget()
 
-    local humanoid = char:FindFirstChild("Humanoid")
-    if not humanoid then return end
+    if target and dist < safeDistance then
+        local targetRoot = target:FindFirstChild("HumanoidRootPart")
+        if not targetRoot then return end
 
-    for _,target in pairs(getTargets()) do
-        local tRoot = getRoot(target)
-        if tRoot then
-            local dist = (root.Position - tRoot.Position).Magnitude
+        local direction = (root.Position - targetRoot.Position).Unit
 
-            if dist < state.distance then
-                local dir = (root.Position - tRoot.Position).Unit
-                local movePos = root.Position + dir * state.distance
+        -- move backward
+        humanoid:Move(direction, true)
 
-                humanoid:MoveTo(movePos)
-                break
-            end
-        end
+        -- face target
+        root.CFrame = CFrame.lookAt(root.Position, targetRoot.Position)
     end
 end)
