@@ -6,7 +6,6 @@ local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
--- character refs (fix respawn)
 local char, humanoid, root
 
 local function setupCharacter(c)
@@ -28,50 +27,31 @@ local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "EvadeUI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 220, 0, 140)
-frame.Position = UDim2.new(0.5, -110, 0.5, -70)
+frame.Size = UDim2.new(0, 240, 0, 160)
+frame.Position = UDim2.new(0.5, -120, 0.5, -80)
 frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
 frame.Active = true
 frame.Draggable = true
 
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
 
+-- Toggle
 local toggle = Instance.new("TextButton", frame)
 toggle.Size = UDim2.new(1, -20, 0, 30)
 toggle.Position = UDim2.new(0,10,0,10)
 toggle.Text = "OFF"
-toggle.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
+-- Mode switch
 local modeBtn = Instance.new("TextButton", frame)
 modeBtn.Size = UDim2.new(1, -20, 0, 30)
 modeBtn.Position = UDim2.new(0,10,0,50)
 modeBtn.Text = "Mode: Player"
-modeBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
+-- Distance
 local box = Instance.new("TextBox", frame)
 box.Size = UDim2.new(1, -20, 0, 30)
 box.Position = UDim2.new(0,10,0,90)
 box.Text = tostring(safeDistance)
-
--- resize
-local resizing = false
-frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        resizing = true
-    end
-end)
-
-UIS.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        resizing = false
-    end
-end)
-
-UIS.InputChanged:Connect(function(input)
-    if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
-        frame.Size += UDim2.new(0, input.Delta.X, 0, input.Delta.Y)
-    end
-end)
 
 -- UI logic
 toggle.MouseButton1Click:Connect(function()
@@ -89,17 +69,16 @@ box.FocusLost:Connect(function()
     if num then safeDistance = num end
 end)
 
--- target finder
-local function getNearestTarget()
-    local nearest, shortest = nil, math.huge
+-- GET ALL THREATS
+local function getThreats()
+    local threats = {}
 
     if mode == "Player" then
         for _,p in pairs(Players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                 local dist = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                if dist < shortest then
-                    shortest = dist
-                    nearest = p.Character
+                if dist < safeDistance then
+                    table.insert(threats, p.Character)
                 end
             end
         end
@@ -107,32 +86,51 @@ local function getNearestTarget()
         for _,v in pairs(workspace:GetDescendants()) do
             if v:IsA("Model") and v ~= char and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
                 local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude
-                if dist < shortest then
-                    shortest = dist
-                    nearest = v
+                if dist < safeDistance then
+                    table.insert(threats, v)
                 end
             end
         end
     end
 
-    return nearest, shortest
+    return threats
 end
 
--- MAIN LOOP (FIXED)
+-- MAIN LOOP (MULTI EVADE)
 RunService.Heartbeat:Connect(function()
     if not enabled or not root or not humanoid then return end
 
-    local target, dist = getNearestTarget()
+    local threats = getThreats()
+    if #threats == 0 then return end
 
-    if target and dist < safeDistance then
-        local targetRoot = target:FindFirstChild("HumanoidRootPart")
-        if not targetRoot then return end
+    local totalDirection = Vector3.zero
+    local closestTarget = nil
+    local closestDist = math.huge
 
-        local direction = (root.Position - targetRoot.Position).Unit
+    for _,target in pairs(threats) do
+        local tRoot = target:FindFirstChild("HumanoidRootPart")
+        if tRoot then
+            local offset = root.Position - tRoot.Position
+            local dist = offset.Magnitude
 
-        local moveToPos = root.Position + (direction * 10)
+            if dist < closestDist then
+                closestDist = dist
+                closestTarget = tRoot
+            end
+
+            totalDirection += offset.Unit / dist -- weight ใกล้มากหนีแรง
+        end
+    end
+
+    if totalDirection.Magnitude > 0 then
+        local moveDir = totalDirection.Unit
+        local moveToPos = root.Position + (moveDir * 12)
+
         humanoid:MoveTo(moveToPos)
 
-        root.CFrame = CFrame.lookAt(root.Position, targetRoot.Position)
+        -- หันหน้าไปตัวที่ใกล้สุด
+        if closestTarget then
+            root.CFrame = CFrame.lookAt(root.Position, closestTarget.Position)
+        end
     end
 end)
