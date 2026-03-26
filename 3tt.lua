@@ -1,143 +1,160 @@
--- /client/auto_escape.lua
+-- /client/auto_evade.lua
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
+local UIS = game:GetService("UserInputService")
 
-local LocalPlayer = Players.LocalPlayer
+local player = Players.LocalPlayer
 
--- ===== STATE =====
-local Enabled = false
-local Mode = "Players" -- "Players" or "Monsters"
-local Distance = 20
+-- CONFIG
+local state = {
+    enabled = false,
+    distance = 20,
+    mode = "Players" -- "Players" | "Monsters"
+}
 
--- ===== CHARACTER =====
-local function getCharacter()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    return char, char:WaitForChild("Humanoid"), char:WaitForChild("HumanoidRootPart")
-end
+-- UI SETUP
+local gui = Instance.new("ScreenGui")
+gui.Name = "EvadeUI"
+gui.Parent = game.CoreGui
 
--- ===== UI =====
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "AutoEscapeUI"
-
-local frame = Instance.new("Frame", gui)
+local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 220, 0, 140)
-frame.Position = UDim2.new(0.3, 0, 0.3, 0)
+frame.Position = UDim2.new(0.1, 0, 0.2, 0)
 frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+frame.Parent = gui
 frame.Active = true
 frame.Draggable = true
 
-local corner = Instance.new("UICorner", frame)
-corner.CornerRadius = UDim.new(0, 10)
+-- toggle
+local toggle = Instance.new("TextButton")
+toggle.Size = UDim2.new(1, -20, 0, 30)
+toggle.Position = UDim2.new(0, 10, 0, 10)
+toggle.Text = "OFF"
+toggle.Parent = frame
 
--- Resize
-local resize = Instance.new("TextButton", frame)
-resize.Size = UDim2.new(0, 20, 0, 20)
-resize.Position = UDim2.new(1, -20, 1, -20)
-resize.Text = "+"
-resize.BackgroundColor3 = Color3.fromRGB(40,40,40)
+-- distance input
+local box = Instance.new("TextBox")
+box.Size = UDim2.new(1, -20, 0, 25)
+box.Position = UDim2.new(0, 10, 0, 50)
+box.PlaceholderText = "Distance"
+box.Text = tostring(state.distance)
+box.Parent = frame
 
-resize.MouseButton1Click:Connect(function()
-    frame.Size += UDim2.new(0, 20, 0, 20)
+-- mode switch
+local modeBtn = Instance.new("TextButton")
+modeBtn.Size = UDim2.new(1, -20, 0, 25)
+modeBtn.Position = UDim2.new(0, 10, 0, 80)
+modeBtn.Text = "Mode: Players"
+modeBtn.Parent = frame
+
+-- close
+local close = Instance.new("TextButton")
+close.Size = UDim2.new(0, 25, 0, 25)
+close.Position = UDim2.new(1, -30, 0, 5)
+close.Text = "X"
+close.Parent = frame
+
+-- resize handle
+local resize = Instance.new("Frame")
+resize.Size = UDim2.new(0, 15, 0, 15)
+resize.Position = UDim2.new(1, -15, 1, -15)
+resize.BackgroundColor3 = Color3.fromRGB(80,80,80)
+resize.Parent = frame
+
+-- UI EVENTS
+toggle.MouseButton1Click:Connect(function()
+    state.enabled = not state.enabled
+    toggle.Text = state.enabled and "ON" or "OFF"
 end)
 
--- Close
-local close = Instance.new("TextButton", frame)
-close.Size = UDim2.new(0, 20, 0, 20)
-close.Position = UDim2.new(1, -20, 0, 0)
-close.Text = "X"
-close.BackgroundColor3 = Color3.fromRGB(80,30,30)
+modeBtn.MouseButton1Click:Connect(function()
+    state.mode = (state.mode == "Players") and "Monsters" or "Players"
+    modeBtn.Text = "Mode: " .. state.mode
+end)
+
+box.FocusLost:Connect(function()
+    local num = tonumber(box.Text)
+    if num then
+        state.distance = num
+    end
+end)
 
 close.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
 
--- Toggle
-local toggle = Instance.new("TextButton", frame)
-toggle.Size = UDim2.new(1, -10, 0, 30)
-toggle.Position = UDim2.new(0, 5, 0, 5)
-toggle.Text = "OFF"
-toggle.BackgroundColor3 = Color3.fromRGB(50,50,50)
-
-toggle.MouseButton1Click:Connect(function()
-    Enabled = not Enabled
-    toggle.Text = Enabled and "ON" or "OFF"
-end)
-
--- Mode
-local modeBtn = Instance.new("TextButton", frame)
-modeBtn.Size = UDim2.new(1, -10, 0, 30)
-modeBtn.Position = UDim2.new(0, 5, 0, 40)
-modeBtn.Text = "Mode: Players"
-modeBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-
-modeBtn.MouseButton1Click:Connect(function()
-    Mode = Mode == "Players" and "Monsters" or "Players"
-    modeBtn.Text = "Mode: " .. Mode
-end)
-
--- Distance input
-local distBox = Instance.new("TextBox", frame)
-distBox.Size = UDim2.new(1, -10, 0, 30)
-distBox.Position = UDim2.new(0, 5, 0, 75)
-distBox.Text = tostring(Distance)
-distBox.BackgroundColor3 = Color3.fromRGB(50,50,50)
-
-distBox.FocusLost:Connect(function()
-    local val = tonumber(distBox.Text)
-    if val then
-        Distance = val
-    else
-        distBox.Text = tostring(Distance)
+-- resize logic
+local resizing = false
+resize.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        resizing = true
     end
 end)
 
--- ===== ENEMY FIND =====
-local function getEnemies()
-    local enemies = {}
-
-    if Mode == "Players" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                table.insert(enemies, p.Character)
-            end
-        end
-    else
-        for _, v in ipairs(Workspace:GetDescendants()) do
-            if v:IsA("Model") and v:FindFirstChild("Humanoid") and not Players:GetPlayerFromCharacter(v) then
-                if v:FindFirstChild("HumanoidRootPart") then
-                    table.insert(enemies, v)
-                end
-            end
-        end
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        resizing = false
     end
+end)
 
-    return enemies
+UIS.InputChanged:Connect(function(i)
+    if resizing and i.UserInputType == Enum.UserInputType.MouseMovement then
+        frame.Size = UDim2.new(0, i.Position.X - frame.AbsolutePosition.X, 0, i.Position.Y - frame.AbsolutePosition.Y)
+    end
+end)
+
+-- CORE LOGIC
+local function getCharacter()
+    return player.Character
 end
 
--- ===== MAIN LOOP =====
-RunService.Heartbeat:Connect(function()
-    if not Enabled then return end
+local function getRoot(char)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
 
-    local char, humanoid, root = getCharacter()
+local function getTargets()
+    local targets = {}
 
-    local closest = nil
-    local closestDist = math.huge
-
-    for _, enemy in ipairs(getEnemies()) do
-        local eroot = enemy:FindFirstChild("HumanoidRootPart")
-        if eroot then
-            local dist = (root.Position - eroot.Position).Magnitude
-            if dist < closestDist then
-                closestDist = dist
-                closest = eroot
+    if state.mode == "Players" then
+        for _,p in pairs(Players:GetPlayers()) do
+            if p ~= player and p.Character then
+                table.insert(targets, p.Character)
+            end
+        end
+    else
+        for _,v in pairs(workspace:GetDescendants()) do
+            if v:IsA("Model") and v:FindFirstChild("Humanoid") then
+                table.insert(targets, v)
             end
         end
     end
 
-    if closest and closestDist < Distance then
-        local dir = (root.Position - closest.Position).Unit
-        humanoid:Move(dir)
+    return targets
+end
+
+RunService.Heartbeat:Connect(function()
+    if not state.enabled then return end
+
+    local char = getCharacter()
+    local root = getRoot(char)
+    if not root then return end
+
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not humanoid then return end
+
+    for _,target in pairs(getTargets()) do
+        local tRoot = getRoot(target)
+        if tRoot then
+            local dist = (root.Position - tRoot.Position).Magnitude
+
+            if dist < state.distance then
+                local dir = (root.Position - tRoot.Position).Unit
+                local movePos = root.Position + dir * state.distance
+
+                humanoid:MoveTo(movePos)
+                break
+            end
+        end
     end
 end)
