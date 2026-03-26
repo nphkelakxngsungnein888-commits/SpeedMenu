@@ -77,10 +77,13 @@ local function getThreats()
     if mode == "Player" then  
         for _,p in pairs(Players:GetPlayers()) do  
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then  
-                local dist = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude  
-                if dist < safeDistance then  
-                    table.insert(threats, p.Character)  
-                end  
+                local hum = p.Character:FindFirstChild("Humanoid")
+                if hum and hum.Health > 0 then
+                    local dist = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude  
+                    if dist < safeDistance then  
+                        table.insert(threats, p.Character)  
+                    end  
+                end
             end  
         end  
     else  
@@ -91,10 +94,13 @@ local function getThreats()
             and v:FindFirstChild("HumanoidRootPart")  
             and not Players:GetPlayerFromCharacter(v)  
             then  
-                local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude  
-                if dist < safeDistance then  
-                    table.insert(threats, v)  
-                end  
+                local hum = v:FindFirstChild("Humanoid")
+                if hum and hum.Health > 0 then
+                    local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude  
+                    if dist < safeDistance then  
+                        table.insert(threats, v)  
+                    end  
+                end
             end  
         end  
     end  
@@ -115,7 +121,7 @@ local function isSafeDirection(dir)
     return true  
 end  
 
--- MAIN LOOP  
+-- MAIN LOOP (UPDATED)
 RunService.Heartbeat:Connect(function()  
     if not enabled or not root or not humanoid then return end  
 
@@ -128,7 +134,9 @@ RunService.Heartbeat:Connect(function()
 
     for _,target in pairs(threats) do  
         local tRoot = target:FindFirstChild("HumanoidRootPart")  
-        if tRoot then  
+        local hum = target:FindFirstChild("Humanoid")
+
+        if tRoot and hum and hum.Health > 0 then  
             local offset = root.Position - tRoot.Position  
             local dist = offset.Magnitude  
 
@@ -156,8 +164,17 @@ RunService.Heartbeat:Connect(function()
             end  
         end  
 
-        local moveToPos = root.Position + (moveDir * 12)  
-        humanoid:MoveTo(moveToPos)  
+        -- 🔥 ใช้ Velocity แทน MoveTo (แก้แมพรถไฟ)
+        local flatDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+
+        if flatDir.Magnitude > 0 then  
+            root.AssemblyLinearVelocity = flatDir.Unit * 25  
+        end  
+
+        -- fallback
+        if root.AssemblyLinearVelocity.Magnitude < 1 then  
+            humanoid:Move(moveDir, false)  
+        end  
 
         if closestTarget then  
             root.CFrame = CFrame.lookAt(root.Position, closestTarget.Position)  
