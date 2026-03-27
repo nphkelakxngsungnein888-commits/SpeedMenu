@@ -1,205 +1,132 @@
--- Services  
-local Players = game:GetService("Players")  
-local RunService = game:GetService("RunService")  
-local UserInputService = game:GetService("UserInputService")  
+--// SERVICES
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
--- Player  
-local player = Players.LocalPlayer  
-local camera = workspace.CurrentCamera  
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
-local function getCharacter()  
-	return player.Character or player.CharacterAdded:Wait()  
-end  
+--// STATE
+local enabled = false
+local distance = 50
 
--- State  
-local lockEnabled = false  
-local connection = nil  
-local isLarge = true  
-local currentTarget = nil  
+--// UI
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "LockCamera_UI"
 
--- MODE
-local targetMode = "Monster" -- "Player" / "Monster"
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 180, 0, 140)
+frame.Position = UDim2.new(0.05, 0, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
--- ================= AIMBOT =================  
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, -60, 0, 25)
+title.Position = UDim2.new(0, 5, 0, 0)
+title.Text = "Lock Camera"
+title.TextColor3 = Color3.new(1,1,1)
+title.BackgroundTransparency = 1
+title.TextXAlignment = Enum.TextXAlignment.Left
 
-local function isAlive(model)
-	local hum = model and model:FindFirstChild("Humanoid")
-	return hum and hum.Health > 0
-end
+local close = Instance.new("TextButton", frame)
+close.Size = UDim2.new(0,25,0,25)
+close.Position = UDim2.new(1,-25,0,0)
+close.Text = "X"
+close.BackgroundColor3 = Color3.fromRGB(120,0,0)
 
-local function getTargetPart(model)
-	return model:FindFirstChild("HumanoidRootPart")
-end
+local mini = Instance.new("TextButton", frame)
+mini.Size = UDim2.new(0,25,0,25)
+mini.Position = UDim2.new(1,-50,0,0)
+mini.Text = "-"
+mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
-local function getClosestTarget(root)
-	local closest = nil
-	local shortest = math.huge
+local toggle = Instance.new("TextButton", frame)
+toggle.Size = UDim2.new(1,-10,0,30)
+toggle.Position = UDim2.new(0,5,0,30)
+toggle.Text = "OFF"
+toggle.BackgroundColor3 = Color3.fromRGB(200,50,50)
+toggle.TextColor3 = Color3.new(1,1,1)
 
-	if targetMode == "Player" then
-		for _, plr in pairs(Players:GetPlayers()) do
-			if plr ~= player and plr.Character and isAlive(plr.Character) then
-				local part = getTargetPart(plr.Character)
-				if part then
-					local dist = (part.Position - root.Position).Magnitude
-					if dist < shortest then
-						shortest = dist
-						closest = plr.Character
-					end
-				end
-			end
-		end
-	else
-		for _, obj in pairs(workspace:GetDescendants()) do
-			if obj:IsA("Model") and obj ~= root.Parent and isAlive(obj) then
-				if not Players:GetPlayerFromCharacter(obj) then
-					local part = getTargetPart(obj)
-					if part then
-						local dist = (part.Position - root.Position).Magnitude
-						if dist < shortest then
-							shortest = dist
-							closest = obj
-						end
-					end
-				end
-			end
-		end
-	end
+local box = Instance.new("TextBox", frame)
+box.Size = UDim2.new(1,-10,0,30)
+box.Position = UDim2.new(0,5,0,70)
+box.PlaceholderText = "ใส่ระยะ เช่น 1000"
+box.BackgroundColor3 = Color3.fromRGB(50,50,50)
+box.TextColor3 = Color3.new(1,1,1)
 
-	return closest
-end
-
--- 🔥 FIX HERE
-local function startLock()
-	connection = RunService.RenderStepped:Connect(function()
-		local character = getCharacter()
-		local root = character:FindFirstChild("HumanoidRootPart")
-		if not root then return end
-
-		-- ✅ ใช้ตัวเดิมจนกว่าจะตาย
-		if currentTarget and isAlive(currentTarget) then
-			-- keep target
-		else
-			currentTarget = getClosestTarget(root)
-		end
-
-		if not currentTarget then return end
-
-		local part = getTargetPart(currentTarget)
-		if not part then
-			currentTarget = nil
-			return
-		end
-
-		local aimPos = part.Position
-
-		root.CFrame = CFrame.new(root.Position, aimPos)
-		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
-	end)
-end
-
-local function stopLock()
-	if connection then
-		connection:Disconnect()
-		connection = nil
-	end
-	currentTarget = nil
-end
-
--- ================= MENU =================  
-
-local gui = Instance.new("ScreenGui")  
-gui.Parent = player:WaitForChild("PlayerGui")  
-
-local frame = Instance.new("Frame")  
-frame.Size = UDim2.new(0, 300, 0, 280)  
-frame.Position = UDim2.new(0.5, -150, 0.5, -140)  
-frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)  
-frame.Parent = gui  
-Instance.new("UICorner", frame)  
-
-local title = Instance.new("TextLabel")  
-title.Size = UDim2.new(1,0,0,40)  
-title.Text = "⚡ PRO LOCK MENU"  
-title.BackgroundTransparency = 1  
-title.TextColor3 = Color3.new(1,1,1)  
-title.Parent = frame  
-title.Active = true  
-
-local toggleBtn = Instance.new("TextButton")  
-toggleBtn.Size = UDim2.new(0.8,0,0,40)  
-toggleBtn.Position = UDim2.new(0.1,0,0.2,0)  
-toggleBtn.Text = "Lock: OFF"  
-toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)  
-toggleBtn.Parent = frame  
-
-local modeBtn = Instance.new("TextButton")
-modeBtn.Size = UDim2.new(0.8,0,0,40)
-modeBtn.Position = UDim2.new(0.1,0,0.4,0)
-modeBtn.Text = "Mode: Monster"
-modeBtn.Parent = frame
-
-local resizeBtn = Instance.new("TextButton")  
-resizeBtn.Size = UDim2.new(0.8,0,0,40)  
-resizeBtn.Position = UDim2.new(0.1,0,0.8,0)  
-resizeBtn.Text = "Resize"  
-resizeBtn.Parent = frame  
-
-local closeBtn = Instance.new("TextButton")  
-closeBtn.Size = UDim2.new(0,30,0,30)  
-closeBtn.Position = UDim2.new(1,-35,0,5)  
-closeBtn.Text = "X"  
-closeBtn.Parent = frame  
-
-toggleBtn.MouseButton1Click:Connect(function()  
-	lockEnabled = not lockEnabled  
-	if lockEnabled then  
-		toggleBtn.Text = "Lock: ON"  
-		startLock()  
-	else  
-		toggleBtn.Text = "Lock: OFF"  
-		stopLock()  
-	end  
-end)  
-
-modeBtn.MouseButton1Click:Connect(function()
-	targetMode = (targetMode == "Monster") and "Player" or "Monster"
-	modeBtn.Text = "Mode: " .. targetMode
+--// DRAG (มือถือได้)
+local dragging, dragStart, startPos
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+    end
 end)
 
-resizeBtn.MouseButton1Click:Connect(function()  
-	isLarge = not isLarge  
-	frame.Size = isLarge and UDim2.new(0,300,0,280) or UDim2.new(0,200,0,180)  
-end)  
+UIS.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
 
-closeBtn.MouseButton1Click:Connect(function()  
-	stopLock()  
-	gui:Destroy()  
-end)  
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
 
--- DRAG  
-local dragging = false  
-local dragInput  
-local dragStart  
-local startPos  
+--// CLOSE / MINI
+close.MouseButton1Click:Connect(function()
+    gui:Destroy()
+end)
 
-title.InputBegan:Connect(function(input)  
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then  
-		dragging = true  
-		dragStart = input.Position  
-		startPos = frame.Position  
-		dragInput = input  
-	end  
-end)  
+local minimized = false
+mini.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    toggle.Visible = not minimized
+    box.Visible = not minimized
+    frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,140)
+end)
 
-UserInputService.InputChanged:Connect(function(input)  
-	if dragging and input == dragInput then  
-		local delta = input.Position - dragStart  
-		frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)  
-	end  
-end)  
+--// TOGGLE
+toggle.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    toggle.Text = enabled and "ON" or "OFF"
+    toggle.BackgroundColor3 = enabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+end)
 
-UserInputService.InputEnded:Connect(function(input)  
-	if input == dragInput then  
-		dragging = false  
-	end  
+--// INPUT (ไม่จำกัด)
+box.FocusLost:Connect(function()
+    local num = tonumber(box.Text)
+    if num then
+        distance = num
+        box.Text = tostring(num)
+    else
+        box.Text = ""
+    end
+end)
+
+--// MAIN LOOP (ล็อคกล้องจริง)
+RunService.RenderStepped:Connect(function()
+    if not enabled then return end
+
+    local char = player.Character
+    if not char then return end
+
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local look = camera.CFrame.LookVector
+
+    -- 🔥 ล็อคระยะกล้อง
+    camera.CFrame = CFrame.new(
+        root.Position - look * distance,
+        root.Position
+    )
 end)
