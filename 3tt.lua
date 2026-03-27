@@ -1,162 +1,150 @@
--- /client/auto_evade.lua  
+--// SERVICES
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
 
-local Players = game:GetService("Players")  
-local RunService = game:GetService("RunService")  
-local UIS = game:GetService("UserInputService")  
+local player = Players.LocalPlayer
 
-local player = Players.LocalPlayer  
+--// STATE
+local monsterList = {}
+local selectedTarget = nil
 
-local char, humanoid, root  
+--// UI CREATE
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "MonsterTP_UI"
 
-local function setupCharacter(c)  
-    char = c  
-    humanoid = c:WaitForChild("Humanoid")  
-    root = c:WaitForChild("HumanoidRootPart")  
-end  
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 180, 0, 220)
+frame.Position = UDim2.new(0.02, 0, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
 
-setupCharacter(player.Character or player.CharacterAdded:Wait())  
-player.CharacterAdded:Connect(setupCharacter)  
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, -60, 0, 25)
+title.Position = UDim2.new(0, 5, 0, 0)
+title.Text = "Monster TP"
+title.TextSize = 14
+title.BackgroundTransparency = 1
+title.TextColor3 = Color3.new(1,1,1)
+title.TextXAlignment = Enum.TextXAlignment.Left
 
--- CONFIG  
-local enabled = false  
-local mode = "Player"  
-local safeDistance = 20  
-local STEP = 1.0 -- 🔥 ความเร็วหนี (ปรับได้)
+local close = Instance.new("TextButton", frame)
+close.Size = UDim2.new(0, 25, 0, 25)
+close.Position = UDim2.new(1, -25, 0, 0)
+close.Text = "X"
+close.BackgroundColor3 = Color3.fromRGB(120,0,0)
 
--- UI  
-local gui = Instance.new("ScreenGui", game.CoreGui)  
-gui.Name = "EvadeUI"  
+local mini = Instance.new("TextButton", frame)
+mini.Size = UDim2.new(0, 25, 0, 25)
+mini.Position = UDim2.new(1, -50, 0, 0)
+mini.Text = "-"
+mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
-local frame = Instance.new("Frame", gui)  
-frame.Size = UDim2.new(0, 240, 0, 160)  
-frame.Position = UDim2.new(0.5, -120, 0.5, -80)  
-frame.BackgroundColor3 = Color3.fromRGB(25,25,25)  
-frame.Active = true  
-frame.Draggable = true  
+local scanBtn = Instance.new("TextButton", frame)
+scanBtn.Size = UDim2.new(1, -10, 0, 30)
+scanBtn.Position = UDim2.new(0, 5, 0, 30)
+scanBtn.Text = "Scan Monsters"
+scanBtn.BackgroundColor3 = Color3.fromRGB(40,120,40)
 
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)  
+local scroll = Instance.new("ScrollingFrame", frame)
+scroll.Size = UDim2.new(1, -10, 1, -70)
+scroll.Position = UDim2.new(0, 5, 0, 65)
+scroll.CanvasSize = UDim2.new(0,0,0,0)
+scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
 
-local toggle = Instance.new("TextButton", frame)  
-toggle.Size = UDim2.new(1, -20, 0, 30)  
-toggle.Position = UDim2.new(0,10,0,10)  
-toggle.Text = "OFF"  
+local layout = Instance.new("UIListLayout", scroll)
+layout.Padding = UDim.new(0, 4)
 
-local modeBtn = Instance.new("TextButton", frame)  
-modeBtn.Size = UDim2.new(1, -20, 0, 30)  
-modeBtn.Position = UDim2.new(0,10,0,50)  
-modeBtn.Text = "Mode: Player"  
-
-local box = Instance.new("TextBox", frame)  
-box.Size = UDim2.new(1, -20, 0, 30)  
-box.Position = UDim2.new(0,10,0,90)  
-box.Text = tostring(safeDistance)  
-
-toggle.MouseButton1Click:Connect(function()  
-    enabled = not enabled  
-    toggle.Text = enabled and "ON" or "OFF"  
-end)  
-
-modeBtn.MouseButton1Click:Connect(function()  
-    mode = (mode == "Player") and "Monster" or "Player"  
-    modeBtn.Text = "Mode: "..mode  
-end)  
-
-box.FocusLost:Connect(function()  
-    local num = tonumber(box.Text)  
-    if num then safeDistance = num end  
-end)  
-
--- MONSTER CACHE  
-local monsterCache = {}
-
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        local newCache = {}
-        for _,v in pairs(workspace:GetChildren()) do
-            if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") then
-                local hum = v:FindFirstChild("Humanoid")
-                if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(v) then
-                    table.insert(newCache, v)
-                end
-            end
-        end
-        monsterCache = newCache
+--// DRAG
+local dragging, dragStart, startPos
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
     end
 end)
 
--- GET THREATS  
-local function getThreats()  
-    local threats = {}  
+UIS.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
 
-    if mode == "Player" then  
-        for _,p in pairs(Players:GetPlayers()) do  
-            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then  
-                local hum = p.Character:FindFirstChild("Humanoid")
-                if hum and hum.Health > 0 then
-                    local dist = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude  
-                    if dist < safeDistance then  
-                        table.insert(threats, p.Character)  
-                    end  
+--// CLOSE / MINI
+close.MouseButton1Click:Connect(function()
+    gui:Destroy()
+end)
+
+local minimized = false
+mini.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    scroll.Visible = not minimized
+    scanBtn.Visible = not minimized
+    frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,220)
+end)
+
+--// HELPER: หา root ของมอน
+local function getRoot(model)
+    return model:FindFirstChild("HumanoidRootPart")
+        or model:FindFirstChild("Torso")
+        or model:FindFirstChild("UpperTorso")
+        or model.PrimaryPart
+end
+
+--// SCAN MONSTERS
+local function scanMonsters()
+    monsterList = {}
+    scroll:ClearAllChildren()
+    layout.Parent = scroll
+
+    local count = 0
+
+    for _,v in pairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v ~= player.Character then
+            local hum = v:FindFirstChildOfClass("Humanoid")
+            local isPlayer = Players:GetPlayerFromCharacter(v)
+
+            if hum and hum.Health > 0 and not isPlayer then
+                local root = getRoot(v)
+                if root then
+                    count += 1
+                    table.insert(monsterList, v)
+
+                    local btn = Instance.new("TextButton")
+                    btn.Size = UDim2.new(1, -5, 0, 25)
+                    btn.Text = v.Name
+                    btn.TextSize = 12
+                    btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+                    btn.Parent = scroll
+
+                    btn.MouseButton1Click:Connect(function()
+                        selectedTarget = v
+
+                        local char = player.Character
+                        if char and char:FindFirstChild("HumanoidRootPart") then
+                            local myRoot = char.HumanoidRootPart
+                            local targetRoot = getRoot(v)
+
+                            if targetRoot then
+                                -- 🔥 วาปไปหน้ามอน
+                                myRoot.CFrame = targetRoot.CFrame * CFrame.new(0,0,3)
+                            end
+                        end
+                    end)
                 end
-            end  
-        end  
-    else  
-        for _,v in pairs(monsterCache) do
-            local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude  
-            if dist < safeDistance then  
-                table.insert(threats, v)  
-            end  
-        end  
-    end  
-
-    return threats  
-end  
-
--- MAIN LOOP (CFrame evade)
-RunService.Heartbeat:Connect(function()  
-    if not enabled or not root then return end  
-
-    local threats = getThreats()  
-    if #threats == 0 then return end  
-
-    local totalDirection = Vector3.zero  
-
-    for _,target in pairs(threats) do  
-        local tRoot = target:FindFirstChild("HumanoidRootPart")  
-        local hum = target:FindFirstChild("Humanoid")
-
-        if tRoot and hum and hum.Health > 0 then  
-            local offset = root.Position - tRoot.Position  
-            local dist = offset.Magnitude  
-
-            if dist > 0.1 then  
-                totalDirection += offset.Unit / dist  
-            end  
-        end  
-    end  
-
-    if totalDirection.Magnitude == 0 then return end  
-
-    local moveDir = totalDirection.Unit  
-
-    -- 🔥 เดินหนีด้วย CFrame (ใช้ได้ทุกแมพ)
-    root.CFrame = root.CFrame + (moveDir * STEP)
-
-    -- 🔥 หันหน้าหาศัตรูที่ใกล้สุด
-    local closest, closestDist = nil, math.huge
-    for _,t in pairs(threats) do
-        local tr = t:FindFirstChild("HumanoidRootPart")
-        if tr then
-            local d = (root.Position - tr.Position).Magnitude
-            if d < closestDist then
-                closestDist = d
-                closest = tr
             end
         end
     end
 
-    if closest then
-        root.CFrame = CFrame.lookAt(root.Position, closest.Position)
-    end  
-end)
+    scroll.CanvasSize = UDim2.new(0,0,0,count * 30)
+end
+
+scanBtn.MouseButton1Click:Connect(scanMonsters)
