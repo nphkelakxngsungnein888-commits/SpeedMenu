@@ -1,19 +1,23 @@
 --// SERVICES
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
+local mouse = player:GetMouse()
 
 --// STATE
 local saves = {}
 local selectedIndex = nil
+local clickTP = false
+local lockPos = nil
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "TP_Save_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 180, 0, 240)
+frame.Size = UDim2.new(0, 200, 0, 240)
 frame.Position = UDim2.new(0.02, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
@@ -37,15 +41,24 @@ mini.Position = UDim2.new(1,-50,0,0)
 mini.Text = "-"
 mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
+-- ปุ่ม Save
 local saveBtn = Instance.new("TextButton", frame)
-saveBtn.Size = UDim2.new(0.5,-5,0,30)
+saveBtn.Size = UDim2.new(0.33,-5,0,30)
 saveBtn.Position = UDim2.new(0,5,0,30)
 saveBtn.Text = "+ Save"
 saveBtn.BackgroundColor3 = Color3.fromRGB(40,120,40)
 
+-- 🔥 ปุ่ม Click TP (กลาง)
+local clickBtn = Instance.new("TextButton", frame)
+clickBtn.Size = UDim2.new(0.33,-5,0,30)
+clickBtn.Position = UDim2.new(0.33,0,0,30)
+clickBtn.Text = "Click TP OFF"
+clickBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+
+-- ปุ่ม Delete
 local deleteBtn = Instance.new("TextButton", frame)
-deleteBtn.Size = UDim2.new(0.5,-5,0,30)
-deleteBtn.Position = UDim2.new(0.5,0,0,30)
+deleteBtn.Size = UDim2.new(0.33,-5,0,30)
+deleteBtn.Position = UDim2.new(0.66,0,0,30)
 deleteBtn.Text = "Delete"
 deleteBtn.BackgroundColor3 = Color3.fromRGB(120,40,40)
 
@@ -59,7 +72,7 @@ local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0,4)
 layout.Parent = scroll
 
---// DRAG (🔥 FIX มือถือ + PC)
+--// DRAG
 local dragging = false
 local dragStart, startPos
 
@@ -74,11 +87,7 @@ frame.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-    if dragging and (
-        input.UserInputType == Enum.UserInputType.MouseMovement 
-        or input.UserInputType == Enum.UserInputType.Touch
-    ) then
-        
+    if dragging then
         local delta = input.Position - dragStart
 
         frame.Position = UDim2.new(
@@ -90,12 +99,8 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
-UIS.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 
-    or input.UserInputType == Enum.UserInputType.Touch then
-        
-        dragging = false
-    end
+UIS.InputEnded:Connect(function()
+    dragging = false
 end)
 
 --// CLOSE / MINI
@@ -109,10 +114,11 @@ mini.MouseButton1Click:Connect(function()
     scroll.Visible = not minimized
     saveBtn.Visible = not minimized
     deleteBtn.Visible = not minimized
-    frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,240)
+    clickBtn.Visible = not minimized
+    frame.Size = minimized and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,240)
 end)
 
---// CLEAR BUTTONS
+--// CLEAR
 local function clearButtons()
     for _,v in pairs(scroll:GetChildren()) do
         if not v:IsA("UIListLayout") then
@@ -145,11 +151,9 @@ end
 --// REFRESH
 local function refresh()
     clearButtons()
-
     for i, pos in ipairs(saves) do
         createButton(i, pos)
     end
-
     scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
 end
 
@@ -157,7 +161,6 @@ end
 saveBtn.MouseButton1Click:Connect(function()
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:FindFirstChild("HumanoidRootPart")
-
     if not root then return end
 
     local pos = {
@@ -167,11 +170,8 @@ saveBtn.MouseButton1Click:Connect(function()
     }
 
     table.insert(saves, pos)
-
     createButton(#saves, pos)
     scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
-
-    print("สร้าง Save"..#saves)
 end)
 
 --// DELETE
@@ -180,8 +180,44 @@ deleteBtn.MouseButton1Click:Connect(function()
         table.remove(saves, selectedIndex)
         selectedIndex = nil
         refresh()
-    else
-        warn("เลือกก่อนลบ")
+    end
+end)
+
+--// 🔥 CLICK TP
+clickBtn.MouseButton1Click:Connect(function()
+    clickTP = not clickTP
+    clickBtn.Text = clickTP and "Click TP ON" or "Click TP OFF"
+    clickBtn.BackgroundColor3 = clickTP and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+end)
+
+mouse.Button1Down:Connect(function()
+    if not clickTP then return end
+
+    local char = player.Character
+    if not char then return end
+
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local hit = mouse.Hit
+    if hit then
+        lockPos = hit.Position
+        root.CFrame = CFrame.new(lockPos + Vector3.new(0,3,0))
+    end
+end)
+
+-- 🔥 กันโดนวาปกลับ
+RunService.RenderStepped:Connect(function()
+    if clickTP and lockPos then
+        local char = player.Character
+        if not char then return end
+
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+
+        if (root.Position - lockPos).Magnitude > 10 then
+            root.CFrame = CFrame.new(lockPos + Vector3.new(0,3,0))
+        end
     end
 end)
 
