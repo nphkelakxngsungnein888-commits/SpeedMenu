@@ -11,10 +11,10 @@ local enabled = false
 local freecam = false
 local distance = 50
 
--- freecam state
 local camPos = Vector3.new()
 local angleX, angleY = 0, 0
 local speed = 5
+local move = Vector3.new()
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
@@ -64,6 +64,48 @@ box.PlaceholderText = "Distance"
 box.BackgroundColor3 = Color3.fromRGB(50,50,50)
 box.TextColor3 = Color3.new(1,1,1)
 
+--// CONTROL UI (มือถือ)
+local controlFrame = Instance.new("Frame", gui)
+controlFrame.Size = UDim2.new(0,160,0,160)
+controlFrame.Position = UDim2.new(0.75,0,0.6,0)
+controlFrame.BackgroundTransparency = 1
+controlFrame.Visible = false
+
+local function makeBtn(name, pos)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0,45,0,45)
+    b.Position = pos
+    b.Text = name
+    b.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    b.TextColor3 = Color3.new(1,1,1)
+    b.Parent = controlFrame
+    return b
+end
+
+local btnF = makeBtn("↑", UDim2.new(0.5,-22,0,0))
+local btnB = makeBtn("↓", UDim2.new(0.5,-22,0,90))
+local btnL = makeBtn("←", UDim2.new(0,0,0.5,-22))
+local btnR = makeBtn("→", UDim2.new(0,90,0.5,-22))
+local btnU = makeBtn("Up", UDim2.new(0,0,0,0))
+local btnD = makeBtn("Dn", UDim2.new(0,90,0,0))
+
+--// BIND BUTTON
+local function bind(btn, vec)
+    btn.MouseButton1Down:Connect(function()
+        move = move + vec
+    end)
+    btn.MouseButton1Up:Connect(function()
+        move = move - vec
+    end)
+end
+
+bind(btnF, Vector3.new(0,0,-1))
+bind(btnB, Vector3.new(0,0,1))
+bind(btnL, Vector3.new(-1,0,0))
+bind(btnR, Vector3.new(1,0,0))
+bind(btnU, Vector3.new(0,1,0))
+bind(btnD, Vector3.new(0,-1,0))
+
 --// DRAG
 local dragging, dragStart, startPos
 frame.InputBegan:Connect(function(input)
@@ -86,7 +128,7 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
-UIS.InputEnded:Connect(function(input)
+UIS.InputEnded:Connect(function()
     dragging = false
 end)
 
@@ -116,6 +158,8 @@ freeBtn.MouseButton1Click:Connect(function()
     freeBtn.Text = freecam and "FreeCam ON" or "FreeCam OFF"
     freeBtn.BackgroundColor3 = freecam and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
 
+    controlFrame.Visible = freecam
+
     if freecam then
         camPos = camera.CFrame.Position
     end
@@ -129,7 +173,7 @@ box.FocusLost:Connect(function()
     end
 end)
 
---// MOUSE / TOUCH LOOK
+--// LOOK (หมุนกล้อง)
 UIS.InputChanged:Connect(function(input)
     if freecam then
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
@@ -137,23 +181,6 @@ UIS.InputChanged:Connect(function(input)
             angleY = math.clamp(angleY - input.Delta.Y * 0.2, -80, 80)
         end
     end
-end)
-
---// KEY MOVE (มือถือใช้จอย / PC ใช้ WASD)
-local move = Vector3.new()
-
-UIS.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.W then move = move + Vector3.new(0,0,-1) end
-    if input.KeyCode == Enum.KeyCode.S then move = move + Vector3.new(0,0,1) end
-    if input.KeyCode == Enum.KeyCode.A then move = move + Vector3.new(-1,0,0) end
-    if input.KeyCode == Enum.KeyCode.D then move = move + Vector3.new(1,0,0) end
-end)
-
-UIS.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.W then move = move - Vector3.new(0,0,-1) end
-    if input.KeyCode == Enum.KeyCode.S then move = move - Vector3.new(0,0,1) end
-    if input.KeyCode == Enum.KeyCode.A then move = move - Vector3.new(-1,0,0) end
-    if input.KeyCode == Enum.KeyCode.D then move = move - Vector3.new(1,0,0) end
 end)
 
 --// MAIN LOOP
@@ -164,19 +191,20 @@ RunService.RenderStepped:Connect(function()
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
-    -- 🔒 LOCK MODE
+    -- LOCK MODE
     if enabled and not freecam then
         local look = camera.CFrame.LookVector
         camera.CFrame = CFrame.new(root.Position - look * distance, root.Position)
     end
 
-    -- 🎥 FREECAM MODE
+    -- FREECAM
     if freecam then
         local rot = CFrame.Angles(0, math.rad(angleX), 0) * CFrame.Angles(math.rad(angleY), 0, 0)
         local dir = rot.LookVector
 
         camPos = camPos + dir * move.Z * speed
         camPos = camPos + rot.RightVector * move.X * speed
+        camPos = camPos + Vector3.new(0, move.Y * speed, 0)
 
         camera.CFrame = CFrame.new(camPos, camPos + dir)
     end
