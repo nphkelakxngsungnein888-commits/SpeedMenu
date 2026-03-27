@@ -59,28 +59,42 @@ local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0,4)
 layout.Parent = scroll
 
---// DRAG
-local dragging, dragStart, startPos
+--// DRAG (🔥 FIX มือถือ + PC)
+local dragging = false
+local dragStart, startPos
+
 frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+    or input.UserInputType == Enum.UserInputType.Touch then
+        
         dragging = true
         dragStart = input.Position
         startPos = frame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
     end
 end)
 
 UIS.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement 
+        or input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        
         local delta = input.Position - dragStart
+
         frame.Position = UDim2.new(
             startPos.X.Scale,
             startPos.X.Offset + delta.X,
             startPos.Y.Scale,
             startPos.Y.Offset + delta.Y
         )
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+    or input.UserInputType == Enum.UserInputType.Touch then
+        
+        dragging = false
     end
 end)
 
@@ -98,7 +112,7 @@ mini.MouseButton1Click:Connect(function()
     frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,240)
 end)
 
---// CLEAR BUTTONS (ไม่ลบ layout)
+--// CLEAR BUTTONS
 local function clearButtons()
     for _,v in pairs(scroll:GetChildren()) do
         if not v:IsA("UIListLayout") then
@@ -139,7 +153,7 @@ local function refresh()
     scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
 end
 
---// SAVE (FIXED)
+--// SAVE
 saveBtn.MouseButton1Click:Connect(function()
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:FindFirstChild("HumanoidRootPart")
@@ -154,9 +168,7 @@ saveBtn.MouseButton1Click:Connect(function()
 
     table.insert(saves, pos)
 
-    -- 🔥 สร้างทันที
     createButton(#saves, pos)
-
     scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
 
     print("สร้าง Save"..#saves)
