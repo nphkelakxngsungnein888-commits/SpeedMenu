@@ -55,8 +55,9 @@ scroll.Position = UDim2.new(0,5,0,65)
 scroll.CanvasSize = UDim2.new(0,0,0,0)
 scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
 
-local layout = Instance.new("UIListLayout", scroll)
+local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0,4)
+layout.Parent = scroll
 
 --// DRAG
 local dragging, dragStart, startPos
@@ -97,30 +98,42 @@ mini.MouseButton1Click:Connect(function()
     frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,240)
 end)
 
+--// CLEAR BUTTONS (ไม่ลบ layout)
+local function clearButtons()
+    for _,v in pairs(scroll:GetChildren()) do
+        if not v:IsA("UIListLayout") then
+            v:Destroy()
+        end
+    end
+end
+
+--// CREATE BUTTON
+local function createButton(i, pos)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,-5,0,25)
+    btn.Text = "Save "..i
+    btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Parent = scroll
+
+    btn.MouseButton1Click:Connect(function()
+        selectedIndex = i
+
+        local char = player.Character or player.CharacterAdded:Wait()
+        local root = char:FindFirstChild("HumanoidRootPart")
+
+        if root then
+            root.CFrame = CFrame.new(pos.x, pos.y, pos.z)
+        end
+    end)
+end
+
 --// REFRESH
 local function refresh()
-    scroll:ClearAllChildren()
-    layout.Parent = scroll
+    clearButtons()
 
     for i, pos in ipairs(saves) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1,-5,0,25)
-        btn.Text = "Save "..i
-        btn.BackgroundColor3 = (selectedIndex == i) and Color3.fromRGB(80,80,150) or Color3.fromRGB(50,50,50)
-        btn.TextColor3 = Color3.new(1,1,1)
-        btn.Parent = scroll
-
-        btn.MouseButton1Click:Connect(function()
-            selectedIndex = i
-            refresh()
-
-            local char = player.Character or player.CharacterAdded:Wait()
-            local root = char:FindFirstChild("HumanoidRootPart")
-
-            if root then
-                root.CFrame = CFrame.new(pos.x, pos.y, pos.z)
-            end
-        end)
+        createButton(i, pos)
     end
 
     scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
@@ -131,37 +144,33 @@ saveBtn.MouseButton1Click:Connect(function()
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:FindFirstChild("HumanoidRootPart")
 
-    if not root then
-        warn("No RootPart")
-        return
-    end
+    if not root then return end
 
-    table.insert(saves, {
+    local pos = {
         x = root.Position.X,
         y = root.Position.Y,
         z = root.Position.Z
-    })
+    }
 
-    print("Saved:", #saves)
+    table.insert(saves, pos)
 
-    selectedIndex = nil
-    refresh()
+    -- 🔥 สร้างทันที
+    createButton(#saves, pos)
+
+    scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
+
+    print("สร้าง Save"..#saves)
 end)
 
---// DELETE (2 STEP)
+--// DELETE
 deleteBtn.MouseButton1Click:Connect(function()
     if selectedIndex then
         table.remove(saves, selectedIndex)
         selectedIndex = nil
         refresh()
     else
-        warn("Select save first")
+        warn("เลือกก่อนลบ")
     end
-end)
-
---// RESPAWN FIX
-player.CharacterAdded:Connect(function()
-    task.wait(1)
 end)
 
 -- INIT
