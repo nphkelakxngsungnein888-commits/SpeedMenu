@@ -8,21 +8,27 @@ local camera = workspace.CurrentCamera
 
 --// STATE
 local enabled = false
+local freecam = false
 local distance = 50
+
+-- freecam state
+local camPos = Vector3.new()
+local angleX, angleY = 0, 0
+local speed = 5
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "LockCamera_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 180, 0, 140)
+frame.Size = UDim2.new(0, 180, 0, 170)
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
 local title = Instance.new("TextLabel", frame)
 title.Size = UDim2.new(1, -60, 0, 25)
 title.Position = UDim2.new(0, 5, 0, 0)
-title.Text = "Lock Camera"
+title.Text = "Camera System"
 title.TextColor3 = Color3.new(1,1,1)
 title.BackgroundTransparency = 1
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -42,18 +48,23 @@ mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 local toggle = Instance.new("TextButton", frame)
 toggle.Size = UDim2.new(1,-10,0,30)
 toggle.Position = UDim2.new(0,5,0,30)
-toggle.Text = "OFF"
+toggle.Text = "Lock OFF"
 toggle.BackgroundColor3 = Color3.fromRGB(200,50,50)
-toggle.TextColor3 = Color3.new(1,1,1)
+
+local freeBtn = Instance.new("TextButton", frame)
+freeBtn.Size = UDim2.new(1,-10,0,30)
+freeBtn.Position = UDim2.new(0,5,0,65)
+freeBtn.Text = "FreeCam OFF"
+freeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 
 local box = Instance.new("TextBox", frame)
 box.Size = UDim2.new(1,-10,0,30)
-box.Position = UDim2.new(0,5,0,70)
-box.PlaceholderText = "ใส่ระยะ เช่น 1000"
+box.Position = UDim2.new(0,5,0,100)
+box.PlaceholderText = "Distance"
 box.BackgroundColor3 = Color3.fromRGB(50,50,50)
 box.TextColor3 = Color3.new(1,1,1)
 
---// DRAG (มือถือได้)
+--// DRAG
 local dragging, dragStart, startPos
 frame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -76,9 +87,7 @@ UIS.InputChanged:Connect(function(input)
 end)
 
 UIS.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
+    dragging = false
 end)
 
 --// CLOSE / MINI
@@ -90,43 +99,85 @@ local minimized = false
 mini.MouseButton1Click:Connect(function()
     minimized = not minimized
     toggle.Visible = not minimized
+    freeBtn.Visible = not minimized
     box.Visible = not minimized
-    frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,140)
+    frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,170)
 end)
 
---// TOGGLE
+--// BUTTONS
 toggle.MouseButton1Click:Connect(function()
     enabled = not enabled
-    toggle.Text = enabled and "ON" or "OFF"
+    toggle.Text = enabled and "Lock ON" or "Lock OFF"
     toggle.BackgroundColor3 = enabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
 end)
 
---// INPUT (ไม่จำกัด)
+freeBtn.MouseButton1Click:Connect(function()
+    freecam = not freecam
+    freeBtn.Text = freecam and "FreeCam ON" or "FreeCam OFF"
+    freeBtn.BackgroundColor3 = freecam and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+
+    if freecam then
+        camPos = camera.CFrame.Position
+    end
+end)
+
+--// INPUT DISTANCE
 box.FocusLost:Connect(function()
     local num = tonumber(box.Text)
     if num then
         distance = num
-        box.Text = tostring(num)
-    else
-        box.Text = ""
     end
 end)
 
---// MAIN LOOP (ล็อคกล้องจริง)
-RunService.RenderStepped:Connect(function()
-    if not enabled then return end
+--// MOUSE / TOUCH LOOK
+UIS.InputChanged:Connect(function(input)
+    if freecam then
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            angleX = angleX - input.Delta.X * 0.2
+            angleY = math.clamp(angleY - input.Delta.Y * 0.2, -80, 80)
+        end
+    end
+end)
 
+--// KEY MOVE (มือถือใช้จอย / PC ใช้ WASD)
+local move = Vector3.new()
+
+UIS.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then move = move + Vector3.new(0,0,-1) end
+    if input.KeyCode == Enum.KeyCode.S then move = move + Vector3.new(0,0,1) end
+    if input.KeyCode == Enum.KeyCode.A then move = move + Vector3.new(-1,0,0) end
+    if input.KeyCode == Enum.KeyCode.D then move = move + Vector3.new(1,0,0) end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then move = move - Vector3.new(0,0,-1) end
+    if input.KeyCode == Enum.KeyCode.S then move = move - Vector3.new(0,0,1) end
+    if input.KeyCode == Enum.KeyCode.A then move = move - Vector3.new(-1,0,0) end
+    if input.KeyCode == Enum.KeyCode.D then move = move - Vector3.new(1,0,0) end
+end)
+
+--// MAIN LOOP
+RunService.RenderStepped:Connect(function()
     local char = player.Character
     if not char then return end
 
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
-    local look = camera.CFrame.LookVector
+    -- 🔒 LOCK MODE
+    if enabled and not freecam then
+        local look = camera.CFrame.LookVector
+        camera.CFrame = CFrame.new(root.Position - look * distance, root.Position)
+    end
 
-    -- 🔥 ล็อคระยะกล้อง
-    camera.CFrame = CFrame.new(
-        root.Position - look * distance,
-        root.Position
-    )
+    -- 🎥 FREECAM MODE
+    if freecam then
+        local rot = CFrame.Angles(0, math.rad(angleX), 0) * CFrame.Angles(math.rad(angleY), 0, 0)
+        local dir = rot.LookVector
+
+        camPos = camPos + dir * move.Z * speed
+        camPos = camPos + rot.RightVector * move.X * speed
+
+        camera.CFrame = CFrame.new(camPos, camPos + dir)
+    end
 end)
