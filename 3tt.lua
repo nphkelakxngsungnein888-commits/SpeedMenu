@@ -1,32 +1,12 @@
 --// SERVICES
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
-
---// FILE
-local FILE_NAME = "tp_saves.json"
 
 --// STATE
 local saves = {}
 local selectedIndex = nil
-
---// LOAD FILE
-local function loadSaves()
-    if isfile and isfile(FILE_NAME) then
-        local data = readfile(FILE_NAME)
-        saves = HttpService:JSONDecode(data)
-    end
-end
-
-local function saveFile()
-    if writefile then
-        writefile(FILE_NAME, HttpService:JSONEncode(saves))
-    end
-end
-
-loadSaves()
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
@@ -103,7 +83,7 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
---// MINI / CLOSE
+--// CLOSE / MINI
 close.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
@@ -117,7 +97,7 @@ mini.MouseButton1Click:Connect(function()
     frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,240)
 end)
 
---// REFRESH LIST
+--// REFRESH
 local function refresh()
     scroll:ClearAllChildren()
     layout.Parent = scroll
@@ -134,9 +114,11 @@ local function refresh()
             selectedIndex = i
             refresh()
 
-            local char = player.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                char.HumanoidRootPart.CFrame = CFrame.new(pos.x, pos.y, pos.z)
+            local char = player.Character or player.CharacterAdded:Wait()
+            local root = char:FindFirstChild("HumanoidRootPart")
+
+            if root then
+                root.CFrame = CFrame.new(pos.x, pos.y, pos.z)
             end
         end)
     end
@@ -144,13 +126,15 @@ local function refresh()
     scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
 end
 
---// SAVE
+--// SAVE (FIXED)
 saveBtn.MouseButton1Click:Connect(function()
-    local char = player.Character
-    if not char then return end
-
+    local char = player.Character or player.CharacterAdded:Wait()
     local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
+
+    if not root then
+        warn("No RootPart")
+        return
+    end
 
     table.insert(saves, {
         x = root.Position.X,
@@ -158,7 +142,9 @@ saveBtn.MouseButton1Click:Connect(function()
         z = root.Position.Z
     })
 
-    saveFile()
+    print("Saved:", #saves)
+
+    selectedIndex = nil
     refresh()
 end)
 
@@ -167,12 +153,13 @@ deleteBtn.MouseButton1Click:Connect(function()
     if selectedIndex then
         table.remove(saves, selectedIndex)
         selectedIndex = nil
-        saveFile()
         refresh()
+    else
+        warn("Select save first")
     end
 end)
 
---// AUTO LOAD AFTER RESPAWN
+--// RESPAWN FIX
 player.CharacterAdded:Connect(function()
     task.wait(1)
 end)
