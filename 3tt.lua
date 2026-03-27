@@ -91,7 +91,7 @@ mini.MouseButton1Click:Connect(function()
     frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,220)
 end)
 
---// HELPER: หา root ของมอน
+--// HELPER
 local function getRoot(model)
     return model:FindFirstChild("HumanoidRootPart")
         or model:FindFirstChild("Torso")
@@ -99,52 +99,59 @@ local function getRoot(model)
         or model.PrimaryPart
 end
 
---// SCAN MONSTERS
+--// SCAN (FIXED)
 local function scanMonsters()
     monsterList = {}
     scroll:ClearAllChildren()
     layout.Parent = scroll
 
     local count = 0
+    local foundNames = {}
 
     for _,v in pairs(workspace:GetDescendants()) do
         if v:IsA("Model") and v ~= player.Character then
-            local hum = v:FindFirstChildOfClass("Humanoid")
-            local isPlayer = Players:GetPlayerFromCharacter(v)
 
-            if hum and hum.Health > 0 and not isPlayer then
-                local root = getRoot(v)
-                if root then
-                    count += 1
-                    table.insert(monsterList, v)
+            -- ❌ ตัด player ออก
+            if Players:GetPlayerFromCharacter(v) then continue end
 
-                    local btn = Instance.new("TextButton")
-                    btn.Size = UDim2.new(1, -5, 0, 25)
-                    btn.Text = v.Name
-                    btn.TextSize = 12
-                    btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-                    btn.Parent = scroll
+            local root = getRoot(v)
 
-                    btn.MouseButton1Click:Connect(function()
-                        selectedTarget = v
+            -- 🔥 เงื่อนไขใหม่: มี root ก็ถือว่าใช้ได้
+            if root then
+                if foundNames[v.Name] then continue end
+                foundNames[v.Name] = true
 
-                        local char = player.Character
-                        if char and char:FindFirstChild("HumanoidRootPart") then
-                            local myRoot = char.HumanoidRootPart
-                            local targetRoot = getRoot(v)
+                count += 1
+                table.insert(monsterList, v)
 
-                            if targetRoot then
-                                -- 🔥 วาปไปหน้ามอน
-                                myRoot.CFrame = targetRoot.CFrame * CFrame.new(0,0,3)
-                            end
-                        end
-                    end)
-                end
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(1, -5, 0, 25)
+                btn.Text = v.Name
+                btn.TextSize = 12
+                btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+                btn.TextColor3 = Color3.new(1,1,1)
+                btn.Parent = scroll
+
+                btn.MouseButton1Click:Connect(function()
+                    selectedTarget = v
+
+                    local char = player.Character
+                    if not char then return end
+
+                    local myRoot = char:FindFirstChild("HumanoidRootPart")
+                    local targetRoot = getRoot(v)
+
+                    if myRoot and targetRoot then
+                        -- 🔥 วาป
+                        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 4)
+                    end
+                end)
             end
         end
     end
 
     scroll.CanvasSize = UDim2.new(0,0,0,count * 30)
+    print("✅ Scan เจอ:", count)
 end
 
 scanBtn.MouseButton1Click:Connect(scanMonsters)
