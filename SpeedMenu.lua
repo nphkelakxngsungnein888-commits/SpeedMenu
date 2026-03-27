@@ -1,249 +1,152 @@
---[[ 
- ANYTHING FLY - FULL PRO EXPERT VERSION
- Character + Vehicle | Mobile | Fly + NoClip Toggle
-]]
+--// SERVICES
+local Lighting = game:GetService("Lighting")
+local UIS = game:GetService("UserInputService")
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+--// STATE
+local enabled = false
+local brightness = 5
 
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
-
-------------------------------------------------
--- CONFIG
-------------------------------------------------
-local BASE_SPEED = 60
-local SPEED_MULT = 1
-local DEADZONE = 0.12
-
-local flying = false
-local noclip = false
-
-local humanoid
-local controlPart
-local mode
-
-local alignOri
-local linearVel
-
-------------------------------------------------
--- GET CONTROL PART
-------------------------------------------------
-local function getModelCenter(model)
-	local cf = model:GetBoundingBox()
-	local part = Instance.new("Part")
-	part.Size = Vector3.new(2,2,2)
-	part.Transparency = 1
-	part.CanCollide = false
-	part.Anchored = false
-	part.CFrame = cf
-	part.Name = "_FlyControl"
-	part.Parent = model
-
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = part
-	weld.Part1 = model:FindFirstChildWhichIsA("BasePart")
-	weld.Parent = part
-
-	return part
-end
-
-local function getControl()
-	local char = player.Character
-	if not char then return end
-
-	humanoid = char:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
-
-	if humanoid.SeatPart then
-		local model = humanoid.SeatPart:FindFirstAncestorOfClass("Model")
-		if model then
-			mode = "VEHICLE"
-			return model.PrimaryPart or getModelCenter(model)
-		end
-	end
-
-	mode = "CHAR"
-	return char:FindFirstChild("HumanoidRootPart")
-end
-
-------------------------------------------------
--- NOCLIP
-------------------------------------------------
-local function applyNoClip(state)
-	if player.Character then
-		for _,v in pairs(player.Character:GetDescendants()) do
-			if v:IsA("BasePart") then
-				v.CanCollide = not state
-			end
-		end
-	end
-
-	if mode == "VEHICLE" and controlPart then
-		local model = controlPart:FindFirstAncestorOfClass("Model")
-		if model then
-			for _,v in pairs(model:GetDescendants()) do
-				if v:IsA("BasePart") then
-					v.CanCollide = not state
-				end
-			end
-		end
-	end
-end
-
-------------------------------------------------
--- START / STOP FLY
-------------------------------------------------
-local function startFly()
-	if flying then return end
-
-	controlPart = getControl()
-	if not controlPart then return end
-
-	flying = true
-
-	if mode == "CHAR" then
-		humanoid.PlatformStand = true
-	end
-
-	pcall(function()
-		controlPart:SetNetworkOwner(player)
-	end)
-
-	local att = Instance.new("Attachment", controlPart)
-
-	alignOri = Instance.new("AlignOrientation")
-	alignOri.Attachment0 = att
-	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	alignOri.MaxTorque = math.huge
-	alignOri.Responsiveness = 25
-	alignOri.Parent = controlPart
-
-	linearVel = Instance.new("LinearVelocity")
-	linearVel.Attachment0 = att
-	linearVel.MaxForce = math.huge
-	linearVel.Parent = controlPart
-end
-
-local function stopFly()
-	if not flying then return end
-	flying = false
-
-	if humanoid then
-		humanoid.PlatformStand = false
-	end
-
-	if alignOri then alignOri:Destroy() end
-	if linearVel then linearVel:Destroy() end
-end
-
-------------------------------------------------
--- UI
-------------------------------------------------
+--// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "FlyFullUI"
-gui.ResetOnSpawn = false
+gui.Name = "FullBright_UI"
 
-local toggleUI = Instance.new("TextButton", gui)
-toggleUI.Size = UDim2.fromScale(0.09,0.045)
-toggleUI.Position = UDim2.fromScale(0.02,0.6)
-toggleUI.Text = "MENU"
-toggleUI.TextScaled = true
-toggleUI.BackgroundColor3 = Color3.fromRGB(0,120,255)
-toggleUI.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", toggleUI)
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 170, 0, 140)
+frame.Position = UDim2.new(0.03, 0, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
-local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.fromScale(0.28,0.25)
-panel.Position = UDim2.fromScale(0.36,0.35)
-panel.Visible = false
-panel.Active = true
-panel.Draggable = true
-panel.BackgroundColor3 = Color3.fromRGB(20,20,20)
-Instance.new("UICorner", panel)
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1,-60,0,25)
+title.Position = UDim2.new(0,5,0,0)
+title.Text = "FullBright"
+title.TextColor3 = Color3.new(1,1,1)
+title.BackgroundTransparency = 1
+title.TextXAlignment = Enum.TextXAlignment.Left
 
-local flyBtn = Instance.new("TextButton", panel)
-flyBtn.Size = UDim2.fromScale(0.8,0.2)
-flyBtn.Position = UDim2.fromScale(0.1,0.05)
-flyBtn.Text = "FLY : OFF"
-flyBtn.TextScaled = true
-flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
-flyBtn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", flyBtn)
+local close = Instance.new("TextButton", frame)
+close.Size = UDim2.new(0,25,0,25)
+close.Position = UDim2.new(1,-25,0,0)
+close.Text = "X"
+close.BackgroundColor3 = Color3.fromRGB(120,0,0)
 
-local noclipBtn = Instance.new("TextButton", panel)
-noclipBtn.Size = UDim2.fromScale(0.8,0.18)
-noclipBtn.Position = UDim2.fromScale(0.1,0.32)
-noclipBtn.Text = "NOCLIP : OFF"
-noclipBtn.TextScaled = true
-noclipBtn.BackgroundColor3 = Color3.fromRGB(180,180,60)
-noclipBtn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", noclipBtn)
+local mini = Instance.new("TextButton", frame)
+mini.Size = UDim2.new(0,25,0,25)
+mini.Position = UDim2.new(1,-50,0,0)
+mini.Text = "-"
+mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
-local speedBox = Instance.new("TextBox", panel)
-speedBox.Size = UDim2.fromScale(0.8,0.18)
-speedBox.Position = UDim2.fromScale(0.1,0.6)
-speedBox.Text = tostring(SPEED_MULT)
-speedBox.PlaceholderText = "Speed Multiplier"
-speedBox.TextScaled = true
-speedBox.BackgroundColor3 = Color3.fromRGB(60,60,60)
-speedBox.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", speedBox)
+local toggle = Instance.new("TextButton", frame)
+toggle.Size = UDim2.new(1,-10,0,30)
+toggle.Position = UDim2.new(0,5,0,30)
+toggle.Text = "OFF"
+toggle.BackgroundColor3 = Color3.fromRGB(200,50,50)
+toggle.TextColor3 = Color3.new(1,1,1)
 
-------------------------------------------------
--- UI LOGIC
-------------------------------------------------
-toggleUI.MouseButton1Click:Connect(function()
-	panel.Visible = not panel.Visible
+local box = Instance.new("TextBox", frame)
+box.Size = UDim2.new(1,-10,0,30)
+box.Position = UDim2.new(0,5,0,70)
+box.PlaceholderText = "Brightness (เช่น 5, 10, 50)"
+box.BackgroundColor3 = Color3.fromRGB(50,50,50)
+box.TextColor3 = Color3.new(1,1,1)
+
+--// DRAG (มือถือ + PC)
+local dragging = false
+local dragStart, startPos
+
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+    or input.UserInputType == Enum.UserInputType.Touch then
+        
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+    end
 end)
 
-flyBtn.MouseButton1Click:Connect(function()
-	if flying then
-		stopFly()
-		flyBtn.Text = "FLY : OFF"
-		flyBtn.BackgroundColor3 = Color3.fromRGB(180,60,60)
-	else
-		startFly()
-		flyBtn.Text = "FLY : ON"
-		flyBtn.BackgroundColor3 = Color3.fromRGB(60,180,90)
-	end
+UIS.InputChanged:Connect(function(input)
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement 
+        or input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        
+        local delta = input.Position - dragStart
+
+        frame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
 end)
 
-noclipBtn.MouseButton1Click:Connect(function()
-	noclip = not noclip
-	noclipBtn.Text = noclip and "NOCLIP : ON" or "NOCLIP : OFF"
-	applyNoClip(noclip)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
 end)
 
-speedBox.FocusLost:Connect(function()
-	local v = tonumber(speedBox.Text)
-	if v and v > 0 then
-		SPEED_MULT = v
-	end
-	speedBox.Text = tostring(SPEED_MULT)
+--// CLOSE / MINI
+close.MouseButton1Click:Connect(function()
+    gui:Destroy()
 end)
 
-------------------------------------------------
--- FLY LOOP
-------------------------------------------------
-RunService.RenderStepped:Connect(function()
-	if not flying or not controlPart or not humanoid then return end
+local minimized = false
+mini.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    toggle.Visible = not minimized
+    box.Visible = not minimized
+    frame.Size = minimized and UDim2.new(0,170,0,30) or UDim2.new(0,170,0,140)
+end)
 
-	alignOri.CFrame = camera.CFrame
+--// APPLY FULLBRIGHT
+local function apply()
+    Lighting.Brightness = brightness
+    Lighting.ClockTime = 14
+    Lighting.FogEnd = 100000
+    Lighting.GlobalShadows = false
+    Lighting.Ambient = Color3.new(1,1,1)
+    Lighting.OutdoorAmbient = Color3.new(1,1,1)
+end
 
-	local dir = humanoid.MoveDirection
-	local vel = Vector3.new(
-		dir.X * BASE_SPEED * SPEED_MULT,
-		0,
-		dir.Z * BASE_SPEED * SPEED_MULT
-	)
+--// TOGGLE
+toggle.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    toggle.Text = enabled and "ON" or "OFF"
+    toggle.BackgroundColor3 = enabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
 
-	if dir.Magnitude > 0.05 then
-		local y = camera.CFrame.LookVector.Y
-		if math.abs(y) > DEADZONE then
-			vel += Vector3.new(0, y * BASE_SPEED * 0.75 * SPEED_MULT, 0)
-		end
-	end
+    if enabled then
+        apply()
+    end
+end)
 
-	linearVel.VectorVelocity = vel
+--// INPUT BRIGHTNESS
+box.FocusLost:Connect(function()
+    local num = tonumber(box.Text)
+    if num then
+        brightness = num
+        if enabled then
+            apply()
+        end
+    else
+        box.Text = ""
+    end
+end)
+
+--// กันเกมรีเซ็ตค่า
+Lighting:GetPropertyChangedSignal("Brightness"):Connect(function()
+    if enabled then Lighting.Brightness = brightness end
+end)
+
+Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function()
+    if enabled then Lighting.ClockTime = 14 end
+end)
+
+Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
+    if enabled then Lighting.FogEnd = 100000 end
+end)
+
+Lighting:GetPropertyChangedSignal("GlobalShadows"):Connect(function()
+    if enabled then Lighting.GlobalShadows = false end
 end)
