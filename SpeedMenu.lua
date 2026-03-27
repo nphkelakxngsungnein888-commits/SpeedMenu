@@ -16,15 +16,22 @@ local default = {
 --// STATE
 local brightEnabled = false
 local darkEnabled = false
+local fogEnabled = false
+local sharpEnabled = false
+
 local brightnessValue = 5
 local darkValue = 0
+local fogValue = 100000
+local sharpValue = 0.5
+
+local sharpenEffect = nil
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "Light_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 190, 0, 210)
+frame.Size = UDim2.new(0, 200, 0, 280)
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
@@ -48,44 +55,53 @@ mini.Position = UDim2.new(1,-50,0,0)
 mini.Text = "-"
 mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
--- Bright
-local brightBtn = Instance.new("TextButton", frame)
-brightBtn.Size = UDim2.new(1,-10,0,25)
-brightBtn.Position = UDim2.new(0,5,0,30)
-brightBtn.Text = "FullBright OFF"
-brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+-- 🔥 SCROLL MENU
+local scroll = Instance.new("ScrollingFrame", frame)
+scroll.Size = UDim2.new(1,-10,1,-35)
+scroll.Position = UDim2.new(0,5,0,30)
+scroll.CanvasSize = UDim2.new(0,0,0,0)
+scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
 
-local brightBox = Instance.new("TextBox", frame)
-brightBox.Size = UDim2.new(1,-10,0,25)
-brightBox.Position = UDim2.new(0,5,0,60)
-brightBox.PlaceholderText = "Brightness เช่น 5"
-brightBox.BackgroundColor3 = Color3.fromRGB(50,50,50)
-brightBox.TextColor3 = Color3.new(1,1,1)
+local layout = Instance.new("UIListLayout", scroll)
+layout.Padding = UDim.new(0,5)
 
--- Dark
-local darkBtn = Instance.new("TextButton", frame)
-darkBtn.Size = UDim2.new(1,-10,0,25)
-darkBtn.Position = UDim2.new(0,5,0,90)
-darkBtn.Text = "Dark OFF"
-darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+local function addButton(text)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1,-5,0,25)
+    b.Text = text
+    b.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    b.TextColor3 = Color3.new(1,1,1)
+    b.Parent = scroll
+    return b
+end
 
-local darkBox = Instance.new("TextBox", frame)
-darkBox.Size = UDim2.new(1,-10,0,25)
-darkBox.Position = UDim2.new(0,5,0,120)
-darkBox.PlaceholderText = "Dark เช่น 0"
-darkBox.BackgroundColor3 = Color3.fromRGB(50,50,50)
-darkBox.TextColor3 = Color3.new(1,1,1)
+local function addBox(placeholder)
+    local t = Instance.new("TextBox")
+    t.Size = UDim2.new(1,-5,0,25)
+    t.PlaceholderText = placeholder
+    t.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    t.TextColor3 = Color3.new(1,1,1)
+    t.Parent = scroll
+    return t
+end
 
--- Reset
-local resetBtn = Instance.new("TextButton", frame)
-resetBtn.Size = UDim2.new(1,-10,0,30)
-resetBtn.Position = UDim2.new(0,5,0,155)
-resetBtn.Text = "RESET"
-resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
+-- UI Elements
+local brightBtn = addButton("FullBright OFF")
+local brightBox = addBox("Brightness")
 
---// DRAG (มือถือ + PC)
+local darkBtn = addButton("Dark OFF")
+local darkBox = addBox("Dark")
+
+local fogBtn = addButton("Fog OFF")
+local fogBox = addBox("FogEnd")
+
+local sharpBtn = addButton("Sharpen OFF")
+local sharpBox = addBox("Sharpness 0-1")
+
+local resetBtn = addButton("RESET")
+
+--// DRAG
 local dragging, dragStart, startPos
-
 frame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
@@ -95,7 +111,7 @@ frame.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+    if dragging then
         local delta = input.Position - dragStart
         frame.Position = UDim2.new(
             startPos.X.Scale,
@@ -110,7 +126,7 @@ UIS.InputEnded:Connect(function()
     dragging = false
 end)
 
---// MINI / CLOSE
+--// CLOSE / MINI
 close.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
@@ -118,19 +134,14 @@ end)
 local minimized = false
 mini.MouseButton1Click:Connect(function()
     minimized = not minimized
-    brightBtn.Visible = not minimized
-    brightBox.Visible = not minimized
-    darkBtn.Visible = not minimized
-    darkBox.Visible = not minimized
-    resetBtn.Visible = not minimized
-    frame.Size = minimized and UDim2.new(0,190,0,30) or UDim2.new(0,190,0,210)
+    scroll.Visible = not minimized
+    frame.Size = minimized and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,280)
 end)
 
 --// FUNCTIONS
 local function applyBright()
     Lighting.Brightness = brightnessValue
     Lighting.ClockTime = 14
-    Lighting.FogEnd = 100000
     Lighting.GlobalShadows = false
     Lighting.Ambient = Color3.new(1,1,1)
     Lighting.OutdoorAmbient = Color3.new(1,1,1)
@@ -142,52 +153,76 @@ local function applyDark()
     Lighting.GlobalShadows = true
 end
 
+local function applyFog()
+    Lighting.FogEnd = fogValue
+end
+
+local function applySharp()
+    if not sharpenEffect then
+        sharpenEffect = Instance.new("SharpenEffect")
+        sharpenEffect.Parent = Lighting
+    end
+    sharpenEffect.Sharpness = sharpValue
+end
+
 --// BUTTONS
 brightBtn.MouseButton1Click:Connect(function()
     brightEnabled = not brightEnabled
-    darkEnabled = false
-
     brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
-    brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
-    if brightEnabled then
-        applyBright()
-    end
+    if brightEnabled then applyBright() end
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
     darkEnabled = not darkEnabled
-    brightEnabled = false
-
     darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
-    darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+    if darkEnabled then applyDark() end
+end)
 
-    if darkEnabled then
-        applyDark()
+fogBtn.MouseButton1Click:Connect(function()
+    fogEnabled = not fogEnabled
+    fogBtn.Text = fogEnabled and "Fog ON" or "Fog OFF"
+    if fogEnabled then applyFog() end
+end)
+
+sharpBtn.MouseButton1Click:Connect(function()
+    sharpEnabled = not sharpEnabled
+    sharpBtn.Text = sharpEnabled and "Sharpen ON" or "Sharpen OFF"
+
+    if sharpEnabled then
+        applySharp()
+    elseif sharpenEffect then
+        sharpenEffect:Destroy()
+        sharpenEffect = nil
     end
 end)
 
 -- INPUT
 brightBox.FocusLost:Connect(function()
-    local num = tonumber(brightBox.Text)
-    if num then
-        brightnessValue = num
-        if brightEnabled then applyBright() end
-    end
+    local n = tonumber(brightBox.Text)
+    if n then brightnessValue = n if brightEnabled then applyBright() end end
 end)
 
 darkBox.FocusLost:Connect(function()
-    local num = tonumber(darkBox.Text)
-    if num then
-        darkValue = num
-        if darkEnabled then applyDark() end
-    end
+    local n = tonumber(darkBox.Text)
+    if n then darkValue = n if darkEnabled then applyDark() end end
+end)
+
+fogBox.FocusLost:Connect(function()
+    local n = tonumber(fogBox.Text)
+    if n then fogValue = n if fogEnabled then applyFog() end end
+end)
+
+sharpBox.FocusLost:Connect(function()
+    local n = tonumber(sharpBox.Text)
+    if n then sharpValue = n if sharpEnabled then applySharp() end end
 end)
 
 -- RESET
 resetBtn.MouseButton1Click:Connect(function()
     brightEnabled = false
     darkEnabled = false
+    fogEnabled = false
+    sharpEnabled = false
 
     Lighting.Brightness = default.Brightness
     Lighting.ClockTime = default.ClockTime
@@ -196,8 +231,18 @@ resetBtn.MouseButton1Click:Connect(function()
     Lighting.Ambient = default.Ambient
     Lighting.OutdoorAmbient = default.OutdoorAmbient
 
+    if sharpenEffect then
+        sharpenEffect:Destroy()
+        sharpenEffect = nil
+    end
+
     brightBtn.Text = "FullBright OFF"
     darkBtn.Text = "Dark OFF"
-    brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-    darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+    fogBtn.Text = "Fog OFF"
+    sharpBtn.Text = "Sharpen OFF"
+end)
+
+-- AUTO CANVAS SIZE
+layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 10)
 end)
