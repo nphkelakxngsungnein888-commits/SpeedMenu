@@ -1,57 +1,82 @@
 --// SERVICES
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 
---// STATE
-local monsterList = {}
-local selectedTarget = nil
+--// FILE
+local FILE_NAME = "tp_saves.json"
 
---// UI CREATE
+--// STATE
+local saves = {}
+local selectedIndex = nil
+
+--// LOAD FILE
+local function loadSaves()
+    if isfile and isfile(FILE_NAME) then
+        local data = readfile(FILE_NAME)
+        saves = HttpService:JSONDecode(data)
+    end
+end
+
+local function saveFile()
+    if writefile then
+        writefile(FILE_NAME, HttpService:JSONEncode(saves))
+    end
+end
+
+loadSaves()
+
+--// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "MonsterTP_UI"
+gui.Name = "TP_Save_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 180, 0, 220)
+frame.Size = UDim2.new(0, 180, 0, 240)
 frame.Position = UDim2.new(0.02, 0, 0.3, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
 local title = Instance.new("TextLabel", frame)
 title.Size = UDim2.new(1, -60, 0, 25)
 title.Position = UDim2.new(0, 5, 0, 0)
-title.Text = "Monster TP"
-title.TextSize = 14
-title.BackgroundTransparency = 1
+title.Text = "Teleport Save"
 title.TextColor3 = Color3.new(1,1,1)
+title.BackgroundTransparency = 1
 title.TextXAlignment = Enum.TextXAlignment.Left
 
 local close = Instance.new("TextButton", frame)
-close.Size = UDim2.new(0, 25, 0, 25)
-close.Position = UDim2.new(1, -25, 0, 0)
+close.Size = UDim2.new(0,25,0,25)
+close.Position = UDim2.new(1,-25,0,0)
 close.Text = "X"
 close.BackgroundColor3 = Color3.fromRGB(120,0,0)
 
 local mini = Instance.new("TextButton", frame)
-mini.Size = UDim2.new(0, 25, 0, 25)
-mini.Position = UDim2.new(1, -50, 0, 0)
+mini.Size = UDim2.new(0,25,0,25)
+mini.Position = UDim2.new(1,-50,0,0)
 mini.Text = "-"
 mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
-local scanBtn = Instance.new("TextButton", frame)
-scanBtn.Size = UDim2.new(1, -10, 0, 30)
-scanBtn.Position = UDim2.new(0, 5, 0, 30)
-scanBtn.Text = "Scan Monsters"
-scanBtn.BackgroundColor3 = Color3.fromRGB(40,120,40)
+local saveBtn = Instance.new("TextButton", frame)
+saveBtn.Size = UDim2.new(0.5,-5,0,30)
+saveBtn.Position = UDim2.new(0,5,0,30)
+saveBtn.Text = "+ Save"
+saveBtn.BackgroundColor3 = Color3.fromRGB(40,120,40)
+
+local deleteBtn = Instance.new("TextButton", frame)
+deleteBtn.Size = UDim2.new(0.5,-5,0,30)
+deleteBtn.Position = UDim2.new(0.5,0,0,30)
+deleteBtn.Text = "Delete"
+deleteBtn.BackgroundColor3 = Color3.fromRGB(120,40,40)
 
 local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Size = UDim2.new(1, -10, 1, -70)
-scroll.Position = UDim2.new(0, 5, 0, 65)
+scroll.Size = UDim2.new(1,-10,1,-70)
+scroll.Position = UDim2.new(0,5,0,65)
 scroll.CanvasSize = UDim2.new(0,0,0,0)
 scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
 
 local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0, 4)
+layout.Padding = UDim.new(0,4)
 
 --// DRAG
 local dragging, dragStart, startPos
@@ -78,7 +103,7 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
---// CLOSE / MINI
+--// MINI / CLOSE
 close.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
@@ -87,71 +112,70 @@ local minimized = false
 mini.MouseButton1Click:Connect(function()
     minimized = not minimized
     scroll.Visible = not minimized
-    scanBtn.Visible = not minimized
-    frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,220)
+    saveBtn.Visible = not minimized
+    deleteBtn.Visible = not minimized
+    frame.Size = minimized and UDim2.new(0,180,0,30) or UDim2.new(0,180,0,240)
 end)
 
---// HELPER
-local function getRoot(model)
-    return model:FindFirstChild("HumanoidRootPart")
-        or model:FindFirstChild("Torso")
-        or model:FindFirstChild("UpperTorso")
-        or model.PrimaryPart
-end
-
---// SCAN (FIXED)
-local function scanMonsters()
-    monsterList = {}
+--// REFRESH LIST
+local function refresh()
     scroll:ClearAllChildren()
     layout.Parent = scroll
 
-    local count = 0
-    local foundNames = {}
+    for i, pos in ipairs(saves) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1,-5,0,25)
+        btn.Text = "Save "..i
+        btn.BackgroundColor3 = (selectedIndex == i) and Color3.fromRGB(80,80,150) or Color3.fromRGB(50,50,50)
+        btn.TextColor3 = Color3.new(1,1,1)
+        btn.Parent = scroll
 
-    for _,v in pairs(workspace:GetDescendants()) do
-        if v:IsA("Model") and v ~= player.Character then
+        btn.MouseButton1Click:Connect(function()
+            selectedIndex = i
+            refresh()
 
-            -- ❌ ตัด player ออก
-            if Players:GetPlayerFromCharacter(v) then continue end
-
-            local root = getRoot(v)
-
-            -- 🔥 เงื่อนไขใหม่: มี root ก็ถือว่าใช้ได้
-            if root then
-                if foundNames[v.Name] then continue end
-                foundNames[v.Name] = true
-
-                count += 1
-                table.insert(monsterList, v)
-
-                local btn = Instance.new("TextButton")
-                btn.Size = UDim2.new(1, -5, 0, 25)
-                btn.Text = v.Name
-                btn.TextSize = 12
-                btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-                btn.TextColor3 = Color3.new(1,1,1)
-                btn.Parent = scroll
-
-                btn.MouseButton1Click:Connect(function()
-                    selectedTarget = v
-
-                    local char = player.Character
-                    if not char then return end
-
-                    local myRoot = char:FindFirstChild("HumanoidRootPart")
-                    local targetRoot = getRoot(v)
-
-                    if myRoot and targetRoot then
-                        -- 🔥 วาป
-                        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 4)
-                    end
-                end)
+            local char = player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.CFrame = CFrame.new(pos.x, pos.y, pos.z)
             end
-        end
+        end)
     end
 
-    scroll.CanvasSize = UDim2.new(0,0,0,count * 30)
-    print("✅ Scan เจอ:", count)
+    scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
 end
 
-scanBtn.MouseButton1Click:Connect(scanMonsters)
+--// SAVE
+saveBtn.MouseButton1Click:Connect(function()
+    local char = player.Character
+    if not char then return end
+
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    table.insert(saves, {
+        x = root.Position.X,
+        y = root.Position.Y,
+        z = root.Position.Z
+    })
+
+    saveFile()
+    refresh()
+end)
+
+--// DELETE (2 STEP)
+deleteBtn.MouseButton1Click:Connect(function()
+    if selectedIndex then
+        table.remove(saves, selectedIndex)
+        selectedIndex = nil
+        saveFile()
+        refresh()
+    end
+end)
+
+--// AUTO LOAD AFTER RESPAWN
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+end)
+
+-- INIT
+refresh()
