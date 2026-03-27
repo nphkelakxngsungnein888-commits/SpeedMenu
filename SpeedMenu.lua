@@ -17,14 +17,10 @@ local default = {
 local brightEnabled = false
 local darkEnabled = false
 local fogEnabled = false
-local sharpEnabled = false
 
 local brightnessValue = 5
 local darkValue = 0
 local fogValue = 100000
-local sharpValue = 0.5
-
-local sharpenEffect = nil
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
@@ -55,50 +51,48 @@ mini.Position = UDim2.new(1,-50,0,0)
 mini.Text = "-"
 mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
--- 🔥 SCROLL MENU
+--// SCROLL
 local scroll = Instance.new("ScrollingFrame", frame)
 scroll.Size = UDim2.new(1,-10,1,-35)
 scroll.Position = UDim2.new(0,5,0,30)
-scroll.CanvasSize = UDim2.new(0,0,0,0)
 scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
 
 local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0,5)
+layout.Padding = UDim.new(0,6)
 
-local function addButton(text)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(1,-5,0,25)
-    b.Text = text
-    b.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    b.TextColor3 = Color3.new(1,1,1)
-    b.Parent = scroll
-    return b
+--// CREATE BLOCK (ปุ่มบน / ช่องล่าง)
+local function createBlock(btnText, placeholder)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1,-5,0,55)
+    container.BackgroundTransparency = 1
+    container.Parent = scroll
+
+    local btn = Instance.new("TextButton", container)
+    btn.Size = UDim2.new(1,0,0,25)
+    btn.Text = btnText
+    btn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+    btn.TextColor3 = Color3.new(1,1,1)
+
+    local box = Instance.new("TextBox", container)
+    box.Size = UDim2.new(1,0,0,25)
+    box.Position = UDim2.new(0,0,0,28)
+    box.PlaceholderText = placeholder
+    box.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    box.TextColor3 = Color3.new(1,1,1)
+
+    return btn, box
 end
 
-local function addBox(placeholder)
-    local t = Instance.new("TextBox")
-    t.Size = UDim2.new(1,-5,0,25)
-    t.PlaceholderText = placeholder
-    t.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    t.TextColor3 = Color3.new(1,1,1)
-    t.Parent = scroll
-    return t
-end
+--// CREATE UI
+local brightBtn, brightBox = createBlock("FullBright OFF", "Brightness")
+local darkBtn, darkBox = createBlock("Dark OFF", "Dark")
+local fogBtn, fogBox = createBlock("Fog OFF", "FogEnd")
 
--- UI Elements
-local brightBtn = addButton("FullBright OFF")
-local brightBox = addBox("Brightness")
-
-local darkBtn = addButton("Dark OFF")
-local darkBox = addBox("Dark")
-
-local fogBtn = addButton("Fog OFF")
-local fogBox = addBox("FogEnd")
-
-local sharpBtn = addButton("Sharpen OFF")
-local sharpBox = addBox("Sharpness 0-1")
-
-local resetBtn = addButton("RESET")
+local resetBtn = Instance.new("TextButton", scroll)
+resetBtn.Size = UDim2.new(1,-5,0,30)
+resetBtn.Text = "RESET"
+resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
+resetBtn.TextColor3 = Color3.new(1,1,1)
 
 --// DRAG
 local dragging, dragStart, startPos
@@ -157,43 +151,26 @@ local function applyFog()
     Lighting.FogEnd = fogValue
 end
 
-local function applySharp()
-    if not sharpenEffect then
-        sharpenEffect = Instance.new("SharpenEffect")
-        sharpenEffect.Parent = Lighting
-    end
-    sharpenEffect.Sharpness = sharpValue
-end
-
 --// BUTTONS
 brightBtn.MouseButton1Click:Connect(function()
     brightEnabled = not brightEnabled
     brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
+    brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if brightEnabled then applyBright() end
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
     darkEnabled = not darkEnabled
     darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
+    darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if darkEnabled then applyDark() end
 end)
 
 fogBtn.MouseButton1Click:Connect(function()
     fogEnabled = not fogEnabled
     fogBtn.Text = fogEnabled and "Fog ON" or "Fog OFF"
+    fogBtn.BackgroundColor3 = fogEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if fogEnabled then applyFog() end
-end)
-
-sharpBtn.MouseButton1Click:Connect(function()
-    sharpEnabled = not sharpEnabled
-    sharpBtn.Text = sharpEnabled and "Sharpen ON" or "Sharpen OFF"
-
-    if sharpEnabled then
-        applySharp()
-    elseif sharpenEffect then
-        sharpenEffect:Destroy()
-        sharpenEffect = nil
-    end
 end)
 
 -- INPUT
@@ -212,17 +189,11 @@ fogBox.FocusLost:Connect(function()
     if n then fogValue = n if fogEnabled then applyFog() end end
 end)
 
-sharpBox.FocusLost:Connect(function()
-    local n = tonumber(sharpBox.Text)
-    if n then sharpValue = n if sharpEnabled then applySharp() end end
-end)
-
 -- RESET
 resetBtn.MouseButton1Click:Connect(function()
     brightEnabled = false
     darkEnabled = false
     fogEnabled = false
-    sharpEnabled = false
 
     Lighting.Brightness = default.Brightness
     Lighting.ClockTime = default.ClockTime
@@ -231,18 +202,12 @@ resetBtn.MouseButton1Click:Connect(function()
     Lighting.Ambient = default.Ambient
     Lighting.OutdoorAmbient = default.OutdoorAmbient
 
-    if sharpenEffect then
-        sharpenEffect:Destroy()
-        sharpenEffect = nil
-    end
-
     brightBtn.Text = "FullBright OFF"
     darkBtn.Text = "Dark OFF"
     fogBtn.Text = "Fog OFF"
-    sharpBtn.Text = "Sharpen OFF"
 end)
 
--- AUTO CANVAS SIZE
+-- AUTO SCROLL SIZE
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 10)
 end)
