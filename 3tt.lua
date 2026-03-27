@@ -183,15 +183,24 @@ deleteBtn.MouseButton1Click:Connect(function()
     end
 end)
 
---// 🔥 CLICK TP
+--// 🔥 CLICK TP (FIXED)
 clickBtn.MouseButton1Click:Connect(function()
     clickTP = not clickTP
+
+    -- 🔥 ปิด = ล้างตำแหน่ง
+    if not clickTP then
+        lockPos = nil
+    end
+
     clickBtn.Text = clickTP and "Click TP ON" or "Click TP OFF"
     clickBtn.BackgroundColor3 = clickTP and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
 end)
 
+-- 🔥 คลิกวาป (กันบัค)
 mouse.Button1Down:Connect(function()
     if not clickTP then return end
+
+    lockPos = nil -- 🔥 เคลียร์ก่อนทุกครั้ง
 
     local char = player.Character
     if not char then return end
