@@ -1,272 +1,205 @@
---// SERVICES
-local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
+-- Services  
+local Players = game:GetService("Players")  
+local RunService = game:GetService("RunService")  
+local UserInputService = game:GetService("UserInputService")  
 
---// DEFAULT
-local default = {
-	Brightness = Lighting.Brightness,
-	ClockTime = Lighting.ClockTime,
-	GlobalShadows = Lighting.GlobalShadows,
-	Ambient = Lighting.Ambient,
-	OutdoorAmbient = Lighting.OutdoorAmbient
-}
+-- Player  
+local player = Players.LocalPlayer  
+local camera = workspace.CurrentCamera  
 
-local defaultWalkSpeed = 16
+local function getCharacter()  
+	return player.Character or player.CharacterAdded:Wait()  
+end  
 
---// STATE
-local brightEnabled = false
-local darkEnabled = false
-local speedEnabled = false
+-- State  
+local lockEnabled = false  
+local connection = nil  
+local isLarge = true  
+local currentTarget = nil  
 
-local brightnessValue = 5
-local darkValue = 0
-local speedValue = 50
+-- MODE
+local targetMode = "Monster" -- "Player" / "Monster"
 
---// UI
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "Light_UI"
+-- ================= AIMBOT =================  
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 220)
-frame.Position = UDim2.new(0.05, 0, 0.3, 0)
-frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
-
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,0,0,25)
-title.Text = "Light System"
-title.BackgroundColor3 = Color3.fromRGB(40,40,40)
-title.TextColor3 = Color3.new(1,1,1)
-
-local close = Instance.new("TextButton", frame)
-close.Size = UDim2.new(0,25,0,25)
-close.Position = UDim2.new(1,-25,0,0)
-close.Text = "X"
-close.BackgroundColor3 = Color3.fromRGB(120,0,0)
-
-local mini = Instance.new("TextButton", frame)
-mini.Size = UDim2.new(0,25,0,25)
-mini.Position = UDim2.new(1,-50,0,0)
-mini.Text = "-"
-mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
-
---// SCROLL
-local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Size = UDim2.new(1,-10,1,-30)
-scroll.Position = UDim2.new(0,5,0,28)
-scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
-scroll.Active = true
-
-local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0,6)
-
---// BLOCK
-local function createBlock(text, placeholder)
-	local f = Instance.new("Frame", scroll)
-	f.Size = UDim2.new(1,-5,0,50)
-	f.BackgroundTransparency = 1
-
-	local btn = Instance.new("TextButton", f)
-	btn.Size = UDim2.new(1,0,0,23)
-	btn.Text = text
-	btn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	btn.TextColor3 = Color3.new(1,1,1)
-
-	local box = Instance.new("TextBox", f)
-	box.Size = UDim2.new(1,0,0,23)
-	box.Position = UDim2.new(0,0,0,25)
-	box.PlaceholderText = placeholder
-	box.BackgroundColor3 = Color3.fromRGB(50,50,50)
-	box.TextColor3 = Color3.new(1,1,1)
-
-	return btn, box
+local function isAlive(model)
+	local hum = model and model:FindFirstChild("Humanoid")
+	return hum and hum.Health > 0
 end
 
---// UI CREATE
-local brightBtn, brightBox = createBlock("FullBright OFF","Brightness")
-local darkBtn, darkBox = createBlock("Dark OFF","Dark")
-local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
-
-local resetBtn = Instance.new("TextButton", scroll)
-resetBtn.Size = UDim2.new(1,-5,0,25)
-resetBtn.Text = "RESET"
-resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
-resetBtn.TextColor3 = Color3.new(1,1,1)
-
---// DRAG (TITLE ONLY)
-local dragging = false
-local dragStart, startPos
-
-title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 
-	or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPos = frame.Position
-	end
-end)
-
-UIS.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement 
-	or input.UserInputType == Enum.UserInputType.Touch) then
-		local delta = input.Position - dragStart
-		frame.Position = UDim2.new(
-			startPos.X.Scale,
-			startPos.X.Offset + delta.X,
-			startPos.Y.Scale,
-			startPos.Y.Offset + delta.Y
-		)
-	end
-end)
-
-UIS.InputEnded:Connect(function()
-	dragging = false
-end)
-
---// CLOSE / MINI
-close.MouseButton1Click:Connect(function() gui:Destroy() end)
-
-local minimized = false
-mini.MouseButton1Click:Connect(function()
-	minimized = not minimized
-	scroll.Visible = not minimized
-	frame.Size = minimized and UDim2.new(0,200,0,25) or UDim2.new(0,200,0,220)
-end)
-
---// LIGHT
-local function applyLighting()
-	Lighting.Brightness = default.Brightness
-	Lighting.ClockTime = default.ClockTime
-	Lighting.GlobalShadows = default.GlobalShadows
-	Lighting.Ambient = default.Ambient
-	Lighting.OutdoorAmbient = default.OutdoorAmbient
-
-	if brightEnabled then
-		Lighting.Brightness = brightnessValue
-		Lighting.ClockTime = 14
-		Lighting.GlobalShadows = false
-		Lighting.Ambient = Color3.new(1,1,1)
-		Lighting.OutdoorAmbient = Color3.new(1,1,1)
-	elseif darkEnabled then
-		Lighting.Brightness = darkValue
-		Lighting.ClockTime = 0
-		Lighting.GlobalShadows = true
-		Lighting.Ambient = Color3.new(0,0,0)
-		Lighting.OutdoorAmbient = Color3.new(0,0,0)
-	end
+local function getTargetPart(model)
+	return model:FindFirstChild("HumanoidRootPart")
 end
 
---// SPEED
-local function applySpeed()
-	local char = Players.LocalPlayer.Character
-	if not char then return end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hum then return end
+local function getClosestTarget(root)
+	local closest = nil
+	local shortest = math.huge
 
-	local value = speedValue or defaultWalkSpeed
-	hum.WalkSpeed = value
-end
-
---// BUTTONS
-brightBtn.MouseButton1Click:Connect(function()
-	brightEnabled = not brightEnabled
-	darkEnabled = false
-
-	brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
-	brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
-	darkBtn.Text = "Dark OFF"
-	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-
-	applyLighting()
-end)
-
-darkBtn.MouseButton1Click:Connect(function()
-	darkEnabled = not darkEnabled
-	brightEnabled = false
-
-	darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
-	darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
-	brightBtn.Text = "FullBright OFF"
-	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-
-	applyLighting()
-end)
-
-speedBtn.MouseButton1Click:Connect(function()
-	speedEnabled = not speedEnabled
-
-	speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
-	speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
-	local char = Players.LocalPlayer.Character
-	if char then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			if speedEnabled then
-				applySpeed()
-			else
-				hum.WalkSpeed = defaultWalkSpeed
+	if targetMode == "Player" then
+		for _, plr in pairs(Players:GetPlayers()) do
+			if plr ~= player and plr.Character and isAlive(plr.Character) then
+				local part = getTargetPart(plr.Character)
+				if part then
+					local dist = (part.Position - root.Position).Magnitude
+					if dist < shortest then
+						shortest = dist
+						closest = plr.Character
+					end
+				end
+			end
+		end
+	else
+		for _, obj in pairs(workspace:GetDescendants()) do
+			if obj:IsA("Model") and obj ~= root.Parent and isAlive(obj) then
+				if not Players:GetPlayerFromCharacter(obj) then
+					local part = getTargetPart(obj)
+					if part then
+						local dist = (part.Position - root.Position).Magnitude
+						if dist < shortest then
+							shortest = dist
+							closest = obj
+						end
+					end
+				end
 			end
 		end
 	end
-end)
 
---// INPUT
-brightBox.FocusLost:Connect(function()
-	local n = tonumber(brightBox.Text)
-	if n then brightnessValue = n applyLighting() end
-end)
+	return closest
+end
 
-darkBox.FocusLost:Connect(function()
-	local n = tonumber(darkBox.Text)
-	if n then darkValue = n applyLighting() end
-end)
+-- 🔥 FIX HERE
+local function startLock()
+	connection = RunService.RenderStepped:Connect(function()
+		local character = getCharacter()
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if not root then return end
 
-speedBox.FocusLost:Connect(function()
-	local n = tonumber(speedBox.Text)
-	if n then
-		speedValue = math.clamp(n,0,500)
-		if speedEnabled then applySpeed() end
-	end
-end)
-
---// LOOP
-RunService.RenderStepped:Connect(function()
-	local char = Players.LocalPlayer.Character
-	if char then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
+		-- ✅ ใช้ตัวเดิมจนกว่าจะตาย
+		if currentTarget and isAlive(currentTarget) then
+			-- keep target
+		else
+			currentTarget = getClosestTarget(root)
 		end
+
+		if not currentTarget then return end
+
+		local part = getTargetPart(currentTarget)
+		if not part then
+			currentTarget = nil
+			return
+		end
+
+		local aimPos = part.Position
+
+		root.CFrame = CFrame.new(root.Position, aimPos)
+		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
+	end)
+end
+
+local function stopLock()
+	if connection then
+		connection:Disconnect()
+		connection = nil
 	end
+	currentTarget = nil
+end
+
+-- ================= MENU =================  
+
+local gui = Instance.new("ScreenGui")  
+gui.Parent = player:WaitForChild("PlayerGui")  
+
+local frame = Instance.new("Frame")  
+frame.Size = UDim2.new(0, 300, 0, 280)  
+frame.Position = UDim2.new(0.5, -150, 0.5, -140)  
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)  
+frame.Parent = gui  
+Instance.new("UICorner", frame)  
+
+local title = Instance.new("TextLabel")  
+title.Size = UDim2.new(1,0,0,40)  
+title.Text = "⚡ PRO LOCK MENU"  
+title.BackgroundTransparency = 1  
+title.TextColor3 = Color3.new(1,1,1)  
+title.Parent = frame  
+title.Active = true  
+
+local toggleBtn = Instance.new("TextButton")  
+toggleBtn.Size = UDim2.new(0.8,0,0,40)  
+toggleBtn.Position = UDim2.new(0.1,0,0.2,0)  
+toggleBtn.Text = "Lock: OFF"  
+toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)  
+toggleBtn.Parent = frame  
+
+local modeBtn = Instance.new("TextButton")
+modeBtn.Size = UDim2.new(0.8,0,0,40)
+modeBtn.Position = UDim2.new(0.1,0,0.4,0)
+modeBtn.Text = "Mode: Monster"
+modeBtn.Parent = frame
+
+local resizeBtn = Instance.new("TextButton")  
+resizeBtn.Size = UDim2.new(0.8,0,0,40)  
+resizeBtn.Position = UDim2.new(0.1,0,0.8,0)  
+resizeBtn.Text = "Resize"  
+resizeBtn.Parent = frame  
+
+local closeBtn = Instance.new("TextButton")  
+closeBtn.Size = UDim2.new(0,30,0,30)  
+closeBtn.Position = UDim2.new(1,-35,0,5)  
+closeBtn.Text = "X"  
+closeBtn.Parent = frame  
+
+toggleBtn.MouseButton1Click:Connect(function()  
+	lockEnabled = not lockEnabled  
+	if lockEnabled then  
+		toggleBtn.Text = "Lock: ON"  
+		startLock()  
+	else  
+		toggleBtn.Text = "Lock: OFF"  
+		stopLock()  
+	end  
+end)  
+
+modeBtn.MouseButton1Click:Connect(function()
+	targetMode = (targetMode == "Monster") and "Player" or "Monster"
+	modeBtn.Text = "Mode: " .. targetMode
 end)
 
---// RESET
-resetBtn.MouseButton1Click:Connect(function()
-	brightEnabled = false
-	darkEnabled = false
-	speedEnabled = false
+resizeBtn.MouseButton1Click:Connect(function()  
+	isLarge = not isLarge  
+	frame.Size = isLarge and UDim2.new(0,300,0,280) or UDim2.new(0,200,0,180)  
+end)  
 
-	applyLighting()
+closeBtn.MouseButton1Click:Connect(function()  
+	stopLock()  
+	gui:Destroy()  
+end)  
 
-	local char = Players.LocalPlayer.Character
-	if char then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then hum.WalkSpeed = defaultWalkSpeed end
-	end
+-- DRAG  
+local dragging = false  
+local dragInput  
+local dragStart  
+local startPos  
 
-	brightBtn.Text = "FullBright OFF"
-	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	darkBtn.Text = "Dark OFF"
-	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	speedBtn.Text = "Speed OFF"
-	speedBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-end)
+title.InputBegan:Connect(function(input)  
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then  
+		dragging = true  
+		dragStart = input.Position  
+		startPos = frame.Position  
+		dragInput = input  
+	end  
+end)  
 
---// AUTO SCROLL
-layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 10)
+UserInputService.InputChanged:Connect(function(input)  
+	if dragging and input == dragInput then  
+		local delta = input.Position - dragStart  
+		frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)  
+	end  
+end)  
+
+UserInputService.InputEnded:Connect(function(input)  
+	if input == dragInput then  
+		dragging = false  
+	end  
 end)
