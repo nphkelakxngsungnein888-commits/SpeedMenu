@@ -32,35 +32,34 @@ local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "Light_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 330)
+frame.Size = UDim2.new(0, 200, 0, 220) -- 🔥 สั้นลง
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
+--// TITLE (ใช้เป็น drag bar)
 local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,-60,0,25)
-title.Position = UDim2.new(0,5,0,0)
+title.Size = UDim2.new(1,0,0,25)
+title.Position = UDim2.new(0,0,0,0)
 title.Text = "Light System"
 title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-title.TextXAlignment = Enum.TextXAlignment.Left
+title.BackgroundColor3 = Color3.fromRGB(40,40,40)
 
 local close = Instance.new("TextButton", frame)
 close.Size = UDim2.new(0,25,0,25)
 close.Position = UDim2.new(1,-25,0,0)
 close.Text = "X"
-close.BackgroundColor3 = Color3.fromRGB(120,0,0)
 
 local mini = Instance.new("TextButton", frame)
 mini.Size = UDim2.new(0,25,0,25)
 mini.Position = UDim2.new(1,-50,0,0)
 mini.Text = "-"
-mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
 
 --// SCROLL
 local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Size = UDim2.new(1,-10,1,-35)
-scroll.Position = UDim2.new(0,5,0,30)
-scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
+scroll.Size = UDim2.new(1,-10,1,-30)
+scroll.Position = UDim2.new(0,5,0,28)
+scroll.CanvasSize = UDim2.new(0,0,0,0)
+scroll.ScrollBarThickness = 5
 scroll.Active = true
 
 local layout = Instance.new("UIListLayout", scroll)
@@ -69,21 +68,17 @@ layout.Padding = UDim.new(0,6)
 --// BLOCK
 local function createBlock(text, placeholder)
 	local f = Instance.new("Frame", scroll)
-	f.Size = UDim2.new(1,-5,0,55)
+	f.Size = UDim2.new(1,-5,0,50)
 	f.BackgroundTransparency = 1
 
 	local btn = Instance.new("TextButton", f)
-	btn.Size = UDim2.new(1,0,0,25)
+	btn.Size = UDim2.new(1,0,0,23)
 	btn.Text = text
-	btn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	btn.TextColor3 = Color3.new(1,1,1)
 
 	local box = Instance.new("TextBox", f)
-	box.Size = UDim2.new(1,0,0,25)
-	box.Position = UDim2.new(0,0,0,28)
+	box.Size = UDim2.new(1,0,0,23)
+	box.Position = UDim2.new(0,0,0,25)
 	box.PlaceholderText = placeholder
-	box.BackgroundColor3 = Color3.fromRGB(50,50,50)
-	box.TextColor3 = Color3.new(1,1,1)
 
 	return btn, box
 end
@@ -95,31 +90,25 @@ local fogBtn, fogBox = createBlock("Fog OFF","FogEnd")
 local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
 
 local resetBtn = Instance.new("TextButton", scroll)
-resetBtn.Size = UDim2.new(1,-5,0,30)
+resetBtn.Size = UDim2.new(1,-5,0,25)
 resetBtn.Text = "RESET"
-resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
 
---// DRAG FIX
-local dragging, dragInput, dragStart, startPos
+--// DRAG (FIX จริง)
+local dragging = false
+local dragStart, startPos
 
-frame.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+title.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 
+	or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = input.Position
 		startPos = frame.Position
-		dragInput = input
-		scroll.ScrollingEnabled = false
-	end
-end)
-
-frame.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		dragInput = input
 	end
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if dragging and input == dragInput then
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement 
+	or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - dragStart
 		frame.Position = UDim2.new(
 			startPos.X.Scale,
@@ -131,23 +120,23 @@ UIS.InputChanged:Connect(function(input)
 end)
 
 UIS.InputEnded:Connect(function(input)
-	if input == dragInput then
+	if input.UserInputType == Enum.UserInputType.MouseButton1 
+	or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = false
-		scroll.ScrollingEnabled = true
 	end
 end)
 
---// MINI / CLOSE
+--// CLOSE / MINI
 close.MouseButton1Click:Connect(function() gui:Destroy() end)
 
 local minimized = false
 mini.MouseButton1Click:Connect(function()
 	minimized = not minimized
 	scroll.Visible = not minimized
-	frame.Size = minimized and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,330)
+	frame.Size = minimized and UDim2.new(0,200,0,25) or UDim2.new(0,200,0,220)
 end)
 
---// APPLY LIGHT
+--// LIGHT
 local function applyLighting()
 	Lighting.Brightness = default.Brightness
 	Lighting.ClockTime = default.ClockTime
@@ -159,13 +148,9 @@ local function applyLighting()
 	if brightEnabled then
 		Lighting.Brightness = brightnessValue
 		Lighting.ClockTime = 14
-		Lighting.GlobalShadows = false
-		Lighting.Ambient = Color3.new(1,1,1)
-		Lighting.OutdoorAmbient = Color3.new(1,1,1)
 	elseif darkEnabled then
 		Lighting.Brightness = darkValue
 		Lighting.ClockTime = 0
-		Lighting.GlobalShadows = true
 	end
 
 	if fogEnabled then
@@ -179,7 +164,6 @@ local function applySpeed()
 	if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
-
 	defaultWalkSpeed = hum.WalkSpeed
 	hum.WalkSpeed = speedValue
 end
@@ -188,38 +172,27 @@ end
 brightBtn.MouseButton1Click:Connect(function()
 	brightEnabled = not brightEnabled
 	darkEnabled = false
-	brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
-	darkBtn.Text = "Dark OFF"
 	applyLighting()
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
 	darkEnabled = not darkEnabled
 	brightEnabled = false
-	darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
-	brightBtn.Text = "FullBright OFF"
 	applyLighting()
 end)
 
 fogBtn.MouseButton1Click:Connect(function()
 	fogEnabled = not fogEnabled
-	fogBtn.Text = fogEnabled and "Fog ON" or "Fog OFF"
 	applyLighting()
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
 	speedEnabled = not speedEnabled
-	speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
-
 	local char = Players.LocalPlayer.Character
 	if char then
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if hum then
-			if speedEnabled then
-				applySpeed()
-			else
-				hum.WalkSpeed = defaultWalkSpeed
-			end
+			if speedEnabled then applySpeed() else hum.WalkSpeed = defaultWalkSpeed end
 		end
 	end
 end)
@@ -254,9 +227,7 @@ RunService.RenderStepped:Connect(function()
 		local char = Players.LocalPlayer.Character
 		if char then
 			local hum = char:FindFirstChildOfClass("Humanoid")
-			if hum then
-				hum.WalkSpeed = speedValue
-			end
+			if hum then hum.WalkSpeed = speedValue end
 		end
 	end
 end)
@@ -273,15 +244,8 @@ resetBtn.MouseButton1Click:Connect(function()
 	local char = Players.LocalPlayer.Character
 	if char then
 		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.WalkSpeed = defaultWalkSpeed
-		end
+		if hum then hum.WalkSpeed = defaultWalkSpeed end
 	end
-
-	brightBtn.Text = "FullBright OFF"
-	darkBtn.Text = "Dark OFF"
-	fogBtn.Text = "Fog OFF"
-	speedBtn.Text = "Speed OFF"
 end)
 
 --// AUTO SCROLL
