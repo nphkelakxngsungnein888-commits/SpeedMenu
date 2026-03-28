@@ -168,74 +168,42 @@ local function applySpeed()
 	hum.WalkSpeed = speedValue or defaultWalkSpeed
 end
 
---// FLOAT UP/DOWN
-local floatBP = nil
+--// FLOAT CONTROLS
 local floatSpeed = 1
-local floatDirection = 0 -- 1=ขึ้น -1=ลง
+local moveDirection = Vector3.new(0,0,0)
 
--- ปุ่มขึ้นลง
-local upBtn = Instance.new("TextButton", frame)
-upBtn.Size = UDim2.new(0,25,0,25)
-upBtn.Position = UDim2.new(1,-75,0,0)
-upBtn.Text = "↑"
-upBtn.BackgroundColor3 = Color3.fromRGB(50,50,200)
-upBtn.Visible = false
+local function updateMovement()
+	moveDirection = Vector3.new(0,0,0)
+	if UIS:IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + Vector3.new(0,0,-1) end
+	if UIS:IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection + Vector3.new(0,0,1) end
+	if UIS:IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection + Vector3.new(-1,0,0) end
+	if UIS:IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + Vector3.new(1,0,0) end
+	if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDirection = moveDirection + Vector3.new(0,1,0) end
+	if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then moveDirection = moveDirection + Vector3.new(0,-1,0) end
+	moveDirection = moveDirection.Unit * floatSpeed
+end
 
-local downBtn = Instance.new("TextButton", frame)
-downBtn.Size = UDim2.new(0,25,0,25)
-downBtn.Position = UDim2.new(1,-100,0,0)
-downBtn.Text = "↓"
-downBtn.BackgroundColor3 = Color3.fromRGB(50,50,200)
-downBtn.Visible = false
-
--- ปรับความเร็ว float จาก box เดียว
 floatBox.FocusLost:Connect(function()
 	local n = tonumber(floatBox.Text)
-	if n then
-		floatSpeed = n
-	end
+	if n then floatSpeed = n end
 end)
 
--- กดปุ่ม float
-upBtn.MouseButton1Down:Connect(function()
-	floatDirection = 1
-end)
-upBtn.MouseButton1Up:Connect(function()
-	floatDirection = 0
-end)
-
-downBtn.MouseButton1Down:Connect(function()
-	floatDirection = -1
-end)
-downBtn.MouseButton1Up:Connect(function()
-	floatDirection = 0
-end)
-
--- ฟังก์ชัน float (ทะลุผนัง)
-local function applyFloat()
-	local char = Players.LocalPlayer.Character
-	if not char then return end
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-
+RunService.RenderStepped:Connect(function()
 	if floatEnabled then
-		if not floatBP then
-			floatBP = Instance.new("BodyPosition")
-			-- ให้ทะลุทุกแกน X/Y/Z
-			floatBP.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-			floatBP.P = 1250
-			floatBP.D = 25
-			floatBP.Position = hrp.Position
-			floatBP.Parent = hrp
-		end
-		floatBP.Position = floatBP.Position + Vector3.new(0, floatSpeed * floatDirection, 0)
-	else
-		if floatBP then
-			floatBP:Destroy()
-			floatBP = nil
+		local char = Players.LocalPlayer.Character
+		if char then
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				updateMovement()
+				local cam = workspace.CurrentCamera
+				local look = CFrame.new(Vector3.new(), cam.CFrame.LookVector)
+				local cf = hrp.CFrame
+				local delta = (look.RightVector * moveDirection.X + Vector3.new(0,1,0) * moveDirection.Y + look.LookVector * moveDirection.Z)
+				hrp.CFrame = cf + delta
+			end
 		end
 	end
-end
+end)
 
 --// BUTTONS
 brightBtn.MouseButton1Click:Connect(function()
@@ -269,48 +237,6 @@ floatBtn.MouseButton1Click:Connect(function()
 	floatEnabled = not floatEnabled
 	floatBtn.Text = floatEnabled and "Float ON" or "Float OFF"
 	floatBtn.BackgroundColor3 = floatEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-	upBtn.Visible = floatEnabled
-	downBtn.Visible = floatEnabled
-	if not floatEnabled then
-		floatDirection = 0
-		if floatBP then
-			floatBP:Destroy()
-			floatBP = nil
-		end
-	end
-end)
-
---// INPUT
-brightBox.FocusLost:Connect(function()
-	local n = tonumber(brightBox.Text)
-	if n then brightnessValue = n applyLighting() end
-end)
-
-darkBox.FocusLost:Connect(function()
-	local n = tonumber(darkBox.Text)
-	if n then darkValue = n applyLighting() end
-end)
-
-speedBox.FocusLost:Connect(function()
-	local n = tonumber(speedBox.Text)
-	if n then
-		speedValue = math.clamp(n,0,500)
-		if speedEnabled then applySpeed() end
-	end
-end)
-
---// LOOP
-RunService.RenderStepped:Connect(function()
-	local char = Players.LocalPlayer.Character
-	if char then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
-		end
-		if floatEnabled then
-			applyFloat()
-		end
-	end
 end)
 
 --// RESET
@@ -319,7 +245,6 @@ resetBtn.MouseButton1Click:Connect(function()
 	darkEnabled = false
 	speedEnabled = false
 	floatEnabled = false
-
 	applyLighting()
 
 	local char = Players.LocalPlayer.Character
@@ -327,22 +252,8 @@ resetBtn.MouseButton1Click:Connect(function()
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if hum then hum.WalkSpeed = defaultWalkSpeed end
-		if hrp then
-			if floatBP then floatBP:Destroy() floatBP = nil end
-			hrp.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y), hrp.Position.Z)
-		end
+		if hrp then hrp.CFrame = CFrame.new(hrp.Position.X, math.floor(hrp.Position.Y), hrp.Position.Z) end
 	end
-
-	brightBtn.Text = "FullBright OFF"
-	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	darkBtn.Text = "Dark OFF"
-	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	speedBtn.Text = "Speed OFF"
-	speedBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	floatBtn.Text = "Float OFF"
-	floatBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	upBtn.Visible = false
-	downBtn.Visible = false
 end)
 
 --// AUTO SCROLL
