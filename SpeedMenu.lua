@@ -19,7 +19,6 @@ local defaultWalkSpeed = 16
 local brightEnabled = false
 local darkEnabled = false
 local speedEnabled = false
-local floatEnabled = false
 
 local brightnessValue = 5
 local darkValue = 0
@@ -30,7 +29,7 @@ local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "Light_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 260)
+frame.Size = UDim2.new(0, 200, 0, 220)
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
@@ -88,7 +87,6 @@ end
 local brightBtn, brightBox = createBlock("FullBright OFF","Brightness")
 local darkBtn, darkBox = createBlock("Dark OFF","Dark")
 local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
-local floatBtn, floatBox = createBlock("Float OFF","Float Speed")
 
 local resetBtn = Instance.new("TextButton", scroll)
 resetBtn.Size = UDim2.new(1,-5,0,25)
@@ -96,7 +94,7 @@ resetBtn.Text = "RESET"
 resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
 resetBtn.TextColor3 = Color3.new(1,1,1)
 
---// DRAG
+--// DRAG (TITLE ONLY)
 local dragging = false
 local dragStart, startPos
 
@@ -133,7 +131,7 @@ local minimized = false
 mini.MouseButton1Click:Connect(function()
 	minimized = not minimized
 	scroll.Visible = not minimized
-	frame.Size = minimized and UDim2.new(0,200,0,25) or UDim2.new(0,200,0,260)
+	frame.Size = minimized and UDim2.new(0,200,0,25) or UDim2.new(0,200,0,220)
 end)
 
 --// LIGHT
@@ -165,78 +163,85 @@ local function applySpeed()
 	if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
-	hum.WalkSpeed = speedValue or defaultWalkSpeed
+
+	local value = speedValue or defaultWalkSpeed
+	hum.WalkSpeed = value
 end
-
---// FLOAT CONTROLS
-local floatSpeed = 1
-local moveDirection = Vector3.new(0,0,0)
-
-local function updateMovement()
-	moveDirection = Vector3.new(0,0,0)
-	if UIS:IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + Vector3.new(0,0,-1) end
-	if UIS:IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection + Vector3.new(0,0,1) end
-	if UIS:IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection + Vector3.new(-1,0,0) end
-	if UIS:IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + Vector3.new(1,0,0) end
-	if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDirection = moveDirection + Vector3.new(0,1,0) end
-	if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then moveDirection = moveDirection + Vector3.new(0,-1,0) end
-	moveDirection = moveDirection.Unit * floatSpeed
-end
-
-floatBox.FocusLost:Connect(function()
-	local n = tonumber(floatBox.Text)
-	if n then floatSpeed = n end
-end)
-
-RunService.RenderStepped:Connect(function()
-	if floatEnabled then
-		local char = Players.LocalPlayer.Character
-		if char then
-			local hrp = char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				updateMovement()
-				local cam = workspace.CurrentCamera
-				local look = CFrame.new(Vector3.new(), cam.CFrame.LookVector)
-				local cf = hrp.CFrame
-				local delta = (look.RightVector * moveDirection.X + Vector3.new(0,1,0) * moveDirection.Y + look.LookVector * moveDirection.Z)
-				hrp.CFrame = cf + delta
-			end
-		end
-	end
-end)
 
 --// BUTTONS
 brightBtn.MouseButton1Click:Connect(function()
 	brightEnabled = not brightEnabled
 	darkEnabled = false
+
 	brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
 	brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+
 	darkBtn.Text = "Dark OFF"
 	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+
 	applyLighting()
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
 	darkEnabled = not darkEnabled
 	brightEnabled = false
+
 	darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
 	darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+
 	brightBtn.Text = "FullBright OFF"
 	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+
 	applyLighting()
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
 	speedEnabled = not speedEnabled
+
 	speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
 	speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-	applySpeed()
+
+	local char = Players.LocalPlayer.Character
+	if char then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			if speedEnabled then
+				applySpeed()
+			else
+				hum.WalkSpeed = defaultWalkSpeed
+			end
+		end
+	end
 end)
 
-floatBtn.MouseButton1Click:Connect(function()
-	floatEnabled = not floatEnabled
-	floatBtn.Text = floatEnabled and "Float ON" or "Float OFF"
-	floatBtn.BackgroundColor3 = floatEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+--// INPUT
+brightBox.FocusLost:Connect(function()
+	local n = tonumber(brightBox.Text)
+	if n then brightnessValue = n applyLighting() end
+end)
+
+darkBox.FocusLost:Connect(function()
+	local n = tonumber(darkBox.Text)
+	if n then darkValue = n applyLighting() end
+end)
+
+speedBox.FocusLost:Connect(function()
+	local n = tonumber(speedBox.Text)
+	if n then
+		speedValue = math.clamp(n,0,500)
+		if speedEnabled then applySpeed() end
+	end
+end)
+
+--// LOOP
+RunService.RenderStepped:Connect(function()
+	local char = Players.LocalPlayer.Character
+	if char then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
+		end
+	end
 end)
 
 --// RESET
@@ -244,16 +249,21 @@ resetBtn.MouseButton1Click:Connect(function()
 	brightEnabled = false
 	darkEnabled = false
 	speedEnabled = false
-	floatEnabled = false
+
 	applyLighting()
 
 	local char = Players.LocalPlayer.Character
 	if char then
 		local hum = char:FindFirstChildOfClass("Humanoid")
-		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if hum then hum.WalkSpeed = defaultWalkSpeed end
-		if hrp then hrp.CFrame = CFrame.new(hrp.Position.X, math.floor(hrp.Position.Y), hrp.Position.Z) end
 	end
+
+	brightBtn.Text = "FullBright OFF"
+	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+	darkBtn.Text = "Dark OFF"
+	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+	speedBtn.Text = "Speed OFF"
+	speedBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 end)
 
 --// AUTO SCROLL
