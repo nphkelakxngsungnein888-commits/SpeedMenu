@@ -19,7 +19,7 @@ local targets = {}
 local targetIndex = 1
 
 -- MODE
-local targetMode = "Monster" -- "Player" / "Monster"
+local targetMode = "Monster"
 
 -- ================= CORE =================
 
@@ -32,25 +32,23 @@ local function getTargetPart(model)
 	return model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Head")
 end
 
--- 🔥 หา target ใกล้ "กลางจอ"
+-- 🔥 หา target ใกล้กลางจอ
 local function getTargetsOnScreen()
 	local list = {}
 	local viewport = camera.ViewportSize
 	local center = Vector2.new(viewport.X/2, viewport.Y/2)
 
 	for _, obj in pairs(workspace:GetDescendants()) do
-		if obj:IsA("Model") and isAlive(obj) then
+		if obj:IsA("Model") and isAlive(obj) and obj ~= player.Character then
 			local isPlayer = Players:GetPlayerFromCharacter(obj)
 
-			if obj ~= player.Character then
-				if (targetMode == "Player" and isPlayer) or (targetMode == "Monster" and not isPlayer) then
-					local part = getTargetPart(obj)
-					if part then
-						local pos, visible = camera:WorldToViewportPoint(part.Position)
-						if visible then
-							local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-							table.insert(list, {model = obj, dist = dist})
-						end
+			if (targetMode == "Player" and isPlayer) or (targetMode == "Monster" and not isPlayer) then
+				local part = getTargetPart(obj)
+				if part then
+					local pos, visible = camera:WorldToViewportPoint(part.Position)
+					if visible then
+						local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+						table.insert(list, {model = obj, dist = dist})
 					end
 				end
 			end
@@ -62,7 +60,7 @@ local function getTargetsOnScreen()
 	end)
 
 	local result = {}
-	for i,v in ipairs(list) do
+	for _,v in ipairs(list) do
 		table.insert(result, v.model)
 	end
 
@@ -92,7 +90,7 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
--- PC support
+-- PC click เปลี่ยนเป้า
 UserInputService.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		targetIndex = targetIndex + 1
@@ -100,7 +98,7 @@ UserInputService.InputBegan:Connect(function(input)
 	end
 end)
 
--- 🔥 LOCK SYSTEM
+-- 🔥 LOCK SYSTEM (แก้สั่นแล้ว)
 local function startLock()
 	connection = RunService.RenderStepped:Connect(function()
 		local character = getCharacter()
@@ -108,12 +106,10 @@ local function startLock()
 		if not root then return end
 
 		targets = getTargetsOnScreen()
-
 		if #targets == 0 then return end
 
 		targetIndex = math.clamp(targetIndex, 1, #targets)
 		currentTarget = targets[targetIndex]
-
 		if not currentTarget then return end
 
 		local part = getTargetPart(currentTarget)
@@ -121,8 +117,14 @@ local function startLock()
 
 		local aimPos = part.Position
 
-		root.CFrame = CFrame.new(root.Position, Vector3.new(aimPos.X, root.Position.Y, aimPos.Z))
-		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
+		-- ✅ SMOOTH (แก้สั่น)
+		local smooth = 0.15
+		local targetCF = CFrame.new(root.Position, Vector3.new(aimPos.X, root.Position.Y, aimPos.Z))
+		root.CFrame = root.CFrame:Lerp(targetCF, smooth)
+
+		-- กล้องลื่น ไม่สั่น
+		local camTarget = CFrame.new(camera.CFrame.Position, aimPos)
+		camera.CFrame = camera.CFrame:Lerp(camTarget, 0.1)
 	end)
 end
 
