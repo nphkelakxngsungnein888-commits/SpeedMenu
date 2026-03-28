@@ -169,8 +169,9 @@ local function applySpeed()
 	hum.WalkSpeed = speedValue or defaultWalkSpeed
 end
 
---// FLOAT (คงที่)
+--// FLOAT คงที่
 local floatBP = nil
+local floatTargetY = 0
 
 local function applyFloat()
 	local char = Players.LocalPlayer.Character
@@ -184,10 +185,12 @@ local function applyFloat()
 			floatBP.MaxForce = Vector3.new(0, math.huge, 0)
 			floatBP.P = 1250
 			floatBP.D = 25
-			floatBP.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y) + floatValue, hrp.Position.Z)
+			floatTargetY = math.floor(hrp.Position.Y) + floatValue
+			floatBP.Position = Vector3.new(hrp.Position.X, floatTargetY, hrp.Position.Z)
 			floatBP.Parent = hrp
 		else
-			floatBP.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y) + floatValue, hrp.Position.Z)
+			-- คงที่ ไม่ขึ้นลง
+			floatBP.Position = Vector3.new(hrp.Position.X, floatTargetY, hrp.Position.Z)
 		end
 	else
 		if floatBP then
@@ -229,6 +232,7 @@ floatBtn.MouseButton1Click:Connect(function()
 	floatEnabled = not floatEnabled
 	floatBtn.Text = floatEnabled and "Float ON" or "Float OFF"
 	floatBtn.BackgroundColor3 = floatEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+	if floatEnabled then applyFloat() end
 end)
 
 --// INPUT
@@ -254,7 +258,18 @@ floatBox.FocusLost:Connect(function()
 	local n = tonumber(floatBox.Text)
 	if n then
 		floatValue = n
-		if floatEnabled then applyFloat() end
+		if floatEnabled then
+			local char = Players.LocalPlayer.Character
+			if char then
+				local hrp = char:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					floatTargetY = math.floor(hrp.Position.Y) + floatValue
+					if floatBP then
+						floatBP.Position = Vector3.new(hrp.Position.X, floatTargetY, hrp.Position.Z)
+					end
+				end
+			end
+		end
 	end
 end)
 
@@ -266,7 +281,9 @@ RunService.RenderStepped:Connect(function()
 		if hum then
 			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
 		end
-		if floatEnabled then applyFloat() end
+		if floatEnabled then
+			applyFloat()
+		end
 	end
 end)
 
@@ -284,7 +301,10 @@ resetBtn.MouseButton1Click:Connect(function()
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if hum then hum.WalkSpeed = defaultWalkSpeed end
-		if hrp then hrp.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y), hrp.Position.Z) end
+		if hrp then
+			if floatBP then floatBP:Destroy() floatBP = nil end
+			hrp.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y), hrp.Position.Z)
+		end
 	end
 
 	brightBtn.Text = "FullBright OFF"
