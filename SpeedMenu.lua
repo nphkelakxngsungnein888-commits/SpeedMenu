@@ -24,7 +24,7 @@ local floatEnabled = false
 local brightnessValue = 5
 local darkValue = 0
 local speedValue = 50
-local floatValue = 0 -- สตัดที่ลอย
+local floatValue = 0 -- สตัดที่ลอย/จม
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
@@ -169,9 +169,8 @@ local function applySpeed()
 	hum.WalkSpeed = speedValue or defaultWalkSpeed
 end
 
---// FLOAT คงที่
+--// FLOAT (ลอย/จมคงที่)
 local floatBP = nil
-local floatTargetY = 0
 
 local function applyFloat()
 	local char = Players.LocalPlayer.Character
@@ -180,18 +179,25 @@ local function applyFloat()
 	if not hrp then return end
 
 	if floatEnabled then
+		-- หา "พื้น" ด้านล่าง
+		local rayOrigin = hrp.Position
+		local rayDirection = Vector3.new(0, -500, 0)
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterDescendantsInstances = {char}
+		raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+		local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+		local groundY = raycastResult and raycastResult.Position.Y or hrp.Position.Y
+
 		if not floatBP then
 			floatBP = Instance.new("BodyPosition")
 			floatBP.MaxForce = Vector3.new(0, math.huge, 0)
 			floatBP.P = 1250
 			floatBP.D = 25
-			floatTargetY = math.floor(hrp.Position.Y) + floatValue
-			floatBP.Position = Vector3.new(hrp.Position.X, floatTargetY, hrp.Position.Z)
 			floatBP.Parent = hrp
-		else
-			-- คงที่ ไม่ขึ้นลง
-			floatBP.Position = Vector3.new(hrp.Position.X, floatTargetY, hrp.Position.Z)
 		end
+
+		floatBP.Position = Vector3.new(hrp.Position.X, groundY + floatValue, hrp.Position.Z)
 	else
 		if floatBP then
 			floatBP:Destroy()
@@ -232,7 +238,6 @@ floatBtn.MouseButton1Click:Connect(function()
 	floatEnabled = not floatEnabled
 	floatBtn.Text = floatEnabled and "Float ON" or "Float OFF"
 	floatBtn.BackgroundColor3 = floatEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-	if floatEnabled then applyFloat() end
 end)
 
 --// INPUT
@@ -258,18 +263,7 @@ floatBox.FocusLost:Connect(function()
 	local n = tonumber(floatBox.Text)
 	if n then
 		floatValue = n
-		if floatEnabled then
-			local char = Players.LocalPlayer.Character
-			if char then
-				local hrp = char:FindFirstChild("HumanoidRootPart")
-				if hrp then
-					floatTargetY = math.floor(hrp.Position.Y) + floatValue
-					if floatBP then
-						floatBP.Position = Vector3.new(hrp.Position.X, floatTargetY, hrp.Position.Z)
-					end
-				end
-			end
-		end
+		if floatEnabled then applyFloat() end
 	end
 end)
 
@@ -281,9 +275,7 @@ RunService.RenderStepped:Connect(function()
 		if hum then
 			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
 		end
-		if floatEnabled then
-			applyFloat()
-		end
+		if floatEnabled then applyFloat() end
 	end
 end)
 
@@ -302,8 +294,16 @@ resetBtn.MouseButton1Click:Connect(function()
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if hum then hum.WalkSpeed = defaultWalkSpeed end
 		if hrp then
-			if floatBP then floatBP:Destroy() floatBP = nil end
-			hrp.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y), hrp.Position.Z)
+			-- รีเซ็ตกลับพื้นปกติ
+			floatBP = floatBP and floatBP:Destroy() and nil
+			local rayOrigin = hrp.Position
+			local rayDirection = Vector3.new(0, -500, 0)
+			local raycastParams = RaycastParams.new()
+			raycastParams.FilterDescendantsInstances = {char}
+			raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+			local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+			local groundY = raycastResult and raycastResult.Position.Y or hrp.Position.Y
+			hrp.Position = Vector3.new(hrp.Position.X, groundY, hrp.Position.Z)
 		end
 	end
 
