@@ -88,7 +88,7 @@ end
 local brightBtn, brightBox = createBlock("FullBright OFF","Brightness")
 local darkBtn, darkBox = createBlock("Dark OFF","Dark")
 local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
-local floatBtn, floatBox = createBlock("Float OFF","Float Height")
+local floatBtn, floatBox = createBlock("Float OFF","Float Speed")
 
 local resetBtn = Instance.new("TextButton", scroll)
 resetBtn.Size = UDim2.new(1,-5,0,25)
@@ -188,28 +188,27 @@ downBtn.Text = "↓"
 downBtn.BackgroundColor3 = Color3.fromRGB(50,50,200)
 downBtn.Visible = false
 
--- ช่องใส่ความเร็ว float
-local floatSpeedBox = Instance.new("TextBox", scroll)
-floatSpeedBox.Size = UDim2.new(1,0,0,23)
-floatSpeedBox.PlaceholderText = "Float Speed"
-floatSpeedBox.BackgroundColor3 = Color3.fromRGB(50,50,50)
-floatSpeedBox.TextColor3 = Color3.new(1,1,1)
-
--- ปุ่มขึ้น
-upBtn.MouseButton1Click:Connect(function()
-	floatDirection = 1
-end)
--- ปุ่มลง
-downBtn.MouseButton1Click:Connect(function()
-	floatDirection = -1
-end)
-
--- ปรับความเร็ว
-floatSpeedBox.FocusLost:Connect(function()
-	local n = tonumber(floatSpeedBox.Text)
+-- ปรับความเร็ว float จาก box เดียว
+floatBox.FocusLost:Connect(function()
+	local n = tonumber(floatBox.Text)
 	if n then
 		floatSpeed = n
 	end
+end)
+
+-- กดปุ่ม float
+upBtn.MouseButton1Down:Connect(function()
+	floatDirection = 1
+end)
+upBtn.MouseButton1Up:Connect(function()
+	floatDirection = 0
+end)
+
+downBtn.MouseButton1Down:Connect(function()
+	floatDirection = -1
+end)
+downBtn.MouseButton1Up:Connect(function()
+	floatDirection = 0
 end)
 
 -- ฟังก์ชัน float
@@ -228,7 +227,6 @@ local function applyFloat()
 			floatBP.Position = hrp.Position
 			floatBP.Parent = hrp
 		end
-		-- ลอยขึ้น/ลง
 		floatBP.Position = floatBP.Position + Vector3.new(0, floatSpeed * floatDirection, 0)
 	else
 		if floatBP then
