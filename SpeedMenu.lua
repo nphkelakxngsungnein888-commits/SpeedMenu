@@ -3,9 +3,8 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
--- Player & Mouse
+-- Player
 local player = Players.LocalPlayer
-local mouse = player:GetMouse() -- ใช้คลิกผู้เล่น
 local camera = workspace.CurrentCamera
 
 local function getCharacter()
@@ -31,7 +30,7 @@ local function getTargetPart(model)
 	return model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Head")
 end
 
--- ฟังก์ชันหาเป้าหมายอัตโนมัติ (เฉพาะ Monster)
+-- หา Monster ใกล้สุด
 local function getClosestMonster(root)
 	local closest = nil
 	local shortest = math.huge
@@ -53,23 +52,51 @@ local function getClosestMonster(root)
 	return closest
 end
 
--- 🔥 ฟังก์ชันล็อคผู้เล่นด้วยการคลิก
-mouse.Button1Down:Connect(function()
-	if not lockEnabled or targetMode ~= "Player" then return end
-	
-	local target = mouse.Target
-	if target and target.Parent then
-		local model = target.Parent:IsA("Model") and target.Parent or target.Parent.Parent
-		if model:IsA("Model") and Players:GetPlayerFromCharacter(model) then
+-- 🔥 MOBILE + PC TAP / CLICK SYSTEM
+local function getTappedTarget(screenPos)
+	local ray = camera:ViewportPointToRay(screenPos.X, screenPos.Y)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterDescendantsInstances = {player.Character}
+	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 500, raycastParams)
+	if result and result.Instance then
+		local part = result.Instance
+		local model = part:FindFirstAncestorOfClass("Model")
+		if model and Players:GetPlayerFromCharacter(model) then
 			if isAlive(model) and model ~= player.Character then
-				currentTarget = model
-				print("Locked on player: " .. model.Name)
+				return model
 			end
+		end
+	end
+	return nil
+end
+
+-- รองรับมือถือ (Tap)
+UserInputService.TouchTap:Connect(function(touches)
+	if not lockEnabled or targetMode ~= "Player" then return end
+	local pos = touches[1]
+	local target = getTappedTarget(pos)
+	if target then
+		currentTarget = target
+	end
+end)
+
+-- รองรับ PC (Mouse)
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if not lockEnabled or targetMode ~= "Player" then return end
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		local pos = input.Position
+		local target = getTappedTarget(pos)
+		if target then
+			currentTarget = target
 		end
 	end
 end)
 
--- 🔥 MAIN LOCK SYSTEM
+-- 🔥 LOCK SYSTEM
 local function startLock()
 	connection = RunService.RenderStepped:Connect(function()
 		local character = getCharacter()
@@ -77,12 +104,10 @@ local function startLock()
 		if not root then return end
 
 		if targetMode == "Monster" then
-			-- Auto lock Monster
 			if not currentTarget or not isAlive(currentTarget) then
 				currentTarget = getClosestMonster(root)
 			end
 		else
-			-- Player mode: รอคลิก
 			if currentTarget and not isAlive(currentTarget) then
 				currentTarget = nil
 			end
@@ -94,8 +119,7 @@ local function startLock()
 		if not part then return end
 
 		local aimPos = part.Position
-		
-		-- หมุนตัวละครและกล้องไปหาเป้าหมาย
+
 		root.CFrame = CFrame.new(root.Position, Vector3.new(aimPos.X, root.Position.Y, aimPos.Z))
 		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
 	end)
@@ -109,13 +133,12 @@ local function stopLock()
 	currentTarget = nil
 end
 
--- ================= MENU GUI =================
+-- ================= GUI =================
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "ProClickLockGui"
+gui.Name = "ProMobileLock"
 gui.ResetOnSpawn = false
 
--- parent GUI ให้รันได้ทุกแมพ
 local success, playerGui = pcall(function() return player:WaitForChild("PlayerGui") end)
 if success and playerGui then
 	gui.Parent = playerGui
@@ -124,16 +147,15 @@ else
 end
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 300, 0, 280)
-frame.Position = UDim2.new(0.5, -150, 0.5, -140)
+frame.Size = UDim2.new(0, 300, 0, 260)
+frame.Position = UDim2.new(0.5, -150, 0.5, -130)
 frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-frame.BorderSizePixel = 0
 frame.Parent = gui
 Instance.new("UICorner", frame)
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1,0,0,40)
-title.Text = "⚡ PRO CLICK LOCK"
+title.Text = "📱 MOBILE LOCK"
 title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 title.TextColor3 = Color3.new(1,1,1)
 title.Parent = frame
@@ -141,7 +163,7 @@ Instance.new("UICorner", title)
 
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0.8,0,0,45)
-toggleBtn.Position = UDim2.new(0.1,0,0.25,0)
+toggleBtn.Position = UDim2.new(0.1,0,0.3,0)
 toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 toggleBtn.TextColor3 = Color3.new(1,1,1)
@@ -150,28 +172,17 @@ Instance.new("UICorner", toggleBtn)
 
 local modeBtn = Instance.new("TextButton")
 modeBtn.Size = UDim2.new(0.8,0,0,45)
-modeBtn.Position = UDim2.new(0.1,0,0.45,0)
-modeBtn.Text = "Mode: Monster (Auto)"
+modeBtn.Position = UDim2.new(0.1,0,0.55,0)
+modeBtn.Text = "Mode: Monster"
 modeBtn.Parent = frame
 Instance.new("UICorner", modeBtn)
-
-local infoLabel = Instance.new("TextLabel")
-infoLabel.Size = UDim2.new(0.8,0,0,30)
-infoLabel.Position = UDim2.new(0.1,0,0.65,0)
-infoLabel.Text = "Status: Idle"
-infoLabel.TextColor3 = Color3.new(0.8,0.8,0.8)
-infoLabel.BackgroundTransparency = 1
-infoLabel.Parent = frame
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0,30,0,30)
 closeBtn.Position = UDim2.new(1,-35,0,5)
 closeBtn.Text = "X"
-closeBtn.TextColor3 = Color3.new(1,1,1)
-closeBtn.BackgroundTransparency = 1
 closeBtn.Parent = frame
 
--- Events
 toggleBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	if lockEnabled then
@@ -188,26 +199,7 @@ end)
 modeBtn.MouseButton1Click:Connect(function()
 	targetMode = (targetMode == "Monster") and "Player" or "Monster"
 	currentTarget = nil
-	if targetMode == "Player" then
-		modeBtn.Text = "Mode: Player (Click Target)"
-		infoLabel.Text = "Status: Click a player to lock"
-	else
-		modeBtn.Text = "Mode: Monster (Auto)"
-		infoLabel.Text = "Status: Auto-seeking monsters"
-	end
-end)
-
--- อัปเดตสถานะเป้าหมายบน UI
-RunService.Heartbeat:Connect(function()
-	if lockEnabled then
-		if currentTarget then
-			infoLabel.Text = "Locked on: " .. currentTarget.Name
-		else
-			infoLabel.Text = (targetMode == "Player") and "Wait for Click..." or "Searching..."
-		end
-	else
-		infoLabel.Text = "Status: Disabled"
-	end
+	modeBtn.Text = "Mode: " .. targetMode
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
@@ -215,21 +207,23 @@ closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
 
--- DRAG SYSTEM (ทำให้เมนูลากได้)
-local dragging, dragInput, dragStart, startPos
+-- DRAG
+local dragging, dragStart, startPos
 title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = true
 		dragStart = input.Position
 		startPos = frame.Position
 	end
 end)
+
 UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+	if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
 		local delta = input.Position - dragStart
 		frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	end
 end)
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+
+UserInputService.InputEnded:Connect(function()
+	dragging = false
 end)
