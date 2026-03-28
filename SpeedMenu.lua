@@ -14,22 +14,25 @@ local default = {
 }
 
 local defaultWalkSpeed = 16
+local defaultFloatHeight = 0
 
 --// STATE
 local brightEnabled = false
 local darkEnabled = false
 local speedEnabled = false
+local floatEnabled = false
 
 local brightnessValue = 5
 local darkValue = 0
 local speedValue = 50
+local floatValue = 0 -- สูง/ต่ำแบบสัดส่วน (สตัด)
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "Light_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 220)
+frame.Size = UDim2.new(0, 200, 0, 260) -- เพิ่มช่อง Float
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
@@ -87,6 +90,7 @@ end
 local brightBtn, brightBox = createBlock("FullBright OFF","Brightness")
 local darkBtn, darkBox = createBlock("Dark OFF","Dark")
 local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
+local floatBtn, floatBox = createBlock("Float OFF","Float Height") -- ช่อง float
 
 local resetBtn = Instance.new("TextButton", scroll)
 resetBtn.Size = UDim2.new(1,-5,0,25)
@@ -94,7 +98,7 @@ resetBtn.Text = "RESET"
 resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
 resetBtn.TextColor3 = Color3.new(1,1,1)
 
---// DRAG (TITLE ONLY)
+--// DRAG
 local dragging = false
 local dragStart, startPos
 
@@ -131,7 +135,7 @@ local minimized = false
 mini.MouseButton1Click:Connect(function()
 	minimized = not minimized
 	scroll.Visible = not minimized
-	frame.Size = minimized and UDim2.new(0,200,0,25) or UDim2.new(0,200,0,220)
+	frame.Size = minimized and UDim2.new(0,200,0,25) or UDim2.new(0,200,0,260)
 end)
 
 --// LIGHT
@@ -163,9 +167,22 @@ local function applySpeed()
 	if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
+	hum.WalkSpeed = speedValue or defaultWalkSpeed
+end
 
-	local value = speedValue or defaultWalkSpeed
-	hum.WalkSpeed = value
+--// FLOAT
+local function applyFloat()
+	local char = Players.LocalPlayer.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local yOffset = floatValue or 0
+	local targetY = math.floor(hrp.Position.Y) + yOffset -- ปรับเป็นสตัด
+
+	if floatEnabled then
+		hrp.Position = Vector3.new(hrp.Position.X, targetY, hrp.Position.Z)
+	end
 end
 
 --// BUTTONS
@@ -201,17 +218,13 @@ speedBtn.MouseButton1Click:Connect(function()
 	speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
 	speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
 
-	local char = Players.LocalPlayer.Character
-	if char then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			if speedEnabled then
-				applySpeed()
-			else
-				hum.WalkSpeed = defaultWalkSpeed
-			end
-		end
-	end
+	applySpeed()
+end)
+
+floatBtn.MouseButton1Click:Connect(function()
+	floatEnabled = not floatEnabled
+	floatBtn.Text = floatEnabled and "Float ON" or "Float OFF"
+	floatBtn.BackgroundColor3 = floatEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
 end)
 
 --// INPUT
@@ -233,6 +246,14 @@ speedBox.FocusLost:Connect(function()
 	end
 end)
 
+floatBox.FocusLost:Connect(function()
+	local n = tonumber(floatBox.Text)
+	if n then
+		floatValue = n
+		if floatEnabled then applyFloat() end
+	end
+end)
+
 --// LOOP
 RunService.RenderStepped:Connect(function()
 	local char = Players.LocalPlayer.Character
@@ -241,6 +262,7 @@ RunService.RenderStepped:Connect(function()
 		if hum then
 			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
 		end
+		if floatEnabled then applyFloat() end
 	end
 end)
 
@@ -249,13 +271,16 @@ resetBtn.MouseButton1Click:Connect(function()
 	brightEnabled = false
 	darkEnabled = false
 	speedEnabled = false
+	floatEnabled = false
 
 	applyLighting()
 
 	local char = Players.LocalPlayer.Character
 	if char then
 		local hum = char:FindFirstChildOfClass("Humanoid")
+		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if hum then hum.WalkSpeed = defaultWalkSpeed end
+		if hrp then hrp.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y), hrp.Position.Z) end
 	end
 
 	brightBtn.Text = "FullBright OFF"
@@ -264,6 +289,8 @@ resetBtn.MouseButton1Click:Connect(function()
 	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 	speedBtn.Text = "Speed OFF"
 	speedBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+	floatBtn.Text = "Float OFF"
+	floatBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 end)
 
 --// AUTO SCROLL
