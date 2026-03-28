@@ -164,8 +164,8 @@ local function applySpeed()
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
 
-	defaultWalkSpeed = hum.WalkSpeed
-	hum.WalkSpeed = speedValue
+	local value = speedValue or defaultWalkSpeed
+	hum.WalkSpeed = value
 end
 
 --// BUTTONS
@@ -235,11 +235,11 @@ end)
 
 --// LOOP
 RunService.RenderStepped:Connect(function()
-	if speedEnabled then
-		local char = Players.LocalPlayer.Character
-		if char then
-			local hum = char:FindFirstChildOfClass("Humanoid")
-			if hum then hum.WalkSpeed = speedValue end
+	local char = Players.LocalPlayer.Character
+	if char then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
 		end
 	end
 end)
