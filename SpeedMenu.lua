@@ -2,212 +2,217 @@
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+
+--// CHARACTER
+local function getChar()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    return char, hum, root
+end
+
+local char, hum, root = getChar()
+
+player.CharacterAdded:Connect(function()
+    char, hum, root = getChar()
+end)
 
 --// SAVE DEFAULT
 local default = {
-    Brightness = Lighting.Brightness,
-    ClockTime = Lighting.ClockTime,
-    FogEnd = Lighting.FogEnd,
-    GlobalShadows = Lighting.GlobalShadows,
-    Ambient = Lighting.Ambient,
-    OutdoorAmbient = Lighting.OutdoorAmbient
+    WalkSpeed = hum.WalkSpeed,
+    JumpPower = hum.JumpPower
 }
 
 --// STATE
-local brightEnabled = false
-local darkEnabled = false
-local fogEnabled = false
+local speedEnabled, jumpEnabled, airEnabled, floatEnabled, godEnabled =
+    false, false, false, false, false
 
-local brightnessValue = 5
-local darkValue = 0
-local fogValue = 100000
+--// VALUES
+local speedValue, jumpValue = 50, 100
+local airJumpValue = 2
+local floatValue = 10
+
+--// AIR JUMP
+local jumpCount = 0
+
+--// FLOAT
+local floatForce
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "Light_UI"
-
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 280)
-frame.Position = UDim2.new(0.05, 0, 0.3, 0)
-frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+frame.Size = UDim2.new(0,200,0,450)
+frame.Position = UDim2.new(0.05,0,0.3,0)
 
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,-60,0,25)
-title.Position = UDim2.new(0,5,0,0)
-title.Text = "Light System"
-title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-title.TextXAlignment = Enum.TextXAlignment.Left
-
-local close = Instance.new("TextButton", frame)
-close.Size = UDim2.new(0,25,0,25)
-close.Position = UDim2.new(1,-25,0,0)
-close.Text = "X"
-close.BackgroundColor3 = Color3.fromRGB(120,0,0)
-
-local mini = Instance.new("TextButton", frame)
-mini.Size = UDim2.new(0,25,0,25)
-mini.Position = UDim2.new(1,-50,0,0)
-mini.Text = "-"
-mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
-
---// SCROLL
 local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Size = UDim2.new(1,-10,1,-35)
-scroll.Position = UDim2.new(0,5,0,30)
-scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
+scroll.Size = UDim2.new(1,-10,1,-10)
+scroll.Position = UDim2.new(0,5,0,5)
 
 local layout = Instance.new("UIListLayout", scroll)
 layout.Padding = UDim.new(0,6)
 
---// CREATE BLOCK (ปุ่มบน / ช่องล่าง)
-local function createBlock(btnText, placeholder)
-    local container = Instance.new("Frame")
-    container.Size = UDim2.new(1,-5,0,55)
-    container.BackgroundTransparency = 1
-    container.Parent = scroll
+--// CREATE BLOCK
+local function createBlock(text, placeholder)
+    local f = Instance.new("Frame", scroll)
+    f.Size = UDim2.new(1,-5,0,55)
 
-    local btn = Instance.new("TextButton", container)
+    local btn = Instance.new("TextButton", f)
     btn.Size = UDim2.new(1,0,0,25)
-    btn.Text = btnText
+    btn.Text = text
     btn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-    btn.TextColor3 = Color3.new(1,1,1)
 
-    local box = Instance.new("TextBox", container)
+    local box = Instance.new("TextBox", f)
     box.Size = UDim2.new(1,0,0,25)
     box.Position = UDim2.new(0,0,0,28)
     box.PlaceholderText = placeholder
-    box.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    box.TextColor3 = Color3.new(1,1,1)
 
     return btn, box
 end
 
---// CREATE UI
-local brightBtn, brightBox = createBlock("FullBright OFF", "Brightness")
-local darkBtn, darkBox = createBlock("Dark OFF", "Dark")
-local fogBtn, fogBox = createBlock("Fog OFF", "FogEnd")
-
-local resetBtn = Instance.new("TextButton", scroll)
-resetBtn.Size = UDim2.new(1,-5,0,30)
-resetBtn.Text = "RESET"
-resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
-resetBtn.TextColor3 = Color3.new(1,1,1)
-
---// DRAG
-local dragging, dragStart, startPos
-frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = frame.Position
-    end
-end)
-
-UIS.InputChanged:Connect(function(input)
-    if dragging then
-        local delta = input.Position - dragStart
-        frame.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
-    end
-end)
-
-UIS.InputEnded:Connect(function()
-    dragging = false
-end)
-
---// CLOSE / MINI
-close.MouseButton1Click:Connect(function()
-    gui:Destroy()
-end)
-
-local minimized = false
-mini.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    scroll.Visible = not minimized
-    frame.Size = minimized and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,280)
-end)
+--// UI CREATE
+local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
+local jumpBtn, jumpBox = createBlock("Jump OFF","JumpPower")
+local airBtn, airBox = createBlock("AirJump OFF","Count")
+local floatBtn, floatBox = createBlock("Float OFF","Height")
+local godBtn = Instance.new("TextButton", scroll)
+godBtn.Size = UDim2.new(1,-5,0,30)
+godBtn.Text = "GodWalk OFF"
+godBtn.BackgroundColor3 = Color3.fromRGB(150,50,200)
 
 --// FUNCTIONS
-local function applyBright()
-    Lighting.Brightness = brightnessValue
-    Lighting.ClockTime = 14
-    Lighting.GlobalShadows = false
-    Lighting.Ambient = Color3.new(1,1,1)
-    Lighting.OutdoorAmbient = Color3.new(1,1,1)
+local function applySpeed()
+    hum.WalkSpeed = speedValue
 end
 
-local function applyDark()
-    Lighting.Brightness = darkValue
-    Lighting.ClockTime = 0
-    Lighting.GlobalShadows = true
+local function applyJump()
+    hum.JumpPower = jumpValue
 end
 
-local function applyFog()
-    Lighting.FogEnd = fogValue
+local function applyFloat()
+    if not floatForce then
+        floatForce = Instance.new("BodyPosition")
+        floatForce.MaxForce = Vector3.new(0,math.huge,0)
+        floatForce.Parent = root
+    end
 end
 
 --// BUTTONS
-brightBtn.MouseButton1Click:Connect(function()
-    brightEnabled = not brightEnabled
-    brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
-    brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-    if brightEnabled then applyBright() end
+speedBtn.MouseButton1Click:Connect(function()
+    speedEnabled = not speedEnabled
+    speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
 end)
 
-darkBtn.MouseButton1Click:Connect(function()
-    darkEnabled = not darkEnabled
-    darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
-    darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-    if darkEnabled then applyDark() end
+jumpBtn.MouseButton1Click:Connect(function()
+    jumpEnabled = not jumpEnabled
+    jumpBtn.Text = jumpEnabled and "Jump ON" or "Jump OFF"
 end)
 
-fogBtn.MouseButton1Click:Connect(function()
-    fogEnabled = not fogEnabled
-    fogBtn.Text = fogEnabled and "Fog ON" or "Fog OFF"
-    fogBtn.BackgroundColor3 = fogEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-    if fogEnabled then applyFog() end
+airBtn.MouseButton1Click:Connect(function()
+    airEnabled = not airEnabled
+    airBtn.Text = airEnabled and "AirJump ON" or "AirJump OFF"
 end)
 
--- INPUT
-brightBox.FocusLost:Connect(function()
-    local n = tonumber(brightBox.Text)
-    if n then brightnessValue = n if brightEnabled then applyBright() end end
+floatBtn.MouseButton1Click:Connect(function()
+    floatEnabled = not floatEnabled
+    floatBtn.Text = floatEnabled and "Float ON" or "Float OFF"
+
+    if floatEnabled then
+        applyFloat()
+    elseif floatForce then
+        floatForce:Destroy()
+        floatForce = nil
+    end
 end)
 
-darkBox.FocusLost:Connect(function()
-    local n = tonumber(darkBox.Text)
-    if n then darkValue = n if darkEnabled then applyDark() end end
+godBtn.MouseButton1Click:Connect(function()
+    godEnabled = not godEnabled
+    godBtn.Text = godEnabled and "GodWalk ON" or "GodWalk OFF"
 end)
 
-fogBox.FocusLost:Connect(function()
-    local n = tonumber(fogBox.Text)
-    if n then fogValue = n if fogEnabled then applyFog() end end
+--// INPUT
+speedBox.FocusLost:Connect(function()
+    local n = tonumber(speedBox.Text)
+    if n then speedValue = n end
 end)
 
--- RESET
-resetBtn.MouseButton1Click:Connect(function()
-    brightEnabled = false
-    darkEnabled = false
-    fogEnabled = false
-
-    Lighting.Brightness = default.Brightness
-    Lighting.ClockTime = default.ClockTime
-    Lighting.FogEnd = default.FogEnd
-    Lighting.GlobalShadows = default.GlobalShadows
-    Lighting.Ambient = default.Ambient
-    Lighting.OutdoorAmbient = default.OutdoorAmbient
-
-    brightBtn.Text = "FullBright OFF"
-    darkBtn.Text = "Dark OFF"
-    fogBtn.Text = "Fog OFF"
+jumpBox.FocusLost:Connect(function()
+    local n = tonumber(jumpBox.Text)
+    if n then jumpValue = n end
 end)
 
--- AUTO SCROLL SIZE
+airBox.FocusLost:Connect(function()
+    local n = tonumber(airBox.Text)
+    if n then airJumpValue = n end
+end)
+
+floatBox.FocusLost:Connect(function()
+    local n = tonumber(floatBox.Text)
+    if n then floatValue = n end
+end)
+
+--// AIR JUMP
+UIS.JumpRequest:Connect(function()
+    if airEnabled and jumpCount < airJumpValue then
+        jumpCount += 1
+        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+hum.StateChanged:Connect(function(_, new)
+    if new == Enum.HumanoidStateType.Landed then
+        jumpCount = 0
+    end
+end)
+
+--// MAIN LOOP (GOD MODE CORE)
+RunService.RenderStepped:Connect(function()
+
+    if not hum or not root then return end
+
+    -- SPEED LOCK
+    if speedEnabled or godEnabled then
+        hum.WalkSpeed = speedValue
+    end
+
+    -- JUMP LOCK
+    if jumpEnabled or godEnabled then
+        hum.JumpPower = jumpValue
+    end
+
+    -- FLOAT
+    if floatEnabled and floatForce then
+        floatForce.Position = root.Position + Vector3.new(0,floatValue,0)
+    end
+
+    -- GOD WALK CORE
+    if godEnabled then
+
+        -- กัน stun
+        if hum.PlatformStand then
+            hum.PlatformStand = false
+        end
+
+        -- กันนั่ง
+        if hum.Sit then
+            hum.Sit = false
+        end
+
+        -- กัน ragdoll / ล้ม
+        if hum:GetState() ~= Enum.HumanoidStateType.Running then
+            hum:ChangeState(Enum.HumanoidStateType.Running)
+        end
+
+        -- กันโดนผลัก
+        root.AssemblyLinearVelocity = Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+
+    end
+
+end)
+
+--// AUTO SCROLL
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 10)
 end)
