@@ -24,7 +24,7 @@ local floatEnabled = false
 local brightnessValue = 5
 local darkValue = 0
 local speedValue = 50
-local floatValue = 0 -- สูง/ต่ำแบบสัดส่วน (สตัด)
+local floatValue = 0 -- สตัดที่ลอย
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
@@ -102,7 +102,8 @@ local dragging = false
 local dragStart, startPos
 
 title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	if input.UserInputType == Enum.UserInputType.MouseButton1 
+	or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = input.Position
 		startPos = frame.Position
@@ -110,7 +111,8 @@ title.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement 
+	or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - dragStart
 		frame.Position = UDim2.new(
 			startPos.X.Scale,
@@ -167,16 +169,31 @@ local function applySpeed()
 	hum.WalkSpeed = speedValue or defaultWalkSpeed
 end
 
---// FLOAT
+--// FLOAT (คงที่)
+local floatBP = nil
+
 local function applyFloat()
 	local char = Players.LocalPlayer.Character
 	if not char then return end
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	local targetY = math.floor(hrp.Position.Y) + (floatValue or 0)
 	if floatEnabled then
-		hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z)
+		if not floatBP then
+			floatBP = Instance.new("BodyPosition")
+			floatBP.MaxForce = Vector3.new(0, math.huge, 0)
+			floatBP.P = 1250
+			floatBP.D = 25
+			floatBP.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y) + floatValue, hrp.Position.Z)
+			floatBP.Parent = hrp
+		else
+			floatBP.Position = Vector3.new(hrp.Position.X, math.floor(hrp.Position.Y) + floatValue, hrp.Position.Z)
+		end
+	else
+		if floatBP then
+			floatBP:Destroy()
+			floatBP = nil
+		end
 	end
 end
 
