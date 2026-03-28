@@ -4,14 +4,6 @@ local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 
-local player = Players.LocalPlayer
-
---// CHARACTER
-local function getChar()
-    local char = player.Character or player.CharacterAdded:Wait()
-    return char, char:WaitForChild("Humanoid"), char:WaitForChild("HumanoidRootPart")
-end
-
 --// SAVE DEFAULT
 local default = {
     Brightness = Lighting.Brightness,
@@ -19,32 +11,33 @@ local default = {
     FogEnd = Lighting.FogEnd,
     GlobalShadows = Lighting.GlobalShadows,
     Ambient = Lighting.Ambient,
-    OutdoorAmbient = Lighting.OutdoorAmbient,
-    WalkSpeed = 16,
-    JumpPower = 50
+    OutdoorAmbient = Lighting.OutdoorAmbient
 }
 
 --// STATE
-local brightEnabled, darkEnabled, fogEnabled = false, false, false
-local speedEnabled, jumpEnabled, airJumpEnabled, floatEnabled = false, false, false, false
+local brightEnabled = false
+local darkEnabled = false
+local fogEnabled = false
+local speedEnabled = false
 
-local brightnessValue, darkValue, fogValue = 5, 0, 100000
-local speedValue, jumpValue = 16, 50
-local airJumpCount, floatValue = 1, 0
+local brightnessValue = 5
+local darkValue = 0
+local fogValue = 100000
+local speedValue = 50
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "Light_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 350)
+frame.Size = UDim2.new(0, 200, 0, 330)
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
 local title = Instance.new("TextLabel", frame)
 title.Size = UDim2.new(1,-60,0,25)
 title.Position = UDim2.new(0,5,0,0)
-title.Text = "Pro Player Panel"
+title.Text = "Light System"
 title.TextColor3 = Color3.new(1,1,1)
 title.BackgroundTransparency = 1
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -70,7 +63,7 @@ scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
 local layout = Instance.new("UIListLayout", scroll)
 layout.Padding = UDim.new(0,6)
 
---// BLOCK
+--// CREATE BLOCK
 local function createBlock(btnText, placeholder)
     local container = Instance.new("Frame")
     container.Size = UDim2.new(1,-5,0,55)
@@ -93,20 +86,17 @@ local function createBlock(btnText, placeholder)
     return btn, box
 end
 
---// ORIGINAL
+--// CREATE UI
 local brightBtn, brightBox = createBlock("FullBright OFF", "Brightness")
 local darkBtn, darkBox = createBlock("Dark OFF", "Dark")
 local fogBtn, fogBox = createBlock("Fog OFF", "FogEnd")
-
---// NEW
 local speedBtn, speedBox = createBlock("Speed OFF", "WalkSpeed")
-local jumpBtn, jumpBox = createBlock("Jump OFF", "JumpPower")
-local airBtn, airBox = createBlock("AirJump OFF", "Jump Count")
-local floatBtn, floatBox = createBlock("Float OFF", "Height +/-")
 
 local resetBtn = Instance.new("TextButton", scroll)
 resetBtn.Size = UDim2.new(1,-5,0,30)
 resetBtn.Text = "RESET"
+resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
+resetBtn.TextColor3 = Color3.new(1,1,1)
 
 --// DRAG
 local dragging, dragStart, startPos
@@ -134,17 +124,19 @@ UIS.InputEnded:Connect(function()
     dragging = false
 end)
 
---// CLOSE/MINI
-close.MouseButton1Click:Connect(function() gui:Destroy() end)
+--// CLOSE / MINI
+close.MouseButton1Click:Connect(function()
+    gui:Destroy()
+end)
 
 local minimized = false
 mini.MouseButton1Click:Connect(function()
     minimized = not minimized
     scroll.Visible = not minimized
-    frame.Size = minimized and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,350)
+    frame.Size = minimized and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,330)
 end)
 
---// FUNCTIONS
+--// LIGHT FUNCTIONS
 local function applyBright()
     Lighting.Brightness = brightnessValue
     Lighting.ClockTime = 14
@@ -163,127 +155,101 @@ local function applyFog()
     Lighting.FogEnd = fogValue
 end
 
+--// SPEED
 local function applySpeed()
-    local _, hum = getChar()
+    local char = Players.LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
     hum.WalkSpeed = speedValue
 end
-
-local function applyJump()
-    local _, hum = getChar()
-    hum.JumpPower = jumpValue
-end
-
---// AIR JUMP
-local jumpCounter = 0
-UIS.JumpRequest:Connect(function()
-    if airJumpEnabled then
-        local _, hum = getChar()
-        if jumpCounter < airJumpCount then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            jumpCounter += 1
-        end
-    end
-end)
-
-player.CharacterAdded:Connect(function()
-    jumpCounter = 0
-end)
-
---// FLOAT
-local bodyPos
-local function applyFloat()
-    local _, _, root = getChar()
-
-    if not bodyPos then
-        bodyPos = Instance.new("BodyPosition")
-        bodyPos.MaxForce = Vector3.new(0, math.huge, 0)
-        bodyPos.P = 10000
-        bodyPos.Parent = root
-    end
-
-    bodyPos.Position = root.Position + Vector3.new(0, floatValue, 0)
-end
-
-RunService.RenderStepped:Connect(function()
-    if floatEnabled then applyFloat() end
-end)
 
 --// BUTTONS
 brightBtn.MouseButton1Click:Connect(function()
     brightEnabled = not brightEnabled
+    brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
+    brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if brightEnabled then applyBright() end
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
     darkEnabled = not darkEnabled
+    darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
+    darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if darkEnabled then applyDark() end
 end)
 
 fogBtn.MouseButton1Click:Connect(function()
     fogEnabled = not fogEnabled
+    fogBtn.Text = fogEnabled and "Fog ON" or "Fog OFF"
+    fogBtn.BackgroundColor3 = fogEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if fogEnabled then applyFog() end
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
     speedEnabled = not speedEnabled
+    speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
+    speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if speedEnabled then applySpeed() end
-end)
-
-jumpBtn.MouseButton1Click:Connect(function()
-    jumpEnabled = not jumpEnabled
-    if jumpEnabled then applyJump() end
-end)
-
-airBtn.MouseButton1Click:Connect(function()
-    airJumpEnabled = not airJumpEnabled
-end)
-
-floatBtn.MouseButton1Click:Connect(function()
-    floatEnabled = not floatEnabled
-    if not floatEnabled and bodyPos then
-        bodyPos:Destroy()
-        bodyPos = nil
-    end
 end)
 
 --// INPUT
 brightBox.FocusLost:Connect(function()
     local n = tonumber(brightBox.Text)
-    if n then brightnessValue = n end
+    if n then brightnessValue = n if brightEnabled then applyBright() end end
 end)
 
 darkBox.FocusLost:Connect(function()
     local n = tonumber(darkBox.Text)
-    if n then darkValue = n end
+    if n then darkValue = n if darkEnabled then applyDark() end end
 end)
 
 fogBox.FocusLost:Connect(function()
     local n = tonumber(fogBox.Text)
-    if n then fogValue = n end
+    if n then fogValue = n if fogEnabled then applyFog() end end
 end)
 
 speedBox.FocusLost:Connect(function()
     local n = tonumber(speedBox.Text)
-    if n then speedValue = n if speedEnabled then applySpeed() end end
+    if n then
+        speedValue = math.clamp(n, 0, 500)
+        if speedEnabled then applySpeed() end
+    end
 end)
 
-jumpBox.FocusLost:Connect(function()
-    local n = tonumber(jumpBox.Text)
-    if n then jumpValue = n if jumpEnabled then applyJump() end end
+--// ANTI-STATE LOOP
+RunService.RenderStepped:Connect(function()
+    if not speedEnabled then return end
+
+    local char = Players.LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    if hum.WalkSpeed ~= speedValue then
+        hum.WalkSpeed = speedValue
+    end
+
+    hum.JumpPower = 50
+    hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
 end)
 
-airBox.FocusLost:Connect(function()
-    local n = tonumber(airBox.Text)
-    if n then airJumpCount = n end
-end)
-
-floatBox.FocusLost:Connect(function()
-    local n = tonumber(floatBox.Text)
-    if n then floatValue = n end
+--// RESPAWN
+Players.LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    if speedEnabled then applySpeed() end
 end)
 
 --// RESET
 resetBtn.MouseButton1Click:Connect(function()
+    brightEnabled = false
+    darkEnabled = false
+    fogEnabled = false
+    speedEnabled = false
+
     Lighting.Brightness = default.Brightness
     Lighting.ClockTime = default.ClockTime
     Lighting.FogEnd = default.FogEnd
@@ -291,9 +257,10 @@ resetBtn.MouseButton1Click:Connect(function()
     Lighting.Ambient = default.Ambient
     Lighting.OutdoorAmbient = default.OutdoorAmbient
 
-    local _, hum = getChar()
-    hum.WalkSpeed = default.WalkSpeed
-    hum.JumpPower = default.JumpPower
+    speedBtn.Text = "Speed OFF"
+    brightBtn.Text = "FullBright OFF"
+    darkBtn.Text = "Dark OFF"
+    fogBtn.Text = "Fog OFF"
 end)
 
 --// AUTO SCROLL
