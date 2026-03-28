@@ -14,7 +14,6 @@ local default = {
 }
 
 local defaultWalkSpeed = 16
-local defaultFloatHeight = 0
 
 --// STATE
 local brightEnabled = false
@@ -32,7 +31,7 @@ local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "Light_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 260) -- เพิ่มช่อง Float
+frame.Size = UDim2.new(0, 200, 0, 260)
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
@@ -90,7 +89,7 @@ end
 local brightBtn, brightBox = createBlock("FullBright OFF","Brightness")
 local darkBtn, darkBox = createBlock("Dark OFF","Dark")
 local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
-local floatBtn, floatBox = createBlock("Float OFF","Float Height") -- ช่อง float
+local floatBtn, floatBox = createBlock("Float OFF","Float Height")
 
 local resetBtn = Instance.new("TextButton", scroll)
 resetBtn.Size = UDim2.new(1,-5,0,25)
@@ -103,8 +102,7 @@ local dragging = false
 local dragStart, startPos
 
 title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 
-	or input.UserInputType == Enum.UserInputType.Touch then
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = input.Position
 		startPos = frame.Position
@@ -112,8 +110,7 @@ title.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement 
-	or input.UserInputType == Enum.UserInputType.Touch) then
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - dragStart
 		frame.Position = UDim2.new(
 			startPos.X.Scale,
@@ -177,11 +174,9 @@ local function applyFloat()
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	local yOffset = floatValue or 0
-	local targetY = math.floor(hrp.Position.Y) + yOffset -- ปรับเป็นสตัด
-
+	local targetY = math.floor(hrp.Position.Y) + (floatValue or 0)
 	if floatEnabled then
-		hrp.Position = Vector3.new(hrp.Position.X, targetY, hrp.Position.Z)
+		hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z)
 	end
 end
 
@@ -189,35 +184,27 @@ end
 brightBtn.MouseButton1Click:Connect(function()
 	brightEnabled = not brightEnabled
 	darkEnabled = false
-
 	brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
 	brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
 	darkBtn.Text = "Dark OFF"
 	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-
 	applyLighting()
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
 	darkEnabled = not darkEnabled
 	brightEnabled = false
-
 	darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
 	darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
 	brightBtn.Text = "FullBright OFF"
 	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-
 	applyLighting()
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
 	speedEnabled = not speedEnabled
-
 	speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
 	speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
 	applySpeed()
 end)
 
