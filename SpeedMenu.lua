@@ -2,7 +2,6 @@
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
@@ -22,15 +21,22 @@ end)
 
 --// SAVE DEFAULT
 local default = {
+    Brightness = Lighting.Brightness,
+    ClockTime = Lighting.ClockTime,
+    FogEnd = Lighting.FogEnd,
+    GlobalShadows = Lighting.GlobalShadows,
+    Ambient = Lighting.Ambient,
+    OutdoorAmbient = Lighting.OutdoorAmbient,
     WalkSpeed = hum.WalkSpeed,
     JumpPower = hum.JumpPower
 }
 
 --// STATE
-local speedEnabled, jumpEnabled, airEnabled, floatEnabled, godEnabled =
-    false, false, false, false, false
+local brightEnabled, darkEnabled, fogEnabled = false, false, false
+local speedEnabled, jumpEnabled, airEnabled, floatEnabled = false, false, false, false
 
 --// VALUES
+local brightnessValue, darkValue, fogValue = 5, 0, 100000
 local speedValue, jumpValue = 50, 100
 local airJumpValue = 2
 local floatValue = 10
@@ -44,8 +50,9 @@ local floatForce
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0,200,0,450)
+frame.Size = UDim2.new(0,200,0,400)
 frame.Position = UDim2.new(0.05,0,0.3,0)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
 local scroll = Instance.new("ScrollingFrame", frame)
 scroll.Size = UDim2.new(1,-10,1,-10)
@@ -77,10 +84,6 @@ local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
 local jumpBtn, jumpBox = createBlock("Jump OFF","JumpPower")
 local airBtn, airBox = createBlock("AirJump OFF","Count")
 local floatBtn, floatBox = createBlock("Float OFF","Height")
-local godBtn = Instance.new("TextButton", scroll)
-godBtn.Size = UDim2.new(1,-5,0,30)
-godBtn.Text = "GodWalk OFF"
-godBtn.BackgroundColor3 = Color3.fromRGB(150,50,200)
 
 --// FUNCTIONS
 local function applySpeed()
@@ -97,17 +100,20 @@ local function applyFloat()
         floatForce.MaxForce = Vector3.new(0,math.huge,0)
         floatForce.Parent = root
     end
+    floatForce.Position = root.Position + Vector3.new(0,floatValue,0)
 end
 
 --// BUTTONS
 speedBtn.MouseButton1Click:Connect(function()
     speedEnabled = not speedEnabled
     speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
+    if speedEnabled then applySpeed() else hum.WalkSpeed = default.WalkSpeed end
 end)
 
 jumpBtn.MouseButton1Click:Connect(function()
     jumpEnabled = not jumpEnabled
     jumpBtn.Text = jumpEnabled and "Jump ON" or "Jump OFF"
+    if jumpEnabled then applyJump() else hum.JumpPower = default.JumpPower end
 end)
 
 airBtn.MouseButton1Click:Connect(function()
@@ -119,28 +125,21 @@ floatBtn.MouseButton1Click:Connect(function()
     floatEnabled = not floatEnabled
     floatBtn.Text = floatEnabled and "Float ON" or "Float OFF"
 
-    if floatEnabled then
-        applyFloat()
-    elseif floatForce then
+    if not floatEnabled and floatForce then
         floatForce:Destroy()
         floatForce = nil
     end
 end)
 
-godBtn.MouseButton1Click:Connect(function()
-    godEnabled = not godEnabled
-    godBtn.Text = godEnabled and "GodWalk ON" or "GodWalk OFF"
-end)
-
---// INPUT
+--// INPUT BOX
 speedBox.FocusLost:Connect(function()
     local n = tonumber(speedBox.Text)
-    if n then speedValue = n end
+    if n then speedValue = n if speedEnabled then applySpeed() end end
 end)
 
 jumpBox.FocusLost:Connect(function()
     local n = tonumber(jumpBox.Text)
-    if n then jumpValue = n end
+    if n then jumpValue = n if jumpEnabled then applyJump() end end
 end)
 
 airBox.FocusLost:Connect(function()
@@ -153,11 +152,13 @@ floatBox.FocusLost:Connect(function()
     if n then floatValue = n end
 end)
 
---// AIR JUMP
+--// AIR JUMP LOGIC
 UIS.JumpRequest:Connect(function()
-    if airEnabled and jumpCount < airJumpValue then
-        jumpCount += 1
-        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    if airEnabled then
+        if jumpCount < airJumpValue then
+            jumpCount += 1
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
     end
 end)
 
@@ -167,49 +168,11 @@ hum.StateChanged:Connect(function(_, new)
     end
 end)
 
---// MAIN LOOP (GOD MODE CORE)
-RunService.RenderStepped:Connect(function()
-
-    if not hum or not root then return end
-
-    -- SPEED LOCK
-    if speedEnabled or godEnabled then
-        hum.WalkSpeed = speedValue
-    end
-
-    -- JUMP LOCK
-    if jumpEnabled or godEnabled then
-        hum.JumpPower = jumpValue
-    end
-
-    -- FLOAT
+--// FLOAT LOOP
+game:GetService("RunService").RenderStepped:Connect(function()
     if floatEnabled and floatForce then
         floatForce.Position = root.Position + Vector3.new(0,floatValue,0)
     end
-
-    -- GOD WALK CORE
-    if godEnabled then
-
-        -- กัน stun
-        if hum.PlatformStand then
-            hum.PlatformStand = false
-        end
-
-        -- กันนั่ง
-        if hum.Sit then
-            hum.Sit = false
-        end
-
-        -- กัน ragdoll / ล้ม
-        if hum:GetState() ~= Enum.HumanoidStateType.Running then
-            hum:ChangeState(Enum.HumanoidStateType.Running)
-        end
-
-        -- กันโดนผลัก
-        root.AssemblyLinearVelocity = Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
-
-    end
-
 end)
 
 --// AUTO SCROLL
