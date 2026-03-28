@@ -98,18 +98,31 @@ resetBtn.Text = "RESET"
 resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
 resetBtn.TextColor3 = Color3.new(1,1,1)
 
---// DRAG
-local dragging, dragStart, startPos
+--// DRAG (FIXED)
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
 frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+    or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = frame.Position
+        dragInput = input
+    end
+end)
+
+frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement 
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
     end
 end)
 
 UIS.InputChanged:Connect(function(input)
-    if dragging then
+    if dragging and input == dragInput then
         local delta = input.Position - dragStart
         frame.Position = UDim2.new(
             startPos.X.Scale,
@@ -120,8 +133,10 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
-UIS.InputEnded:Connect(function()
-    dragging = false
+UIS.InputEnded:Connect(function(input)
+    if input == dragInput then
+        dragging = false
+    end
 end)
 
 --// CLOSE / MINI
@@ -136,7 +151,7 @@ mini.MouseButton1Click:Connect(function()
     frame.Size = minimized and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,330)
 end)
 
---// LIGHT FUNCTIONS
+--// LIGHT
 local function applyBright()
     Lighting.Brightness = brightnessValue
     Lighting.ClockTime = 14
@@ -161,7 +176,6 @@ local function applySpeed()
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
-
     hum.WalkSpeed = speedValue
 end
 
@@ -169,28 +183,24 @@ end
 brightBtn.MouseButton1Click:Connect(function()
     brightEnabled = not brightEnabled
     brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
-    brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if brightEnabled then applyBright() end
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
     darkEnabled = not darkEnabled
     darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
-    darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if darkEnabled then applyDark() end
 end)
 
 fogBtn.MouseButton1Click:Connect(function()
     fogEnabled = not fogEnabled
     fogBtn.Text = fogEnabled and "Fog ON" or "Fog OFF"
-    fogBtn.BackgroundColor3 = fogEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if fogEnabled then applyFog() end
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
     speedEnabled = not speedEnabled
     speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
-    speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     if speedEnabled then applySpeed() end
 end)
 
@@ -218,19 +228,15 @@ speedBox.FocusLost:Connect(function()
     end
 end)
 
---// ANTI-STATE LOOP
+--// ANTI-STATE
 RunService.RenderStepped:Connect(function()
     if not speedEnabled then return end
-
     local char = Players.LocalPlayer.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
 
-    if hum.WalkSpeed ~= speedValue then
-        hum.WalkSpeed = speedValue
-    end
-
+    hum.WalkSpeed = speedValue
     hum.JumpPower = 50
     hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
     hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
