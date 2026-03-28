@@ -211,7 +211,7 @@ downBtn.MouseButton1Up:Connect(function()
 	floatDirection = 0
 end)
 
--- ฟังก์ชัน float
+-- ฟังก์ชัน float (ทะลุผนัง)
 local function applyFloat()
 	local char = Players.LocalPlayer.Character
 	if not char then return end
@@ -221,7 +221,8 @@ local function applyFloat()
 	if floatEnabled then
 		if not floatBP then
 			floatBP = Instance.new("BodyPosition")
-			floatBP.MaxForce = Vector3.new(0, math.huge, 0)
+			-- ให้ทะลุทุกแกน X/Y/Z
+			floatBP.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
 			floatBP.P = 1250
 			floatBP.D = 25
 			floatBP.Position = hrp.Position
