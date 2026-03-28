@@ -52,51 +52,59 @@ local function getClosestMonster(root)
 	return closest
 end
 
--- 🔥 MOBILE + PC TAP / CLICK SYSTEM
-local function getTappedTarget(screenPos)
-	local ray = camera:ViewportPointToRay(screenPos.X, screenPos.Y)
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterDescendantsInstances = {player.Character}
-	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+-- ================= PLAYER BOX LOCK =================
 
-	local result = workspace:Raycast(ray.Origin, ray.Direction * 500, raycastParams)
-	if result and result.Instance then
-		local part = result.Instance
-		local model = part:FindFirstAncestorOfClass("Model")
-		if model and Players:GetPlayerFromCharacter(model) then
-			if isAlive(model) and model ~= player.Character then
-				return model
-			end
+local playerBoxes = {}
+
+local function createBox(plr)
+	if plr == player then return end
+
+	local function setup(char)
+		local hrp = char:WaitForChild("HumanoidRootPart", 5)
+		if not hrp then return end
+
+		if playerBoxes[plr] then
+			playerBoxes[plr]:Destroy()
 		end
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Size = UDim2.new(0, 60, 0, 80)
+		billboard.AlwaysOnTop = true
+		billboard.Adornee = hrp
+		billboard.Parent = hrp
+
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1,0,1,0)
+		btn.BackgroundTransparency = 0.5
+		btn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+		btn.Text = ""
+		btn.Parent = billboard
+
+		btn.MouseButton1Click:Connect(function()
+			if targetMode == "Player" and lockEnabled then
+				currentTarget = char
+			end
+		end)
+
+		playerBoxes[plr] = billboard
 	end
-	return nil
+
+	if plr.Character then
+		setup(plr.Character)
+	end
+
+	plr.CharacterAdded:Connect(setup)
 end
 
--- รองรับมือถือ (Tap)
-UserInputService.TouchTap:Connect(function(touches)
-	if not lockEnabled or targetMode ~= "Player" then return end
-	local pos = touches[1]
-	local target = getTappedTarget(pos)
-	if target then
-		currentTarget = target
-	end
-end)
+-- สร้าง box ให้ทุก player
+for _, plr in pairs(Players:GetPlayers()) do
+	createBox(plr)
+end
 
--- รองรับ PC (Mouse)
-UserInputService.InputBegan:Connect(function(input, gpe)
-	if gpe then return end
-	if not lockEnabled or targetMode ~= "Player" then return end
+Players.PlayerAdded:Connect(createBox)
 
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		local pos = input.Position
-		local target = getTappedTarget(pos)
-		if target then
-			currentTarget = target
-		end
-	end
-end)
+-- ================= LOCK SYSTEM =================
 
--- 🔥 LOCK SYSTEM
 local function startLock()
 	connection = RunService.RenderStepped:Connect(function()
 		local character = getCharacter()
