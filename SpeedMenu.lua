@@ -1,7 +1,3 @@
-แก้ให้เลยครับ สรุปที่จะทำ:
-แก้ปุ่ม toggle ให้แสดง ON/OFF ถูกต้อง
-เพิ่มปุ่ม ↑ ↓ สำหรับบิน
-ปรับ UI ให้สวยขึ้น (rounded corners, accent color, spacing)
 --// SERVICES  
 local Players = game:GetService("Players")  
 local UIS = game:GetService("UserInputService")  
