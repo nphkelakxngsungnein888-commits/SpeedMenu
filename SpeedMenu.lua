@@ -1,4 +1,3 @@
-โอเค ส่งครึ่งแรกมาก่อนเลยครับ:
 -- // Target Lock + ESP + Auto Evade System
 -- // By: kuy kuy | Roblox Lua
 
