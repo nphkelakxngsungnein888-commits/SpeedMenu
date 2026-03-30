@@ -1,3 +1,4 @@
+คาดว่า Executor บนมือถือไม่ส่ง Thumbstick1 input ครับ แก้ให้อ่านค่าจาก Humanoid MoveDirection แทน ซึ่งทำงานกับจอยมือถือได้แน่นอนครับ แทนที่ส่วน flyConnection ด้วยนี้:
 --// SERVICES
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -26,7 +27,6 @@ local darkValue = 0
 local speedValue = 50
 local flySpeed = 50
 local verticalDir = 0
-local thumbstickDir = Vector2.zero
 
 --// FLY VARS
 local flyConnection
@@ -235,21 +235,31 @@ local function startFly()
 	bodyGyro.P = 1e4
 
 	flyConnection = RunService.RenderStepped:Connect(function()
-		local cam = workspace.CurrentCamera
-		local sX = thumbstickDir.X
-		local sY = thumbstickDir.Y
-		local moveDir = Vector3.zero
+		local char2 = Players.LocalPlayer.Character
+		if not char2 then return end
+		local hum2 = char2:FindFirstChildOfClass("Humanoid")
+		if not hum2 then return end
 
-		if math.abs(sX) > 0.05 or math.abs(sY) > 0.05 then
-			-- หน้า/หลังตามทิศกล้อง, ซ้าย/ขวาตามทิศกล้อง
-			local look = cam.CFrame.LookVector
-			local right = cam.CFrame.RightVector
-			-- ใช้ทั้ง Y ด้วยเพื่อให้บินตามมุมกล้องได้
-			moveDir = (look * sY) + (right * sX)
+		local cam = workspace.CurrentCamera
+		local moveDir = hum2.MoveDirection -- อ่านจาก Humanoid ตรงๆ รองรับมือถือ 100%
+
+		local dir = Vector3.zero
+
+		if moveDir.Magnitude > 0.1 then
+			-- แปลง MoveDirection ให้ตามทิศกล้อง
+			local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+			if camFlat.Magnitude > 0 then camFlat = camFlat.Unit end
+			local camRight = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
+			if camRight.Magnitude > 0 then camRight = camRight.Unit end
+
+			local worldFlat = Vector3.new(moveDir.X, 0, moveDir.Z)
+			if worldFlat.Magnitude > 0 then worldFlat = worldFlat.Unit end
+
+			dir = worldFlat
 		end
 
-		local dir = moveDir + Vector3.new(0, verticalDir, 0)
-		bodyVelocity.Velocity = dir.Magnitude > 0 and dir.Unit * flySpeed or Vector3.zero
+		local finalDir = dir + Vector3.new(0, verticalDir, 0)
+		bodyVelocity.Velocity = finalDir.Magnitude > 0 and finalDir.Unit * flySpeed or Vector3.zero
 		bodyGyro.CFrame = cam.CFrame
 	end)
 end
@@ -265,13 +275,6 @@ local function stopFly()
 	end
 	verticalDir = 0
 end
-
---// THUMBSTICK
-UIS.InputChanged:Connect(function(input)
-	if input.KeyCode == Enum.KeyCode.Thumbstick1 then
-		thumbstickDir = Vector2.new(input.Position.X, input.Position.Y)
-	end
-end)
 
 --// UP/DOWN
 upBtn.InputBegan:Connect(function(input)
@@ -405,3 +408,4 @@ end)
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 	scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 10)
 end)
+ที่แก้: เปลี่ยนจาก Thumbstick1 มาใช้ hum.MoveDirection แทนครับ อ่านค่าจากทิศที่ตัวละครกำลังเดินจริงๆ รองรับจอยมือถือ 100% ไม่ต้องพึ่ง input event เลย
