@@ -1,4 +1,3 @@
-นี่คือสคริปต์เต็มพร้อมใช้งาน:
 -- Advanced Combat Script by kuy kuy
 -- Target Lock | Enemy Scan | Auto Evade
 
@@ -13,49 +12,28 @@ local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Humanoid = Character:WaitForChild("Humanoid")
 
--- ══════════════════════════════════════
---           SETTINGS
--- ══════════════════════════════════════
 local Config = {
-    -- Target Lock
     LockEnabled = false,
-    LockMode = "NPC", -- "Player" or "NPC"
+    LockMode = "NPC",
     LockStrength = 0.15,
     LockRange = 100,
     CurrentTarget = nil,
-    
-    -- Enemy Scan
     ScanEnabled = false,
-    ScanMode = "NPC", -- "Player" or "NPC"
-    
-    -- Auto Evade
+    ScanMode = "NPC",
     EvadeEnabled = false,
     EvadeMode = "NPC",
     EvadeRange = 20,
     EvadeSpeed = 50,
-    
-    -- UI
     MenuOpen = true,
     MenuScale = 10,
 }
 
--- ══════════════════════════════════════
---           GUI SETUP
--- ══════════════════════════════════════
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "CombatMenu"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = game:GetService("CoreGui")
+ScreenGui.Parent = LocalPlayer.PlayerGui  -- แก้แล้ว
 
--- Scale factor
-local function getScale()
-    return Config.MenuScale / 10
-end
-
--- ══════════════════════════════════════
---           TOPBAR (Drag Handle)
--- ══════════════════════════════════════
 local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
 TopBar.Size = UDim2.new(0, 280, 0, 32)
@@ -63,10 +41,8 @@ TopBar.Position = UDim2.new(0, 60, 0, 60)
 TopBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 TopBar.BorderSizePixel = 0
 TopBar.Parent = ScreenGui
-
 Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 8)
 
--- Title
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -150, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
@@ -78,7 +54,6 @@ TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TopBar
 
--- Scale Input
 local ScaleLabel = Instance.new("TextLabel")
 ScaleLabel.Size = UDim2.new(0, 30, 1, 0)
 ScaleLabel.Position = UDim2.new(1, -138, 0, 0)
@@ -101,7 +76,6 @@ ScaleBox.Font = Enum.Font.Gotham
 ScaleBox.Parent = TopBar
 Instance.new("UICorner", ScaleBox).CornerRadius = UDim.new(0, 4)
 
--- Toggle Menu Button
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0, 58, 0, 22)
 ToggleBtn.Position = UDim2.new(1, -66, 0.5, -11)
@@ -114,7 +88,6 @@ ToggleBtn.Font = Enum.Font.GothamBold
 ToggleBtn.Parent = TopBar
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 4)
 
--- Close Button
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 22, 0, 22)
 CloseBtn.Position = UDim2.new(1, -26, 0.5, -11)
@@ -127,9 +100,6 @@ CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.Parent = TopBar
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
 
--- ══════════════════════════════════════
---           MAIN MENU FRAME
--- ══════════════════════════════════════
 local MenuFrame = Instance.new("Frame")
 MenuFrame.Name = "MenuFrame"
 MenuFrame.Size = UDim2.new(0, 280, 0, 310)
@@ -137,7 +107,6 @@ MenuFrame.Position = UDim2.new(0, 60, 0, 94)
 MenuFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MenuFrame.BorderSizePixel = 0
 MenuFrame.Parent = ScreenGui
-
 Instance.new("UICorner", MenuFrame).CornerRadius = UDim.new(0, 8)
 
 local MenuStroke = Instance.new("UIStroke")
@@ -145,7 +114,6 @@ MenuStroke.Color = Color3.fromRGB(70, 70, 70)
 MenuStroke.Thickness = 1
 MenuStroke.Parent = MenuFrame
 
--- Scroll Layout
 local ScrollFrame = Instance.new("ScrollingFrame")
 ScrollFrame.Size = UDim2.new(1, 0, 1, 0)
 ScrollFrame.BackgroundTransparency = 1
@@ -166,9 +134,6 @@ Padding.PaddingLeft = UDim.new(0, 8)
 Padding.PaddingRight = UDim.new(0, 8)
 Padding.Parent = ScrollFrame
 
--- ══════════════════════════════════════
---           UI COMPONENTS
--- ══════════════════════════════════════
 local function MakeSection(title)
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1, 0, 0, 18)
@@ -314,79 +279,60 @@ local function MakeSliderBox(labelText, default, callback)
     end)
 end
 
--- ══════════════════════════════════════
---           BUILD MENU ITEMS
--- ══════════════════════════════════════
-
--- TARGET LOCK
 MakeSection("🎯 TARGET LOCK")
-
 MakeToggle("Lock Target", false, function(v)
     Config.LockEnabled = v
     if not v then Config.CurrentTarget = nil end
 end)
-
 MakeModeSelector("Mode:", "Player", "NPC", "NPC", function(v)
     Config.LockMode = v
     Config.CurrentTarget = nil
 end)
-
 MakeSliderBox("Strength (0.01-1)", Config.LockStrength, function(v)
     Config.LockStrength = math.clamp(v, 0.01, 1)
 end)
-
 MakeSliderBox("Range (studs)", Config.LockRange, function(v)
     Config.LockRange = v
 end)
 
--- ENEMY SCAN
 MakeSection("👁 ENEMY SCAN")
-
 MakeToggle("Show Scan", false, function(v)
     Config.ScanEnabled = v
 end)
-
 MakeModeSelector("Mode:", "Player", "NPC", "NPC", function(v)
     Config.ScanMode = v
 end)
 
--- AUTO EVADE
 MakeSection("🏃 AUTO EVADE")
-
 MakeToggle("Auto Evade", false, function(v)
     Config.EvadeEnabled = v
 end)
-
 MakeModeSelector("Mode:", "Player", "NPC", "NPC", function(v)
     Config.EvadeMode = v
 end)
-
 MakeSliderBox("Evade Range", Config.EvadeRange, function(v)
     Config.EvadeRange = v
 end)
-
 MakeSliderBox("Evade Speed", Config.EvadeSpeed, function(v)
     Config.EvadeSpeed = v
 end)
 
--- ══════════════════════════════════════
---           DRAG SYSTEM
--- ══════════════════════════════════════
+-- DRAG
 local dragging, dragStart, startPos
 TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = TopBar.Position
     end
 end)
 TopBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
     end
 end)
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
         local newPos = UDim2.new(
             startPos.X.Scale, startPos.X.Offset + delta.X,
@@ -400,9 +346,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- ══════════════════════════════════════
---           TOGGLE / CLOSE
--- ══════════════════════════════════════
 ToggleBtn.MouseButton1Click:Connect(function()
     Config.MenuOpen = not Config.MenuOpen
     MenuFrame.Visible = Config.MenuOpen
@@ -413,7 +356,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
--- Scale Apply
 ScaleBox.FocusLost:Connect(function()
     local v = tonumber(ScaleBox.Text)
     if v then
@@ -430,13 +372,7 @@ ScaleBox.FocusLost:Connect(function()
     end
 end)
 
--- ══════════════════════════════════════
---           HELPER FUNCTIONS
--- ══════════════════════════════════════
-local function getChar(player)
-    return player and player.Character
-end
-
+-- HELPERS
 local function getHRP(char)
     return char and char:FindFirstChild("HumanoidRootPart")
 end
@@ -451,12 +387,12 @@ local function isAlive(char)
 end
 
 local function isSameTeam(player)
-    if not player.Team then return false end
+    if not player or not player.Team then return false end
     return player.Team == LocalPlayer.Team
 end
 
 local function distanceTo(hrp)
-    if not hrp then return math.huge end
+    if not hrp or not HumanoidRootPart then return math.huge end
     return (HumanoidRootPart.Position - hrp.Position).Magnitude
 end
 
@@ -465,18 +401,16 @@ local function getTargets(mode)
     if mode == "Player" then
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer then
-                local c = getChar(p)
+                local c = p.Character
                 if c and isAlive(c) then
                     local hrp = getHRP(c)
-                    if hrp and distanceTo(hrp) <= Config.LockRange then
-                        if not isSameTeam(p) then
-                            table.insert(list, {char=c, hrp=hrp, player=p})
-                        end
+                    if hrp and distanceTo(hrp) <= Config.LockRange and not isSameTeam(p) then
+                        table.insert(list, {char=c, hrp=hrp, player=p})
                     end
                 end
             end
         end
-    else -- NPC
+    else
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Humanoid") and obj.Health > 0 then
                 local c = obj.Parent
@@ -497,10 +431,7 @@ local function getNearestTarget(mode)
     local best, bestDist = nil, math.huge
     for _, t in ipairs(targets) do
         local d = distanceTo(t.hrp)
-        if d < bestDist then
-            bestDist = d
-            best = t
-        end
+        if d < bestDist then bestDist = d; best = t end
     end
     return best
 end
@@ -512,61 +443,33 @@ local function getLookedAtTarget(mode)
     for _, t in ipairs(targets) do
         local dir = (t.hrp.Position - camCF.Position).Unit
         local dot = camCF.LookVector:Dot(dir)
-        if dot > bestDot then
-            bestDot = dot
-            best = t
-        end
+        if dot > bestDot then bestDot = dot; best = t end
     end
     return best
 end
 
--- ══════════════════════════════════════
---           DAMAGE DETECTION
--- ══════════════════════════════════════
-local lastHP = Humanoid.Health
+-- DAMAGE DETECTION
 Humanoid.HealthChanged:Connect(function(hp)
-    if hp < lastHP and Config.LockEnabled then
-        -- Find who damaged us
-        local allTargets = getTargets(Config.LockMode)
-        local attacker = nil
-        local bestDist = math.huge
-        -- pick nearest as attacker heuristic
-        for _, t in ipairs(allTargets) do
-            local d = distanceTo(t.hrp)
-            if d < bestDist then
-                bestDist = d
-                attacker = t
-            end
-        end
-        if attacker then
-            Config.CurrentTarget = attacker
-        end
+    if hp < Humanoid.Health and Config.LockEnabled then
+        local nearest = getNearestTarget(Config.LockMode)
+        if nearest then Config.CurrentTarget = nearest end
     end
-    lastHP = hp
 end)
 
--- ══════════════════════════════════════
---           ENEMY SCAN BOXES
--- ══════════════════════════════════════
+-- SCAN BOXES
 local scanBoxes = {}
-
 local function clearScanBoxes()
-    for _, box in ipairs(scanBoxes) do
-        box:Destroy()
-    end
+    for _, box in ipairs(scanBoxes) do pcall(function() box:Destroy() end) end
     scanBoxes = {}
 end
 
 local function updateScan()
     clearScanBoxes()
     if not Config.ScanEnabled then return end
-
-    local targets = getTargets(Config.ScanMode == "Player" and "Player" or "NPC")
+    local targets = getTargets(Config.ScanMode)
     for _, t in ipairs(targets) do
         local hrp = t.hrp
         local dist = math.floor(distanceTo(hrp))
-
-        -- Billboard
         local bb = Instance.new("BillboardGui")
         bb.Size = UDim2.new(0, 60, 0, 60)
         bb.StudsOffset = Vector3.new(0, 3, 0)
@@ -574,19 +477,16 @@ local function updateScan()
         bb.Adornee = hrp
         bb.Parent = hrp
 
-        -- Box border
         local frame = Instance.new("Frame")
         frame.Size = UDim2.new(1, 0, 1, 0)
         frame.BackgroundTransparency = 1
         frame.BorderSizePixel = 0
         frame.Parent = bb
-
         local stroke = Instance.new("UIStroke")
         stroke.Color = Color3.fromRGB(255, 255, 255)
         stroke.Thickness = 1.5
         stroke.Parent = frame
 
-        -- Distance label
         local dlbl = Instance.new("TextLabel")
         dlbl.Size = UDim2.new(1, 0, 0, 14)
         dlbl.Position = UDim2.new(0, 0, -0.4, 0)
@@ -601,32 +501,77 @@ local function updateScan()
     end
 end
 
--- ══════════════════════════════════════
---           MAIN LOOP
--- ══════════════════════════════════════
+-- MAIN LOOP
 local scanTick = 0
-
 RunService.Heartbeat:Connect(function(dt)
-    -- Refresh character refs
     Character = LocalPlayer.Character
     if not Character then return end
     HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
     Humanoid = Character:FindFirstChildOfClass("Humanoid")
     if not HumanoidRootPart or not Humanoid then return end
 
-    -- ── TARGET LOCK ──
+    -- TARGET LOCK
     if Config.LockEnabled then
-        -- Auto pick if no target
         if not Config.CurrentTarget or not isAlive(Config.CurrentTarget.char) then
-            local looked = getLookedAtTarget(Config.LockMode)
-            Config.CurrentTarget = looked or getNearestTarget(Config.LockMode)
+            Config.CurrentTarget = getLookedAtTarget(Config.LockMode) or getNearestTarget(Config.LockMode)
         end
-
         if Config.CurrentTarget and Config.CurrentTarget.hrp then
-            local hrp = Config.CurrentTarget.hrp
-            if isAlive(Config.CurrentTarget.char) and distanceTo(hrp) <= Config.LockRange then
-                -- Smooth camera lock
-                local targetPos = hrp.Position
-                local currentCF = Camera.CFrame
-                local newCF = CFrame.lookAt(
-              
+            if isAlive(Config.CurrentTarget.char) and distanceTo(Config.CurrentTarget.hrp) <= Config.LockRange then
+                local newCF = CFrame.lookAt(Camera.CFrame.Position, Config.CurrentTarget.hrp.Position)
+                Camera.CFrame = Camera.CFrame:Lerp(newCF, Config.LockStrength)
+            else
+                Config.CurrentTarget = getNearestTarget(Config.LockMode)
+            end
+        end
+    end
+
+    -- AUTO EVADE
+    if Config.EvadeEnabled then
+        local evadeDir = Vector3.new(0, 0, 0)
+        local allEvade = getTargets(Config.EvadeMode)
+        local foundThreat = false
+        for _, t in ipairs(allEvade) do
+            local d = distanceTo(t.hrp)
+            if d <= Config.EvadeRange then
+                foundThreat = true
+                local away = HumanoidRootPart.Position - t.hrp.Position
+                away = Vector3.new(away.X, 0, away.Z)
+                if away.Magnitude > 0 then
+                    evadeDir = evadeDir + away.Unit * (Config.EvadeRange - d + 1)
+                end
+            end
+        end
+        if foundThreat and evadeDir.Magnitude > 0 then
+            local moveDir = evadeDir.Unit
+            HumanoidRootPart.CFrame = CFrame.lookAt(HumanoidRootPart.Position, HumanoidRootPart.Position + moveDir)
+            local newPos = HumanoidRootPart.Position + moveDir * Config.EvadeSpeed * dt
+            HumanoidRootPart.CFrame = CFrame.new(newPos) * (HumanoidRootPart.CFrame - HumanoidRootPart.CFrame.Position)
+        end
+    end
+
+    -- SCAN
+    scanTick = scanTick + dt
+    if scanTick >= 0.3 then
+        scanTick = 0
+        updateScan()
+    end
+end)
+
+-- SWITCH TARGET (Tab)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.Tab and Config.LockEnabled then
+        local targets = getTargets(Config.LockMode)
+        if #targets == 0 then return end
+        local currentIdx = 0
+        for i, t in ipairs(targets) do
+            if Config.CurrentTarget and t.char == Config.CurrentTarget.char then
+                currentIdx = i
+                break
+            end
+        end
+        Config.CurrentTarget = targets[(currentIdx % #targets) + 1]
+    end
+end)
+
+print("✅ Combat Script Loaded | Tab = Switch Target")
