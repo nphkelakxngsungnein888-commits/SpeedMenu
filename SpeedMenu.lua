@@ -1,3 +1,4 @@
+โค้ดพร้อมคัดลอกครับ เพิ่ม Fly เข้าไปใน UI เดิมเลย:
 --// SERVICES
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -19,17 +20,24 @@ local defaultWalkSpeed = 16
 local brightEnabled = false
 local darkEnabled = false
 local speedEnabled = false
+local flyEnabled = false
 
 local brightnessValue = 5
 local darkValue = 0
-local speedValue = 0
+local speedValue = 50
+local flySpeed = 50
+
+--// FLY VARS
+local flyConnection
+local bodyVelocity
+local bodyGyro
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "Light_UI"
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 220)
+frame.Size = UDim2.new(0, 200, 0, 270)
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
@@ -87,6 +95,7 @@ end
 local brightBtn, brightBox = createBlock("FullBright OFF","Brightness")
 local darkBtn, darkBox = createBlock("Dark OFF","Dark")
 local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
+local flyBtn, flyBox = createBlock("Fly OFF","Fly Speed")
 
 local resetBtn = Instance.new("TextButton", scroll)
 resetBtn.Size = UDim2.new(1,-5,0,25)
@@ -94,12 +103,12 @@ resetBtn.Text = "RESET"
 resetBtn.BackgroundColor3 = Color3.fromRGB(120,120,40)
 resetBtn.TextColor3 = Color3.new(1,1,1)
 
---// DRAG (TITLE ONLY)
+--// DRAG
 local dragging = false
 local dragStart, startPos
 
 title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 
+	if input.UserInputType == Enum.UserInputType.MouseButton1
 	or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = input.Position
@@ -108,7 +117,7 @@ title.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement 
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
 	or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - dragStart
 		frame.Position = UDim2.new(
@@ -120,9 +129,7 @@ UIS.InputChanged:Connect(function(input)
 	end
 end)
 
-UIS.InputEnded:Connect(function()
-	dragging = false
-end)
+UIS.InputEnded:Connect(function() dragging = false end)
 
 --// CLOSE / MINI
 close.MouseButton1Click:Connect(function() gui:Destroy() end)
@@ -131,7 +138,7 @@ local minimized = false
 mini.MouseButton1Click:Connect(function()
 	minimized = not minimized
 	scroll.Visible = not minimized
-	frame.Size = minimized and UDim2.new(0,200,0,25) or UDim2.new(0,200,0,220)
+	frame.Size = minimized and UDim2.new(0,200,0,25) or UDim2.new(0,200,0,270)
 end)
 
 --// LIGHT
@@ -163,55 +170,99 @@ local function applySpeed()
 	if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
+	hum.WalkSpeed = speedValue or defaultWalkSpeed
+end
 
-	local value = speedValue or defaultWalkSpeed
-	hum.WalkSpeed = value
+--// FLY
+local function startFly()
+	local player = Players.LocalPlayer
+	local char = player.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum then return end
+
+	hum.PlatformStand = true
+
+	bodyVelocity = Instance.new("BodyVelocity", hrp)
+	bodyVelocity.MaxForce = Vector3.new(1e5,1e5,1e5)
+	bodyVelocity.Velocity = Vector3.zero
+
+	bodyGyro = Instance.new("BodyGyro", hrp)
+	bodyGyro.MaxTorque = Vector3.new(1e5,1e5,1e5)
+	bodyGyro.P = 1e4
+
+	flyConnection = RunService.RenderStepped:Connect(function()
+		local cam = workspace.CurrentCamera
+		local dir = Vector3.zero
+
+		if UIS:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+		if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then dir = dir - Vector3.new(0,1,0) end
+
+		if dir.Magnitude > 0 then
+			bodyVelocity.Velocity = dir.Unit * flySpeed
+		else
+			bodyVelocity.Velocity = Vector3.zero
+		end
+
+		bodyGyro.CFrame = cam.CFrame
+	end)
+end
+
+local function stopFly()
+	local char = Players.LocalPlayer.Character
+	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+	if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+	if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+	if char then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then hum.PlatformStand = false end
+	end
 end
 
 --// BUTTONS
 brightBtn.MouseButton1Click:Connect(function()
 	brightEnabled = not brightEnabled
 	darkEnabled = false
-
 	brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
 	brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
 	darkBtn.Text = "Dark OFF"
 	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-
 	applyLighting()
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
 	darkEnabled = not darkEnabled
 	brightEnabled = false
-
 	darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
 	darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
 	brightBtn.Text = "FullBright OFF"
 	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-
 	applyLighting()
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
 	speedEnabled = not speedEnabled
-
 	speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
 	speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-
 	local char = Players.LocalPlayer.Character
 	if char then
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if hum then
-			if speedEnabled then
-				applySpeed()
-			else
-				hum.WalkSpeed = defaultWalkSpeed
-			end
+			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
 		end
 	end
+end)
+
+flyBtn.MouseButton1Click:Connect(function()
+	flyEnabled = not flyEnabled
+	flyBtn.Text = flyEnabled and "Fly ON" or "Fly OFF"
+	flyBtn.BackgroundColor3 = flyEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+	if flyEnabled then startFly() else stopFly() end
 end)
 
 --// INPUT
@@ -233,12 +284,17 @@ speedBox.FocusLost:Connect(function()
 	end
 end)
 
+flyBox.FocusLost:Connect(function()
+	local n = tonumber(flyBox.Text)
+	if n then flySpeed = math.clamp(n,1,500) end
+end)
+
 --// LOOP
 RunService.RenderStepped:Connect(function()
 	local char = Players.LocalPlayer.Character
 	if char then
 		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
+		if hum and not flyEnabled then
 			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
 		end
 	end
@@ -249,8 +305,10 @@ resetBtn.MouseButton1Click:Connect(function()
 	brightEnabled = false
 	darkEnabled = false
 	speedEnabled = false
+	flyEnabled = false
 
 	applyLighting()
+	stopFly()
 
 	local char = Players.LocalPlayer.Character
 	if char then
@@ -264,9 +322,16 @@ resetBtn.MouseButton1Click:Connect(function()
 	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 	speedBtn.Text = "Speed OFF"
 	speedBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+	flyBtn.Text = "Fly OFF"
+	flyBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 end)
 
 --// AUTO SCROLL
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 	scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 10)
 end)
+สิ่งที่เพิ่มมา:
+ปุ่ม Fly ON/OFF พร้อม TextBox ใส่ความเร็วบิน
+กด W/A/S/D บินไปทิศนั้น, Space ขึ้น, Shift ลง
+กด Reset ก็หยุดบินด้วย
+frame สูงขึ้นเป็น 270 รองรับปุ่มใหม่
