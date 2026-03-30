@@ -6,7 +6,7 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
---// GUI FIX (รองรับทุก executor / ทุกแมพ)
+--// GUI
 local gui = Instance.new("ScreenGui")
 gui.Name = "Light_UI"
 gui.ResetOnSpawn = false
@@ -38,25 +38,37 @@ local default = {
 local defaultWalkSpeed = 16
 
 --// STATE
-local brightEnabled = false
-local darkEnabled = false
-local speedEnabled = false
-local flyEnabled = false
+local state = {
+	bright = false,
+	dark = false,
+	speed = false,
+	fly = false
+}
 
-local brightnessValue = 5
-local darkValue = 0
-local speedValue = 50
-local flySpeed = 50
-local verticalDir = 0
+local values = {
+	brightness = 5,
+	dark = 0,
+	speed = 50,
+	flySpeed = 50
+}
 
---// SAFE CHAR
-local function getChar()
+local inputState = {
+	forward = 0,
+	right = 0,
+	up = 0
+}
+
+--// CHARACTER
+local humanoid, root
+
+local function loadChar()
 	local char = player.Character or player.CharacterAdded:Wait()
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hum or not hrp then return nil end
-	return char, hum, hrp
+	humanoid = char:WaitForChild("Humanoid")
+	root = char:WaitForChild("HumanoidRootPart")
 end
+
+loadChar()
+player.CharacterAdded:Connect(loadChar)
 
 --// UI
 local frame = Instance.new("Frame", gui)
@@ -64,29 +76,8 @@ frame.Size = UDim2.new(0,160,0,180)
 frame.Position = UDim2.new(0.05,0,0.3,0)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,0,0,20)
-title.Text = "Light System"
-title.BackgroundColor3 = Color3.fromRGB(40,40,40)
-title.TextColor3 = Color3.new(1,1,1)
-title.TextSize = 13
-
-local close = Instance.new("TextButton", frame)
-close.Size = UDim2.new(0,20,0,20)
-close.Position = UDim2.new(1,-20,0,0)
-close.Text = "X"
-
---// SCROLL
-local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Size = UDim2.new(1,-6,1,-22)
-scroll.Position = UDim2.new(0,3,0,22)
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-
-local layout = Instance.new("UIListLayout", scroll)
-
---// BLOCK
 local function createBlock(text, placeholder)
-	local f = Instance.new("Frame", scroll)
+	local f = Instance.new("Frame", frame)
 	f.Size = UDim2.new(1,0,0,42)
 
 	local btn = Instance.new("TextButton", f)
@@ -108,10 +99,10 @@ local flyBtn, flyBox = createBlock("Fly OFF","Fly Speed")
 
 --// LIGHT
 local function applyLighting()
-	if brightEnabled then
-		Lighting.Brightness = brightnessValue
-	elseif darkEnabled then
-		Lighting.Brightness = darkValue
+	if state.bright then
+		Lighting.Brightness = values.brightness
+	elseif state.dark then
+		Lighting.Brightness = values.dark
 	else
 		for k,v in pairs(default) do
 			Lighting[k] = v
@@ -121,9 +112,8 @@ end
 
 --// SPEED
 local function applySpeed()
-	local _, hum = getChar()
-	if hum then
-		hum.WalkSpeed = speedEnabled and speedValue or defaultWalkSpeed
+	if humanoid then
+		humanoid.WalkSpeed = state.speed and values.speed or defaultWalkSpeed
 	end
 end
 
@@ -132,24 +122,28 @@ local flyConn
 local bv, bg
 
 local function startFly()
-	local _, hum, hrp = getChar()
-	if not hrp then return end
+	if not root or not humanoid then return end
 
-	hum.PlatformStand = true
+	humanoid.PlatformStand = true
 
-	bv = Instance.new("BodyVelocity", hrp)
+	bv = Instance.new("BodyVelocity")
 	bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+	bv.Parent = root
 
-	bg = Instance.new("BodyGyro", hrp)
+	bg = Instance.new("BodyGyro")
 	bg.MaxTorque = Vector3.new(1e5,1e5,1e5)
+	bg.Parent = root
 
 	flyConn = RunService.RenderStepped:Connect(function()
 		local cam = workspace.CurrentCamera
-		local moveDir = hum.MoveDirection
-		local dir = moveDir + Vector3.new(0,verticalDir,0)
 
-		if dir.Magnitude > 0 then
-			bv.Velocity = dir.Unit * flySpeed
+		local move =
+			cam.CFrame.LookVector * inputState.forward +
+			cam.CFrame.RightVector * inputState.right +
+			Vector3.new(0, inputState.up, 0)
+
+		if move.Magnitude > 0 then
+			bv.Velocity = move.Unit * values.flySpeed
 		else
 			bv.Velocity = Vector3.zero
 		end
@@ -163,56 +157,79 @@ local function stopFly()
 	if bv then bv:Destroy() end
 	if bg then bg:Destroy() end
 
-	local _, hum = getChar()
-	if hum then hum.PlatformStand = false end
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
 end
 
+--// INPUT
+UIS.InputBegan:Connect(function(i,g)
+	if g then return end
+
+	if i.KeyCode == Enum.KeyCode.W then inputState.forward = 1 end
+	if i.KeyCode == Enum.KeyCode.S then inputState.forward = -1 end
+	if i.KeyCode == Enum.KeyCode.A then inputState.right = -1 end
+	if i.KeyCode == Enum.KeyCode.D then inputState.right = 1 end
+	if i.KeyCode == Enum.KeyCode.Space then inputState.up = 1 end
+	if i.KeyCode == Enum.KeyCode.LeftControl then inputState.up = -1 end
+end)
+
+UIS.InputEnded:Connect(function(i)
+	if i.KeyCode == Enum.KeyCode.W or i.KeyCode == Enum.KeyCode.S then inputState.forward = 0 end
+	if i.KeyCode == Enum.KeyCode.A or i.KeyCode == Enum.KeyCode.D then inputState.right = 0 end
+	if i.KeyCode == Enum.KeyCode.Space or i.KeyCode == Enum.KeyCode.LeftControl then inputState.up = 0 end
+end)
+
 --// BUTTONS
+local function toggle(btn, key, label)
+	state[key] = not state[key]
+	btn.Text = label .. (state[key] and " ON" or " OFF")
+end
+
 brightBtn.MouseButton1Click:Connect(function()
-	brightEnabled = not brightEnabled
-	darkEnabled = false
+	state.dark = false
+	toggle(brightBtn, "bright", "FullBright")
+	darkBtn.Text = "Dark OFF"
 	applyLighting()
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
-	darkEnabled = not darkEnabled
-	brightEnabled = false
+	state.bright = false
+	toggle(darkBtn, "dark", "Dark")
+	brightBtn.Text = "FullBright OFF"
 	applyLighting()
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
-	speedEnabled = not speedEnabled
+	toggle(speedBtn, "speed", "Speed")
 	applySpeed()
 end)
 
 flyBtn.MouseButton1Click:Connect(function()
-	flyEnabled = not flyEnabled
-	if flyEnabled then startFly() else stopFly() end
+	toggle(flyBtn, "fly", "Fly")
+	if state.fly then startFly() else stopFly() end
 end)
 
---// INPUT
+--// INPUT BOX
 brightBox.FocusLost:Connect(function()
 	local n = tonumber(brightBox.Text)
-	if n then brightnessValue = n applyLighting() end
+	if n then values.brightness = n applyLighting() end
 end)
 
 darkBox.FocusLost:Connect(function()
 	local n = tonumber(darkBox.Text)
-	if n then darkValue = n applyLighting() end
+	if n then values.dark = n applyLighting() end
 end)
 
 speedBox.FocusLost:Connect(function()
 	local n = tonumber(speedBox.Text)
-	if n then speedValue = n applySpeed() end
+	if n then values.speed = n applySpeed() end
 end)
 
 flyBox.FocusLost:Connect(function()
 	local n = tonumber(flyBox.Text)
-	if n then flySpeed = n end
+	if n then values.flySpeed = n end
 end)
 
---// CLOSE
-close.MouseButton1Click:Connect(function()
-	stopFly()
-	gui:Destroy()
-end)
+--// CLEANUP
+gui.Destroying:Connect(stopFly)
