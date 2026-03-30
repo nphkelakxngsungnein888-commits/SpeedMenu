@@ -1,393 +1,579 @@
---// SERVICES  
-local Players = game:GetService("Players")  
-local UIS = game:GetService("UserInputService")  
-local Lighting = game:GetService("Lighting")  
-local RunService = game:GetService("RunService")  
-  
-local player = Players.LocalPlayer or Players.PlayerAdded:Wait()  
-  
---// GUI  
-local gui = Instance.new("ScreenGui")  
-gui.Name = "Light_UI"  
-gui.ResetOnSpawn = false  
-  
-pcall(function()  
-	if syn and syn.protect_gui then  
-		syn.protect_gui(gui)  
-		gui.Parent = game.CoreGui  
-	elseif gethui then  
-		gui.Parent = gethui()  
-	else  
-		gui.Parent = player:WaitForChild("PlayerGui")  
-	end  
-end)  
-if not gui.Parent then  
-	gui.Parent = player:WaitForChild("PlayerGui")  
-end  
-  
---// COLORS  
-local BG     = Color3.fromRGB(15, 15, 20)
-local PANEL  = Color3.fromRGB(25, 25, 32)
-local BTN    = Color3.fromRGB(35, 35, 45)
-local ACCENT = Color3.fromRGB(100, 180, 255)
-local ON_COL = Color3.fromRGB(60, 200, 120)
-local OFF_COL= Color3.fromRGB(200, 70, 70)
-local WHITE  = Color3.fromRGB(230, 230, 255)
-local DIM    = Color3.fromRGB(120, 120, 150)
+นี่คือสคริปเต็มๆ พร้อมใช้:
+-- Advanced Combat Script by kuy kuy
+-- Features: Target Lock, Enemy Scan, Flee System
 
---// CORNER HELPER
-local function corner(r, p)
-	local c = Instance.new("UICorner", p)
-	c.CornerRadius = UDim.new(0, r)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local Humanoid = Character:WaitForChild("Humanoid")
+
+-- ══════════════════════════════════════
+-- SETTINGS
+-- ══════════════════════════════════════
+local Config = {
+    -- Target Lock
+    LockEnabled = false,
+    LockMode = "NPC", -- "Player" or "NPC"
+    LockStrength = 0.3,
+    LockRange = 100,
+    CurrentTarget = nil,
+
+    -- Scan
+    ScanEnabled = false,
+    ScanMode = "NPC", -- "Player" or "NPC"
+
+    -- Flee
+    FleeEnabled = false,
+    FleeMode = "NPC",
+    FleeRange = 20,
+
+    -- UI
+    MenuSize = 10,
+    MenuOpen = true,
+}
+
+-- ══════════════════════════════════════
+-- UTILITY
+-- ══════════════════════════════════════
+local function getDistance(a, b)
+    return (a - b).Magnitude
 end
 
-local function pad(p, t, b, l, r)
-	local u = Instance.new("UIPadding", p)
-	u.PaddingTop    = UDim.new(0, t)
-	u.PaddingBottom = UDim.new(0, b)
-	u.PaddingLeft   = UDim.new(0, l)
-	u.PaddingRight  = UDim.new(0, r)
+local function isEnemy(character)
+    if not character then return false end
+    local player = Players:GetPlayerFromCharacter(character)
+    if Config.LockMode == "Player" or Config.ScanMode == "Player" or Config.FleeMode == "Player" then
+        if player and player ~= LocalPlayer then return true end
+    end
+    if Config.LockMode == "NPC" or Config.ScanMode == "NPC" or Config.FleeMode == "NPC" then
+        if not player then
+            local hum = character:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then return true end
+        end
+    end
+    return false
 end
 
---// DEFAULT  
-local default = {  
-	Brightness    = Lighting.Brightness,  
-	ClockTime     = Lighting.ClockTime,  
-	GlobalShadows = Lighting.GlobalShadows,  
-	Ambient       = Lighting.Ambient,  
-	OutdoorAmbient= Lighting.OutdoorAmbient  
-}  
-local defaultWalkSpeed = 16  
-  
---// STATE  
-local brightEnabled = false  
-local darkEnabled   = false  
-local speedEnabled  = false  
-local flyEnabled    = false  
-  
-local brightnessValue = 5  
-local darkValue       = 0  
-local speedValue      = 50  
-local flySpeed        = 50  
-local verticalDir     = 0  
-  
---// SAFE CHAR  
-local function getChar()  
-	local char = player.Character or player.CharacterAdded:Wait()  
-	local hum  = char:FindFirstChildOfClass("Humanoid")  
-	local hrp  = char:FindFirstChild("HumanoidRootPart")  
-	if not hum or not hrp then return nil end  
-	return char, hum, hrp  
-end  
-
---// MAIN FRAME
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 175, 0, 285)
-frame.Position = UDim2.new(0.05, 0, 0.28, 0)
-frame.BackgroundColor3 = BG
-frame.BorderSizePixel = 0
-corner(10, frame)
-
-local stroke = Instance.new("UIStroke", frame)
-stroke.Color = Color3.fromRGB(60, 60, 80)
-stroke.Thickness = 1
-
---// TITLE BAR
-local titleBar = Instance.new("Frame", frame)
-titleBar.Size = UDim2.new(1, 0, 0, 28)
-titleBar.BackgroundColor3 = PANEL
-titleBar.BorderSizePixel = 0
-corner(10, titleBar)
-
--- fix bottom corners of titlebar
-local titleFix = Instance.new("Frame", titleBar)
-titleFix.Size = UDim2.new(1, 0, 0.5, 0)
-titleFix.Position = UDim2.new(0, 0, 0.5, 0)
-titleFix.BackgroundColor3 = PANEL
-titleFix.BorderSizePixel = 0
-
-local title = Instance.new("TextLabel", titleBar)
-title.Size = UDim2.new(1, -30, 1, 0)
-title.Position = UDim2.new(0, 10, 0, 0)
-title.Text = "⚡ Light System"
-title.BackgroundTransparency = 1
-title.TextColor3 = ACCENT
-title.TextSize = 13
-title.Font = Enum.Font.GothamBold
-title.TextXAlignment = Enum.TextXAlignment.Left
-
-local close = Instance.new("TextButton", titleBar)
-close.Size = UDim2.new(0, 22, 0, 22)
-close.Position = UDim2.new(1, -25, 0, 3)
-close.Text = "✕"
-close.BackgroundColor3 = OFF_COL
-close.TextColor3 = WHITE
-close.TextSize = 11
-close.Font = Enum.Font.GothamBold
-close.BorderSizePixel = 0
-corner(6, close)
-
---// SCROLL
-local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Size = UDim2.new(1, -10, 1, -34)
-scroll.Position = UDim2.new(0, 5, 0, 30)
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 2
-scroll.ScrollBarImageColor3 = ACCENT
-
-local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0, 5)
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-pad(scroll, 4, 4, 0, 0)
-
---// BLOCK BUILDER
-local function createBlock(label, placeholder, order)
-	local f = Instance.new("Frame", scroll)
-	f.Size = UDim2.new(1, -4, 0, 52)
-	f.BackgroundColor3 = PANEL
-	f.BorderSizePixel = 0
-	f.LayoutOrder = order
-	corner(8, f)
-	pad(f, 5, 5, 6, 6)
-
-	local btn = Instance.new("TextButton", f)
-	btn.Size = UDim2.new(1, 0, 0, 20)
-	btn.Text = label .. "  OFF"
-	btn.BackgroundColor3 = OFF_COL
-	btn.TextColor3 = WHITE
-	btn.TextSize = 12
-	btn.Font = Enum.Font.GothamBold
-	btn.BorderSizePixel = 0
-	corner(6, btn)
-
-	local box = Instance.new("TextBox", f)
-	box.Size = UDim2.new(1, 0, 0, 18)
-	box.Position = UDim2.new(0, 0, 0, 24)
-	box.PlaceholderText = placeholder
-	box.PlaceholderColor3 = DIM
-	box.BackgroundColor3 = BTN
-	box.TextColor3 = WHITE
-	box.TextSize = 11
-	box.Font = Enum.Font.Gotham
-	box.BorderSizePixel = 0
-	box.ClearTextOnFocus = false
-	corner(5, box)
-
-	return btn, box
+local function getCharacterRoot(char)
+    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("RootPart")
 end
 
---// TOGGLE LABEL HELPER
-local function setToggle(btn, label, state)
-	btn.Text = label .. (state and "  ON" or "  OFF")
-	btn.BackgroundColor3 = state and ON_COL or OFF_COL
+local function getCharacterHumanoid(char)
+    return char:FindFirstChildOfClass("Humanoid")
 end
 
-local brightBtn, brightBox = createBlock("☀ FullBright", "Brightness (e.g. 5)", 1)
-local darkBtn,   darkBox   = createBlock("🌑 Dark",       "Dark value (e.g. 0)", 2)
-local speedBtn,  speedBox  = createBlock("⚡ Speed",      "WalkSpeed (e.g. 50)", 3)
+local function getNearestTarget(mode)
+    local nearest, nearestDist = nil, math.huge
+    local myPos = HumanoidRootPart.Position
 
---// FLY BLOCK (custom with ↑↓ buttons)
-local flyFrame = Instance.new("Frame", scroll)
-flyFrame.Size = UDim2.new(1, -4, 0, 75)
-flyFrame.BackgroundColor3 = PANEL
-flyFrame.BorderSizePixel = 0
-flyFrame.LayoutOrder = 4
-corner(8, flyFrame)
-pad(flyFrame, 5, 5, 6, 6)
+    if mode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local root = getCharacterRoot(p.Character)
+                local hum = getCharacterHumanoid(p.Character)
+                if root and hum and hum.Health > 0 then
+                    local d = getDistance(myPos, root.Position)
+                    if d < Config.LockRange and d < nearestDist then
+                        nearest = p.Character
+                        nearestDist = d
+                    end
+                end
+            end
+        end
+    else
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= Character then
+                local hum = getCharacterHumanoid(obj)
+                local root = getCharacterRoot(obj)
+                if hum and hum.Health > 0 and root and not Players:GetPlayerFromCharacter(obj) then
+                    local d = getDistance(myPos, root.Position)
+                    if d < Config.LockRange and d < nearestDist then
+                        nearest = obj
+                        nearestDist = d
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
 
-local flyBtn = Instance.new("TextButton", flyFrame)
-flyBtn.Size = UDim2.new(1, 0, 0, 20)
-flyBtn.Text = "✈ Fly  OFF"
-flyBtn.BackgroundColor3 = OFF_COL
-flyBtn.TextColor3 = WHITE
-flyBtn.TextSize = 12
-flyBtn.Font = Enum.Font.GothamBold
-flyBtn.BorderSizePixel = 0
-corner(6, flyBtn)
+local function getTargetUnderCrosshair(mode)
+    local nearest, nearestDot = nil, -math.huge
+    local camCF = Camera.CFrame
+    local myPos = HumanoidRootPart.Position
 
-local flyBox = Instance.new("TextBox", flyFrame)
-flyBox.Size = UDim2.new(1, 0, 0, 18)
-flyBox.Position = UDim2.new(0, 0, 0, 24)
-flyBox.PlaceholderText = "Fly Speed (e.g. 50)"
-flyBox.PlaceholderColor3 = DIM
-flyBox.BackgroundColor3 = BTN
-flyBox.TextColor3 = WHITE
-flyBox.TextSize = 11
-flyBox.Font = Enum.Font.Gotham
-flyBox.BorderSizePixel = 0
-flyBox.ClearTextOnFocus = false
-corner(5, flyBox)
+    local function check(char)
+        if char == Character then return end
+        local root = getCharacterRoot(char)
+        local hum = getCharacterHumanoid(char)
+        if not root or not hum or hum.Health <= 0 then return end
+        local d = getDistance(myPos, root.Position)
+        if d > Config.LockRange then return end
+        local dir = (root.Position - camCF.Position).Unit
+        local dot = camCF.LookVector:Dot(dir)
+        if dot > nearestDot then
+            nearest = char
+            nearestDot = dot
+        end
+    end
 
--- ↑ ↓ buttons
-local upBtn = Instance.new("TextButton", flyFrame)
-upBtn.Size = UDim2.new(0.48, 0, 0, 18)
-upBtn.Position = UDim2.new(0, 0, 0, 46)
-upBtn.Text = "▲ Up"
-upBtn.BackgroundColor3 = BTN
-upBtn.TextColor3 = ACCENT
-upBtn.TextSize = 12
-upBtn.Font = Enum.Font.GothamBold
-upBtn.BorderSizePixel = 0
-corner(5, upBtn)
+    if mode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then check(p.Character) end
+        end
+    else
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= Character and not Players:GetPlayerFromCharacter(obj) then
+                check(obj)
+            end
+        end
+    end
+    return nearest
+end
 
-local downBtn = Instance.new("TextButton", flyFrame)
-downBtn.Size = UDim2.new(0.48, 0, 0, 18)
-downBtn.Position = UDim2.new(0.52, 0, 0, 46)
-downBtn.Text = "▼ Down"
-downBtn.BackgroundColor3 = BTN
-downBtn.TextColor3 = ACCENT
-downBtn.TextSize = 12
-downBtn.Font = Enum.Font.GothamBold
-downBtn.BorderSizePixel = 0
-corner(5, downBtn)
+-- ══════════════════════════════════════
+-- TARGET LOCK LOGIC
+-- ══════════════════════════════════════
+RunService.RenderStepped:Connect(function()
+    Character = LocalPlayer.Character
+    if not Character then return end
+    HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+    Humanoid = Character:FindFirstChild("Humanoid")
+    if not HumanoidRootPart or not Humanoid then return end
 
---// LIGHTING  
-local function applyLighting()  
-	if brightEnabled then  
-		Lighting.Brightness = brightnessValue  
-		Lighting.ClockTime = 14
-		Lighting.GlobalShadows = false
-		Lighting.Ambient = Color3.fromRGB(180,180,180)
-		Lighting.OutdoorAmbient = Color3.fromRGB(180,180,180)
-	elseif darkEnabled then  
-		Lighting.Brightness = darkValue  
-		Lighting.ClockTime = 0
-		Lighting.GlobalShadows = true
-		Lighting.Ambient = Color3.fromRGB(0,0,0)
-		Lighting.OutdoorAmbient = Color3.fromRGB(0,0,0)
-	else  
-		for k, v in pairs(default) do  
-			Lighting[k] = v  
-		end  
-	end  
-end  
-  
---// SPEED  
-local function applySpeed()  
-	local _, hum = getChar()  
-	if hum then  
-		hum.WalkSpeed = speedEnabled and speedValue or defaultWalkSpeed  
-	end  
-end  
-  
---// FLY  
-local flyConn  
-local bv, bg  
-  
-local function startFly()  
-	local _, hum, hrp = getChar()  
-	if not hrp then return end  
-	hum.PlatformStand = true  
-	bv = Instance.new("BodyVelocity", hrp)  
-	bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)  
-	bg = Instance.new("BodyGyro", hrp)  
-	bg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)  
-	flyConn = RunService.RenderStepped:Connect(function()  
-		local cam = workspace.CurrentCamera  
-		local moveDir = hum.MoveDirection  
-		local dir = moveDir + Vector3.new(0, verticalDir, 0)  
-		bv.Velocity = dir.Magnitude > 0 and dir.Unit * flySpeed or Vector3.zero
-		bg.CFrame = cam.CFrame  
-	end)  
-end  
-  
-local function stopFly()  
-	if flyConn then flyConn:Disconnect() end  
-	if bv then bv:Destroy() end  
-	if bg then bg:Destroy() end  
-	local _, hum = getChar()  
-	if hum then hum.PlatformStand = false end  
-end  
-  
---// BUTTON LOGIC
+    -- Lock Target
+    if Config.LockEnabled then
+        -- Check current target alive
+        if Config.CurrentTarget then
+            local hum = getCharacterHumanoid(Config.CurrentTarget)
+            if not hum or hum.Health <= 0 then
+                Config.CurrentTarget = getNearestTarget(Config.LockMode)
+            end
+        else
+            Config.CurrentTarget = getTargetUnderCrosshair(Config.LockMode)
+        end
 
-brightBtn.MouseButton1Click:Connect(function()
-	brightEnabled = not brightEnabled
-	if brightEnabled then darkEnabled = false end
-	setToggle(brightBtn, "☀ FullBright", brightEnabled)
-	setToggle(darkBtn,   "🌑 Dark",       darkEnabled)
-	applyLighting()
+        if Config.CurrentTarget then
+            local root = getCharacterRoot(Config.CurrentTarget)
+            if root then
+                local targetPos = root.Position
+                local currentCF = Camera.CFrame
+                local direction = (targetPos - currentCF.Position).Unit
+                local newCF = CFrame.new(currentCF.Position, currentCF.Position + direction)
+                Camera.CFrame = currentCF:Lerp(newCF, Config.LockStrength)
+            end
+        end
+    end
 end)
 
-darkBtn.MouseButton1Click:Connect(function()
-	darkEnabled = not darkEnabled
-	if darkEnabled then brightEnabled = false end
-	setToggle(darkBtn,   "🌑 Dark",       darkEnabled)
-	setToggle(brightBtn, "☀ FullBright", brightEnabled)
-	applyLighting()
+-- Damage detection → auto lock attacker
+Humanoid.HealthChanged:Connect(function(newHealth)
+    if not Config.LockEnabled then return end
+    -- Find nearest enemy when damaged
+    local attacker = getNearestTarget(Config.LockMode)
+    if attacker then
+        Config.CurrentTarget = attacker
+    end
 end)
 
-speedBtn.MouseButton1Click:Connect(function()
-	speedEnabled = not speedEnabled
-	setToggle(speedBtn, "⚡ Speed", speedEnabled)
-	applySpeed()
+-- ══════════════════════════════════════
+-- FLEE LOGIC
+-- ══════════════════════════════════════
+local fleeConnection
+RunService.Heartbeat:Connect(function(dt)
+    Character = LocalPlayer.Character
+    if not Character then return end
+    HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+    Humanoid = Character:FindFirstChildOfClass("Humanoid")
+    if not HumanoidRootPart or not Humanoid then return end
+    if not Config.FleeEnabled then return end
+
+    local myPos = HumanoidRootPart.Position
+    local fleeDir = Vector3.new(0, 0, 0)
+    local found = false
+
+    local function checkFlee(char)
+        if char == Character then return end
+        local root = getCharacterRoot(char)
+        local hum = getCharacterHumanoid(char)
+        if not root or not hum or hum.Health <= 0 then return end
+        local d = getDistance(myPos, root.Position)
+        if d < Config.FleeRange then
+            local away = (myPos - root.Position)
+            local speed = math.max(1, hum.WalkSpeed)
+            local weight = (Config.FleeRange - d) / Config.FleeRange * speed
+            fleeDir = fleeDir + away.Unit * weight
+            found = true
+        end
+    end
+
+    if Config.FleeMode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then checkFlee(p.Character) end
+        end
+    else
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) and obj ~= Character then
+                checkFlee(obj)
+            end
+        end
+    end
+
+    if found and fleeDir.Magnitude > 0 then
+        local flatDir = Vector3.new(fleeDir.X, 0, fleeDir.Z).Unit
+        HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position, HumanoidRootPart.Position + flatDir)
+        Humanoid:MoveTo(HumanoidRootPart.Position + flatDir * 5)
+    end
 end)
 
-flyBtn.MouseButton1Click:Connect(function()
-	flyEnabled = not flyEnabled
-	setToggle(flyBtn, "✈ Fly", flyEnabled)
-	if flyEnabled then startFly() else stopFly() end
+-- ══════════════════════════════════════
+-- SCAN (ESP) LOGIC
+-- ══════════════════════════════════════
+local scanBoxes = {}
+
+local function clearScanBoxes()
+    for _, v in pairs(scanBoxes) do v:Remove() end
+    scanBoxes = {}
+end
+
+local function updateScan()
+    clearScanBoxes()
+    if not Config.ScanEnabled then return end
+
+    local function addBox(char)
+        if char == Character then return end
+        local root = getCharacterRoot(char)
+        local hum = getCharacterHumanoid(char)
+        if not root or not hum or hum.Health <= 0 then return end
+
+        -- BillboardGui
+        local bb = Instance.new("BillboardGui")
+        bb.Adornee = root
+        bb.Size = UDim2.new(0, 60, 0, 80)
+        bb.StudsOffset = Vector3.new(0, 3, 0)
+        bb.AlwaysOnTop = true
+        bb.Parent = game.CoreGui
+
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundTransparency = 1
+        frame.BorderSizePixel = 0
+        frame.Parent = bb
+
+        -- Box border
+        local corners = {
+            {pos = UDim2.new(0,0,0,0), size = UDim2.new(0.3,0,0,2)},
+            {pos = UDim2.new(0,0,0,0), size = UDim2.new(0,2,0.3,0)},
+            {pos = UDim2.new(0.7,0,0,0), size = UDim2.new(0.3,0,0,2)},
+            {pos = UDim2.new(1,-2,0,0), size = UDim2.new(0,2,0.3,0)},
+            {pos = UDim2.new(0,0,1,-2), size = UDim2.new(0.3,0,0,2)},
+            {pos = UDim2.new(0,0,0.7,0), size = UDim2.new(0,2,0.3,0)},
+            {pos = UDim2.new(0.7,0,1,-2), size = UDim2.new(0.3,0,0,2)},
+            {pos = UDim2.new(1,-2,0.7,0), size = UDim2.new(0,2,0.3,0)},
+        }
+        for _, c in ipairs(corners) do
+            local line = Instance.new("Frame")
+            line.Position = c.pos
+            line.Size = c.size
+            line.BackgroundColor3 = Color3.fromRGB(255, 220, 50)
+            line.BorderSizePixel = 0
+            line.Parent = frame
+        end
+
+        -- Distance label
+        local dist = math.floor(getDistance(HumanoidRootPart.Position, root.Position))
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, 0, 14)
+        label.Position = UDim2.new(0, 0, 1, 2)
+        label.BackgroundTransparency = 1
+        label.Text = dist .. "m"
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 11
+        label.Font = Enum.Font.GothamBold
+        label.Parent = frame
+
+        table.insert(scanBoxes, bb)
+    end
+
+    if Config.ScanMode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then addBox(p.Character) end
+        end
+    else
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) and obj ~= Character then
+                addBox(obj)
+            end
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if Config.ScanEnabled then updateScan() end
 end)
 
--- hold ↑ ↓
-upBtn.MouseButton1Down:Connect(function()   verticalDir =  1 end)
-upBtn.MouseButton1Up:Connect(function()     verticalDir =  0 end)
-downBtn.MouseButton1Down:Connect(function() verticalDir = -1 end)
-downBtn.MouseButton1Up:Connect(function()   verticalDir =  0 end)
+-- ══════════════════════════════════════
+-- GUI
+-- ══════════════════════════════════════
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "KuyKuyMenu"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = game.CoreGui
 
---// INPUT BOXES
-brightBox.FocusLost:Connect(function()
-	local n = tonumber(brightBox.Text)
-	if n then brightnessValue = n if brightEnabled then applyLighting() end end
+-- Scale factor
+local BASE = 10
+local function scale(n) return math.floor(n * (Config.MenuSize / BASE)) end
+
+-- ── Main Frame ──
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, scale(220), 0, scale(320))
+MainFrame.Position = UDim2.new(0, 20, 0, 60)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, scale(8))
+
+local Stroke = Instance.new("UIStroke", MainFrame)
+Stroke.Color = Color3.fromRGB(80, 80, 80)
+Stroke.Thickness = 1
+
+-- ── Title Bar ──
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, scale(28))
+TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, scale(8))
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, -scale(90), 1, 0)
+TitleLabel.Position = UDim2.new(0, scale(8), 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "⚔ KuyKuy Script"
+TitleLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+TitleLabel.TextSize = scale(11)
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TitleBar
+
+-- Size input
+local SizeBox = Instance.new("TextBox")
+SizeBox.Size = UDim2.new(0, scale(30), 0, scale(18))
+SizeBox.Position = UDim2.new(1, -scale(82), 0.5, -scale(9))
+SizeBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+SizeBox.BorderSizePixel = 0
+SizeBox.Text = tostring(Config.MenuSize)
+SizeBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+SizeBox.TextSize = scale(10)
+SizeBox.Font = Enum.Font.Gotham
+SizeBox.Parent = TitleBar
+Instance.new("UICorner", SizeBox).CornerRadius = UDim.new(0, 4)
+
+-- Toggle Menu Button
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, scale(34), 0, scale(18))
+ToggleBtn.Position = UDim2.new(1, -scale(48), 0.5, -scale(9))
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+ToggleBtn.BorderSizePixel = 0
+ToggleBtn.Text = "▼"
+ToggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+ToggleBtn.TextSize = scale(10)
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Parent = TitleBar
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 4)
+
+-- Close Button
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, scale(18), 0, scale(18))
+CloseBtn.Position = UDim2.new(1, -scale(10), 0.5, -scale(9))
+CloseBtn.AnchorPoint = Vector2.new(1, 0)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = scale(9)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = TitleBar
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+    clearScanBoxes()
 end)
 
-darkBox.FocusLost:Connect(function()
-	local n = tonumber(darkBox.Text)
-	if n then darkValue = n if darkEnabled then applyLighting() end end
-end)
+-- ── Scroll Content ──
+local ContentFrame = Instance.new("ScrollingFrame")
+ContentFrame.Size = UDim2.new(1, 0, 1, -scale(30))
+ContentFrame.Position = UDim2.new(0, 0, 0, scale(30))
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.BorderSizePixel = 0
+ContentFrame.ScrollBarThickness = 3
+ContentFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+ContentFrame.CanvasSize = UDim2.new(0, 0, 0, scale(480))
+ContentFrame.Parent = MainFrame
 
-speedBox.FocusLost:Connect(function()
-	local n = tonumber(speedBox.Text)
-	if n then speedValue = n if speedEnabled then applySpeed() end end
-end)
+local ListLayout = Instance.new("UIListLayout", ContentFrame)
+ListLayout.Padding = UDim.new(0, scale(4))
+ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
-flyBox.FocusLost:Connect(function()
-	local n = tonumber(flyBox.Text)
-	if n then flySpeed = n end
-end)
+local Padding = Instance.new("UIPadding", ContentFrame)
+Padding.PaddingTop = UDim.new(0, scale(6))
+Padding.PaddingLeft = UDim.new(0, scale(6))
+Padding.PaddingRight = UDim.new(0, scale(6))
 
---// CLOSE
-close.MouseButton1Click:Connect(function()
-	stopFly()
-	-- reset everything on close
-	brightEnabled = false darkEnabled = false speedEnabled = false
-	applyLighting()
-	applySpeed()
-	gui:Destroy()
-end)
+-- ── Helper UI Functions ──
+local function makeSection(title)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, scale(16))
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "── " .. title .. " ──"
+    lbl.TextColor3 = Color3.fromRGB(140, 140, 140)
+    lbl.TextSize = scale(9)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = ContentFrame
+    return lbl
+end
 
---// DRAG
-local dragging, dragStart, startPos
-titleBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		dragStart = input.Position
-		startPos = frame.Position
-	end
-end)
-titleBar.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = false
-	end
-end)
-UIS.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-		local delta = input.Position - dragStart
-		frame.Position = UDim2.new(
-			startPos.X.Scale, startPos.X.Offset + delta.X,
-			startPos.Y.Scale, startPos.Y.Offset + delta.Y
-		)
-	end
-end)
+local function makeToggleRow(labelText, state, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, scale(24))
+    row.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    row.BorderSizePixel = 0
+    row.Parent = ContentFrame
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -scale(50), 1, 0)
+    lbl.Position = UDim2.new(0, scale(8), 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    lbl.TextSize = scale(10)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, scale(42), 0, scale(16))
+    btn.Position = UDim2.new(1, -scale(48), 0.5, -scale(8))
+    btn.BorderSizePixel = 0
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = scale(9)
+    btn.Parent = row
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, scale(4))
+
+    local on = state
+    local function refresh()
+        if on then
+            btn.Text = "ON"
+            btn.BackgroundColor3 = Color3.fromRGB(60, 180, 80)
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        else
+            btn.Text = "OFF"
+            btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            btn.TextColor3 = Color3.fromRGB(150, 150, 150)
+        end
+    end
+    refresh()
+
+    btn.MouseButton1Click:Connect(function()
+        on = not on
+        refresh()
+        callback(on)
+    end)
+    return row
+end
+
+local function makeModeRow(labelText, options, current, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, scale(24))
+    row.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    row.BorderSizePixel = 0
+    row.Parent = ContentFrame
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.45, 0, 1, 0)
+    lbl.Position = UDim2.new(0, scale(8), 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(160, 160, 160)
+    lbl.TextSize = scale(9)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local idx = 1
+    for i, v in ipairs(options) do if v == current then idx = i end end
+
+    local btns = {}
+    local totalW = scale(38) * #options + scale(4) * (#options - 1)
+    local startX = scale(8) + scale(8) + lbl.Size.X.Offset
+
+    for i, opt in ipairs(options) do
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0, scale(38), 0, scale(16))
+        b.Position = UDim2.new(0.48, (i-1)*(scale(40)), 0.5, -scale(8))
+        b.BorderSizePixel = 0
+        b.Text = opt
+        b.TextSize = scale(9)
+        b.Font = Enum.Font.GothamBold
+        b.Parent = row
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, scale(4))
+        btns[i] = b
+
+        local function refreshBtns()
+            for j, bb in ipairs(btns) do
+                if j == idx then
+                    bb.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+                    bb.TextColor3 = Color3.fromRGB(20, 20, 20)
+                else
+                    bb.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                    bb.TextColor3 = Color3.fromRGB(150, 150, 150)
+                end
+            end
+        end
+        refreshBtns()
+
+        b.MouseButton1Click:Connect(function()
+            idx = i
+            refreshBtns()
+            callback(options[idx])
+        end)
+    end
+    return row
+end
+
+local function makeInputRow(labelText, default, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, scale(24))
+    row.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    row.BorderSizePixel = 0
+    row.Parent = ContentFrame
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.55, 0, 1, 0)
+    lbl.Position = UDim2.new(0, scale(8), 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(160, 160, 160)
+    lbl.TextSize = scale(9)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(0, scale(52), 0, scale(16))
+    box.Position = UDim2.new(1, -scale(58), 0.5, -scale(8))
+    box.Bac
