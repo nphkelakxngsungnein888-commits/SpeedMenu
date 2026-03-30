@@ -26,11 +26,13 @@ if not gui.Parent then
 	gui.Parent = player:WaitForChild("PlayerGui")  
 end  
   
---// COLORS (BLACK THEME)
+--// COLORS
 local BLACK = Color3.fromRGB(10,10,10)
 local DARK = Color3.fromRGB(20,20,20)
 local MID = Color3.fromRGB(35,35,35)
 local WHITE = Color3.fromRGB(255,255,255)
+local GREEN = Color3.fromRGB(0,170,0)
+local RED = Color3.fromRGB(170,0,0)
 
 --// DEFAULT  
 local default = {  
@@ -63,6 +65,12 @@ local function getChar()
 	if not hum or not hrp then return nil end  
 	return char, hum, hrp  
 end  
+
+--// BUTTON STATE UI
+local function updateButton(btn, name, state)
+	btn.Text = name .. ": " .. (state and "ON" or "OFF")
+	btn.BackgroundColor3 = state and GREEN or MID
+end
   
 --// UI  
 local frame = Instance.new("Frame", gui)  
@@ -106,7 +114,6 @@ local function createBlock(text, placeholder)
   
 	local btn = Instance.new("TextButton", f)  
 	btn.Size = UDim2.new(1,0,0,19)  
-	btn.Text = text  
 	btn.BackgroundColor3 = MID  
 	btn.TextColor3 = WHITE  
 	btn.BorderSizePixel = 0  
@@ -122,10 +129,16 @@ local function createBlock(text, placeholder)
 	return btn, box  
 end  
   
-local brightBtn, brightBox = createBlock("FullBright OFF","Brightness")  
-local darkBtn, darkBox = createBlock("Dark OFF","Dark")  
-local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")  
-local flyBtn, flyBox = createBlock("Fly OFF","Fly Speed")  
+local brightBtn, brightBox = createBlock("FullBright","Brightness")  
+local darkBtn, darkBox = createBlock("Dark","Dark")  
+local speedBtn, speedBox = createBlock("Speed","WalkSpeed")  
+local flyBtn, flyBox = createBlock("Fly","Fly Speed")  
+
+-- init text
+updateButton(brightBtn,"FullBright",false)
+updateButton(darkBtn,"Dark",false)
+updateButton(speedBtn,"Speed",false)
+updateButton(flyBtn,"Fly",false)
   
 --// LIGHT  
 local function applyLighting()  
@@ -192,22 +205,28 @@ end
 brightBtn.MouseButton1Click:Connect(function()  
 	brightEnabled = not brightEnabled  
 	darkEnabled = false  
+	updateButton(brightBtn,"FullBright",brightEnabled)
+	updateButton(darkBtn,"Dark",false)
 	applyLighting()  
 end)  
   
 darkBtn.MouseButton1Click:Connect(function()  
 	darkEnabled = not darkEnabled  
 	brightEnabled = false  
+	updateButton(darkBtn,"Dark",darkEnabled)
+	updateButton(brightBtn,"FullBright",false)
 	applyLighting()  
 end)  
   
 speedBtn.MouseButton1Click:Connect(function()  
 	speedEnabled = not speedEnabled  
+	updateButton(speedBtn,"Speed",speedEnabled)
 	applySpeed()  
 end)  
   
 flyBtn.MouseButton1Click:Connect(function()  
 	flyEnabled = not flyEnabled  
+	updateButton(flyBtn,"Fly",flyEnabled)
 	if flyEnabled then startFly() else stopFly() end  
 end)  
   
