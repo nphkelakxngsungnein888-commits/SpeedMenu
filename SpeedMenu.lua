@@ -566,5 +566,161 @@ local function StartLock()
             end
         end
 
-        if currentTarget then
-            local hrp = currentTarget:FindFirstChild("Hum
+if currentTarget then
+            local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
+            local hum = currentTarget:FindFirstChildOfClass("Humanoid")
+            if not hrp or not hum or hum.Health <= 0 then
+                SetTarget(nil)
+                return
+            end
+            local targetPos = hrp.Position
+            local currentCF = Camera.CFrame
+            local lookAt = CFrame.lookAt(currentCF.Position, targetPos)
+            Camera.CFrame = currentCF:Lerp(lookAt, Settings.LockStrength)
+        end
+    end)
+end
+
+local function StopLock()
+    if lockConnection then
+        lockConnection:Disconnect()
+        lockConnection = nil
+    end
+    SetTarget(nil)
+end
+
+-- ══════════════════════════════
+--        BUTTON LOGIC
+-- ══════════════════════════════
+LockBtn.MouseButton1Click:Connect(function()
+    Settings.Enabled = not Settings.Enabled
+    if Settings.Enabled then
+        LockBtn.Text = "🔒 Lock : ON"
+        LockBtn.BackgroundColor3 = Color3.fromRGB(40,80,40)
+        StartLock()
+    else
+        LockBtn.Text = "🔓 Lock : OFF"
+        LockBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+        StopLock()
+    end
+end)
+
+NearBtn.MouseButton1Click:Connect(function()
+    Settings.NearestMode = not Settings.NearestMode
+    if Settings.NearestMode then
+        NearBtn.Text = "📍 Nearest : ON"
+        NearBtn.BackgroundColor3 = Color3.fromRGB(40,80,40)
+    else
+        NearBtn.Text = "📍 Nearest : OFF"
+        NearBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+    end
+end)
+
+PrevBtn.MouseButton1Click:Connect(function()
+    if #targetList == 0 then
+        targetList = GetTargetList()
+    end
+    if #targetList > 0 then
+        targetIndex = targetIndex - 1
+        if targetIndex < 1 then targetIndex = #targetList end
+        SetTarget(targetList[targetIndex].model)
+    end
+end)
+
+NextBtn.MouseButton1Click:Connect(function()
+    if #targetList == 0 then
+        targetList = GetTargetList()
+    end
+    if #targetList > 0 then
+        targetIndex = targetIndex + 1
+        if targetIndex > #targetList then targetIndex = 1 end
+        SetTarget(targetList[targetIndex].model)
+    end
+end)
+
+-- MINIMIZE main
+local minimized = false
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    Content.Visible = not minimized
+    MainFrame.Size = minimized
+        and UDim2.new(0, S(220), 0, S(30))
+        or UDim2.new(0, S(220), 0, S(310))
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    StopLock()
+    ScreenGui:Destroy()
+end)
+
+-- SCAN TOGGLE
+local scanVisible = false
+ScanToggleBtn.MouseButton1Click:Connect(function()
+    scanVisible = not scanVisible
+    ScanFrame.Visible = scanVisible
+    ScanToggleBtn.Text = scanVisible and "🔍 Scan Menu : ON" or "🔍 Scan Menu : OFF"
+    ScanToggleBtn.BackgroundColor3 = scanVisible
+        and Color3.fromRGB(40,80,40)
+        or Color3.fromRGB(35,35,35)
+end)
+
+ScanCloseBtn.MouseButton1Click:Connect(function()
+    scanVisible = false
+    ScanFrame.Visible = false
+    ScanToggleBtn.Text = "🔍 Scan Menu : OFF"
+    ScanToggleBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+end)
+
+-- SCAN MINIMIZE
+local scanMin = false
+ScanMinBtn.MouseButton1Click:Connect(function()
+    scanMin = not scanMin
+    ScanScroll.Visible = not scanMin
+    DoScanBtn.Visible = not scanMin
+    ScanCountLabel.Visible = not scanMin
+    ScanFrame.Size = scanMin
+        and UDim2.new(0, SS(200), 0, SS(28))
+        or UDim2.new(0, SS(200), 0, SS(280))
+end)
+
+-- SCAN NOW
+DoScanBtn.MouseButton1Click:Connect(function()
+    for _, c in ipairs(ScanScroll:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+
+    local list = GetTargetList()
+    targetList = list
+    ScanCountLabel.Text = #list .. " found"
+
+    for i, entry in ipairs(list) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, SS(24))
+        btn.BackgroundColor3 = Color3.fromRGB(25,25,25)
+        btn.BorderSizePixel = 0
+        btn.Text = string.format("[%d] %s  %.0fm", i, entry.name, entry.dist)
+        btn.TextColor3 = GetTeamColor(entry.model)
+        btn.TextSize = SS(9)
+        btn.Font = Enum.Font.Gotham
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = ScanScroll
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,4)
+        Instance.new("UIPadding", btn).PaddingLeft = UDim.new(0, SS(6))
+
+        btn.MouseButton1Click:Connect(function()
+            targetIndex = i
+            SetTarget(entry.model)
+        end)
+    end
+
+    ScanScroll.CanvasSize = UDim2.new(0, 0, 0, ScanLayout.AbsoluteContentSize.Y + SS(4))
+end)
+
+-- SCAN SIZE adjust
+ScanSizeBox.FocusLost:Connect(function()
+    local v = tonumber(ScanSizeBox.Text)
+    if v and v >= 5 and v <= 20 then
+        Settings.ScanMenuSize = v
+    end
+    ScanSizeBox.Text = tostring(Settings.ScanMenuSize)
+end)
