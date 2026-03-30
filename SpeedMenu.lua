@@ -1,9 +1,11 @@
+--นี่เลยครับ แก้ทั้ง 2 จุดแล้ว:
 -- Mobile-Friendly GUI Menu | Black & White Theme
--- Target Lock System (Player / NPC)
+-- Target Lock System (Player / NPC) | Codex Fixed
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -11,20 +13,14 @@ local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Humanoid = Character:WaitForChild("Humanoid")
 
--- ══════════════════════════════════
---          SETTINGS
--- ══════════════════════════════════
 local Settings = {
-    MenuSize = 10,       -- ขนาดเมนู (scale)
-    LockStrength = 0.3,  -- ความแรงล็อค
-    LockRange = 100,     -- ระยะล็อค
-    Mode = "NPC",        -- "Player" หรือ "NPC"
+    MenuSize = 10,
+    LockStrength = 0.3,
+    LockRange = 100,
+    Mode = "NPC",
     Enabled = false,
 }
 
--- ══════════════════════════════════
---          STATE
--- ══════════════════════════════════
 local currentTarget = nil
 local targetList = {}
 local targetIndex = 1
@@ -32,19 +28,21 @@ local lockConnection = nil
 local damageCheckConnection = nil
 local lastHealth = Humanoid.Health
 
--- ══════════════════════════════════
---          GUI SETUP
--- ══════════════════════════════════
+-- ลบ GUI เก่าถ้ามี
+pcall(function()
+    if CoreGui:FindFirstChild("LockMenu") then
+        CoreGui:FindFirstChild("LockMenu"):Destroy()
+    end
+end)
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "LockMenu"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = LocalPlayer.PlayerGui
+ScreenGui.Parent = CoreGui  -- แก้จาก PlayerGui เป็น CoreGui
 
-local BASE = 30
 local function S(n) return n * (Settings.MenuSize / 10) end
 
--- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, S(220), 0, S(300))
 MainFrame.Position = UDim2.new(0.5, -S(110), 0.5, -S(150))
@@ -52,12 +50,8 @@ MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = MainFrame
-
--- Title Bar
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, S(30))
 TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -75,17 +69,6 @@ TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
 
--- Size Input
-local SizeLabel = Instance.new("TextLabel")
-SizeLabel.Size = UDim2.new(0, S(20), 1, 0)
-SizeLabel.Position = UDim2.new(1, -S(65), 0, 0)
-SizeLabel.BackgroundTransparency = 1
-SizeLabel.Text = "sz"
-SizeLabel.TextColor3 = Color3.fromRGB(150,150,150)
-SizeLabel.TextSize = S(10)
-SizeLabel.Font = Enum.Font.Gotham
-SizeLabel.Parent = TitleBar
-
 local SizeBox = Instance.new("TextBox")
 SizeBox.Size = UDim2.new(0, S(28), 0, S(20))
 SizeBox.Position = UDim2.new(1, -S(68), 0.5, -S(10))
@@ -99,7 +82,6 @@ SizeBox.PlaceholderText = "10"
 SizeBox.Parent = TitleBar
 Instance.new("UICorner", SizeBox).CornerRadius = UDim.new(0,4)
 
--- Minimize Button
 local MinBtn = Instance.new("TextButton")
 MinBtn.Size = UDim2.new(0, S(22), 0, S(22))
 MinBtn.Position = UDim2.new(1, -S(46), 0.5, -S(11))
@@ -112,7 +94,6 @@ MinBtn.Font = Enum.Font.GothamBold
 MinBtn.Parent = TitleBar
 Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0,4)
 
--- Close Button
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, S(22), 0, S(22))
 CloseBtn.Position = UDim2.new(1, -S(22), 0.5, -S(11))
@@ -125,14 +106,12 @@ CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.Parent = TitleBar
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0,4)
 
--- Content Frame
 local Content = Instance.new("Frame")
 Content.Size = UDim2.new(1, 0, 1, -S(30))
 Content.Position = UDim2.new(0, 0, 0, S(30))
 Content.BackgroundTransparency = 1
 Content.Parent = MainFrame
 
--- Divider
 local function Divider(parent, yPos)
     local d = Instance.new("Frame")
     d.Size = UDim2.new(1, -S(16), 0, 1)
@@ -142,7 +121,6 @@ local function Divider(parent, yPos)
     d.Parent = parent
 end
 
--- Label
 local function Label(parent, text, y, size)
     local l = Instance.new("TextLabel")
     l.Size = UDim2.new(1, -S(16), 0, S(18))
@@ -157,24 +135,6 @@ local function Label(parent, text, y, size)
     return l
 end
 
--- Toggle Button
-local function ToggleBtn(parent, text, y, onToggle)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -S(16), 0, S(28))
-    btn.Position = UDim2.new(0, S(8), 0, y)
-    btn.BackgroundColor3 = Color3.fromRGB(35,35,35)
-    btn.BorderSizePixel = 0
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(220,220,220)
-    btn.TextSize = S(12)
-    btn.Font = Enum.Font.GothamBold
-    btn.Parent = parent
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
-    btn.MouseButton1Click:Connect(onToggle)
-    return btn
-end
-
--- Input Box
 local function InputBox(parent, placeholder, default, y, w, x)
     local box = Instance.new("TextBox")
     box.Size = UDim2.new(0, S(w or 80), 0, S(24))
@@ -188,12 +148,11 @@ local function InputBox(parent, placeholder, default, y, w, x)
     box.TextSize = S(11)
     box.Font = Enum.Font.Gotham
     box.Parent = parent
-    local c = Instance.new("UICorner", box)
-    c.CornerRadius = UDim.new(0,5)
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0,5)
     return box
 end
 
--- ── MODE TOGGLE ──
+-- MODE
 Label(Content, "🎯 MODE", S(6), S(11))
 
 local ModePlayer = Instance.new("TextButton")
@@ -213,7 +172,7 @@ ModeNPC.Size = UDim2.new(0, S(96), 0, S(26))
 ModeNPC.Position = UDim2.new(0, S(112), 0, S(26))
 ModeNPC.BackgroundColor3 = Color3.fromRGB(200,200,200)
 ModeNPC.BorderSizePixel = 0
-ModeNPC.Text = "🤖 NPC/Monster"
+ModeNPC.Text = "🤖 NPC"
 ModeNPC.TextColor3 = Color3.fromRGB(20,20,20)
 ModeNPC.TextSize = S(11)
 ModeNPC.Font = Enum.Font.GothamBold
@@ -248,7 +207,6 @@ end)
 
 Divider(Content, S(58))
 
--- ── LOCK SETTINGS ──
 Label(Content, "⚡ Strength", S(64), S(11))
 Label(Content, "📏 Range", S(64), S(11))
 
@@ -257,8 +215,17 @@ local RangeBox = InputBox(Content, "Range", Settings.LockRange, S(82), 90, 112)
 
 Divider(Content, S(112))
 
--- ── LOCK TOGGLE ──
-local LockBtn = ToggleBtn(Content, "🔓 Lock : OFF", S(118), function() end)
+local LockBtn = Instance.new("TextButton")
+LockBtn.Size = UDim2.new(1, -S(16), 0, S(28))
+LockBtn.Position = UDim2.new(0, S(8), 0, S(118))
+LockBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+LockBtn.BorderSizePixel = 0
+LockBtn.Text = "🔓 Lock : OFF"
+LockBtn.TextColor3 = Color3.fromRGB(220,220,220)
+LockBtn.TextSize = S(12)
+LockBtn.Font = Enum.Font.GothamBold
+LockBtn.Parent = Content
+Instance.new("UICorner", LockBtn).CornerRadius = UDim.new(0,6)
 
 local function UpdateLockBtn()
     if Settings.Enabled then
@@ -272,7 +239,6 @@ local function UpdateLockBtn()
     end
 end
 
--- ── TARGET SWITCH ──
 local PrevBtn = Instance.new("TextButton")
 PrevBtn.Size = UDim2.new(0, S(44), 0, S(26))
 PrevBtn.Position = UDim2.new(0, S(8), 0, S(154))
@@ -318,11 +284,9 @@ StatusLabel.TextColor3 = Color3.fromRGB(120,120,120)
 -- ══════════════════════════════════
 --        CORE FUNCTIONS
 -- ══════════════════════════════════
-
 local function GetTargetList()
     local list = {}
     local range = tonumber(RangeBox.Text) or Settings.LockRange
-
     if Settings.Mode == "Player" then
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
@@ -350,7 +314,6 @@ local function GetTargetList()
             end
         end
     end
-
     table.sort(list, function(a, b) return a.dist < b.dist end)
     return list
 end
@@ -365,7 +328,7 @@ local function SetTarget(model)
     currentTarget = model
     if model then
         TargetLabel.Text = model.Name
-        StatusLabel.Text = "🔒 Locked: " .. model.Name
+        StatusLabel.Text = "🔒 " .. model.Name
         StatusLabel.TextColor3 = Color3.fromRGB(220,220,220)
     else
         TargetLabel.Text = "No Target"
@@ -376,23 +339,19 @@ end
 
 local function StartLock()
     if lockConnection then lockConnection:Disconnect() end
-    lockConnection = RunService.RenderStepped:Connect(function()
+    lockConnection = RunService.Heartbeat:Connect(function()  -- แก้จาก RenderStepped เป็น Heartbeat
         Settings.LockStrength = tonumber(StrBox.Text) or 0.3
-
         if not currentTarget then
             local nearest = GetNearestTarget()
             SetTarget(nearest)
         end
-
         if currentTarget then
             local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
             local hum = currentTarget:FindFirstChildOfClass("Humanoid")
-
             if not hrp or not hum or hum.Health <= 0 then
                 SetTarget(nil)
                 return
             end
-
             local targetPos = hrp.Position
             local currentCF = Camera.CFrame
             local lookAt = CFrame.lookAt(currentCF.Position, targetPos)
@@ -402,33 +361,24 @@ local function StartLock()
 end
 
 local function StopLock()
-    if lockConnection then
-        lockConnection:Disconnect()
-        lockConnection = nil
-    end
+    if lockConnection then lockConnection:Disconnect() lockConnection = nil end
     SetTarget(nil)
 end
 
--- ══════════════════════════════════
---       DAMAGE AUTO-LOCK
--- ══════════════════════════════════
 local function StartDamageCheck()
     if damageCheckConnection then damageCheckConnection:Disconnect() end
     damageCheckConnection = RunService.Heartbeat:Connect(function()
         local h = Humanoid.Health
         if h < lastHealth then
-            -- ถูกดาเมจ → หาเป้าใกล้สุดล็อคทันที
             local nearest = GetNearestTarget()
-            if nearest then
-                SetTarget(nearest)
-            end
+            if nearest then SetTarget(nearest) end
         end
         lastHealth = h
     end)
 end
 
 -- ══════════════════════════════════
---       BUTTON LOGIC
+--         BUTTONS
 -- ══════════════════════════════════
 LockBtn.MouseButton1Click:Connect(function()
     Settings.Enabled = not Settings.Enabled
@@ -467,7 +417,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
--- ── Minimize ──
 local minimized = false
 MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
@@ -481,12 +430,10 @@ MinBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ── Resize by SizeBox ──
 SizeBox.FocusLost:Connect(function()
     local v = tonumber(SizeBox.Text)
     if v and v >= 1 then
         Settings.MenuSize = v
-        -- รีโหลดขนาด (resize หลัก)
         MainFrame.Size = UDim2.new(0, S(220), 0, minimized and S(30) or S(300))
     else
         SizeBox.Text = tostring(Settings.MenuSize)
@@ -494,7 +441,7 @@ SizeBox.FocusLost:Connect(function()
 end)
 
 -- ══════════════════════════════════
---         DRAG SYSTEM
+--           DRAG
 -- ══════════════════════════════════
 local dragging, dragStart, startPos
 TitleBar.InputBegan:Connect(function(input)
@@ -524,9 +471,6 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ══════════════════════════════════
---    AUTO-LOCK NEAREST ON START
--- ══════════════════════════════════
 task.defer(function()
     task.wait(1)
     local nearest = GetNearestTarget()
