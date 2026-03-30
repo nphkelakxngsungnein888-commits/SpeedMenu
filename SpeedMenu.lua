@@ -1,544 +1,632 @@
+นี่คือสคริปต์เต็มพร้อมใช้งาน:
+-- Advanced Combat Script by kuy kuy
+-- Target Lock | Enemy Scan | Auto Evade
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Camera = workspace.CurrentCamera
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Humanoid = Character:WaitForChild("Humanoid")
 
+-- ══════════════════════════════════════
+--           SETTINGS
+-- ══════════════════════════════════════
 local Config = {
+    -- Target Lock
     LockEnabled = false,
-    LockMode = "NPC",
-    LockStrength = 0.3,
+    LockMode = "NPC", -- "Player" or "NPC"
+    LockStrength = 0.15,
     LockRange = 100,
     CurrentTarget = nil,
+    
+    -- Enemy Scan
     ScanEnabled = false,
-    ScanMode = "NPC",
-    FleeEnabled = false,
-    FleeMode = "NPC",
-    FleeRange = 20,
-    MenuSize = 10,
+    ScanMode = "NPC", -- "Player" or "NPC"
+    
+    -- Auto Evade
+    EvadeEnabled = false,
+    EvadeMode = "NPC",
+    EvadeRange = 20,
+    EvadeSpeed = 50,
+    
+    -- UI
     MenuOpen = true,
+    MenuScale = 10,
 }
 
-local function getDistance(a, b)
-    return (a - b).Magnitude
+-- ══════════════════════════════════════
+--           GUI SETUP
+-- ══════════════════════════════════════
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "CombatMenu"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = game:GetService("CoreGui")
+
+-- Scale factor
+local function getScale()
+    return Config.MenuScale / 10
 end
 
-local function getCharacterRoot(char)
-    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("RootPart")
+-- ══════════════════════════════════════
+--           TOPBAR (Drag Handle)
+-- ══════════════════════════════════════
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(0, 280, 0, 32)
+TopBar.Position = UDim2.new(0, 60, 0, 60)
+TopBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = ScreenGui
+
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 8)
+
+-- Title
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, -150, 1, 0)
+TitleLabel.Position = UDim2.new(0, 10, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "⚔ Combat"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 14
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TopBar
+
+-- Scale Input
+local ScaleLabel = Instance.new("TextLabel")
+ScaleLabel.Size = UDim2.new(0, 30, 1, 0)
+ScaleLabel.Position = UDim2.new(1, -138, 0, 0)
+ScaleLabel.BackgroundTransparency = 1
+ScaleLabel.Text = "Sz:"
+ScaleLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+ScaleLabel.TextSize = 11
+ScaleLabel.Font = Enum.Font.Gotham
+ScaleLabel.Parent = TopBar
+
+local ScaleBox = Instance.new("TextBox")
+ScaleBox.Size = UDim2.new(0, 36, 0, 20)
+ScaleBox.Position = UDim2.new(1, -108, 0.5, -10)
+ScaleBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+ScaleBox.BorderSizePixel = 0
+ScaleBox.Text = "10"
+ScaleBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+ScaleBox.TextSize = 11
+ScaleBox.Font = Enum.Font.Gotham
+ScaleBox.Parent = TopBar
+Instance.new("UICorner", ScaleBox).CornerRadius = UDim.new(0, 4)
+
+-- Toggle Menu Button
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 58, 0, 22)
+ToggleBtn.Position = UDim2.new(1, -66, 0.5, -11)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+ToggleBtn.BorderSizePixel = 0
+ToggleBtn.Text = "▼ Hide"
+ToggleBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+ToggleBtn.TextSize = 11
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Parent = TopBar
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 4)
+
+-- Close Button
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 22, 0, 22)
+CloseBtn.Position = UDim2.new(1, -26, 0.5, -11)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 12
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = TopBar
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
+
+-- ══════════════════════════════════════
+--           MAIN MENU FRAME
+-- ══════════════════════════════════════
+local MenuFrame = Instance.new("Frame")
+MenuFrame.Name = "MenuFrame"
+MenuFrame.Size = UDim2.new(0, 280, 0, 310)
+MenuFrame.Position = UDim2.new(0, 60, 0, 94)
+MenuFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MenuFrame.BorderSizePixel = 0
+MenuFrame.Parent = ScreenGui
+
+Instance.new("UICorner", MenuFrame).CornerRadius = UDim.new(0, 8)
+
+local MenuStroke = Instance.new("UIStroke")
+MenuStroke.Color = Color3.fromRGB(70, 70, 70)
+MenuStroke.Thickness = 1
+MenuStroke.Parent = MenuFrame
+
+-- Scroll Layout
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size = UDim2.new(1, 0, 1, 0)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.BorderSizePixel = 0
+ScrollFrame.ScrollBarThickness = 3
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollFrame.Parent = MenuFrame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 4)
+ListLayout.Parent = ScrollFrame
+
+local Padding = Instance.new("UIPadding")
+Padding.PaddingTop = UDim.new(0, 8)
+Padding.PaddingLeft = UDim.new(0, 8)
+Padding.PaddingRight = UDim.new(0, 8)
+Padding.Parent = ScrollFrame
+
+-- ══════════════════════════════════════
+--           UI COMPONENTS
+-- ══════════════════════════════════════
+local function MakeSection(title)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 18)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "── " .. title .. " ──"
+    lbl.TextColor3 = Color3.fromRGB(140, 140, 140)
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextXAlignment = Enum.TextXAlignment.Center
+    lbl.Parent = ScrollFrame
+    return lbl
 end
 
-local function getCharacterHumanoid(char)
-    return char:FindFirstChildOfClass("Humanoid")
+local function MakeToggle(labelText, default, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 28)
+    row.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    row.BorderSizePixel = 0
+    row.Parent = ScrollFrame
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -50, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+    lbl.TextSize = 12
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local state = default
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 40, 0, 20)
+    btn.Position = UDim2.new(1, -46, 0.5, -10)
+    btn.BackgroundColor3 = state and Color3.fromRGB(60, 180, 80) or Color3.fromRGB(80, 80, 80)
+    btn.BorderSizePixel = 0
+    btn.Text = state and "ON" or "OFF"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 10
+    btn.Font = Enum.Font.GothamBold
+    btn.Parent = row
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.Text = state and "ON" or "OFF"
+        TweenService:Create(btn, TweenInfo.new(0.15), {
+            BackgroundColor3 = state and Color3.fromRGB(60, 180, 80) or Color3.fromRGB(80, 80, 80)
+        }):Play()
+        callback(state)
+    end)
+
+    return btn
+end
+
+local function MakeModeSelector(labelText, opt1, opt2, default, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 28)
+    row.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    row.BorderSizePixel = 0
+    row.Parent = ScrollFrame
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0, 80, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local current = default
+    local function makeBtn(txt, xPos)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0, 72, 0, 20)
+        b.Position = UDim2.new(1, xPos, 0.5, -10)
+        b.BackgroundColor3 = (txt == current) and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(55, 55, 55)
+        b.BorderSizePixel = 0
+        b.Text = txt
+        b.TextColor3 = (txt == current) and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(200, 200, 200)
+        b.TextSize = 10
+        b.Font = Enum.Font.GothamBold
+        b.Parent = row
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+        return b
+    end
+
+    local b1 = makeBtn(opt1, -150)
+    local b2 = makeBtn(opt2, -74)
+
+    local function update(sel)
+        current = sel
+        b1.BackgroundColor3 = (sel == opt1) and Color3.fromRGB(200,200,200) or Color3.fromRGB(55,55,55)
+        b1.TextColor3 = (sel == opt1) and Color3.fromRGB(0,0,0) or Color3.fromRGB(200,200,200)
+        b2.BackgroundColor3 = (sel == opt2) and Color3.fromRGB(200,200,200) or Color3.fromRGB(55,55,55)
+        b2.TextColor3 = (sel == opt2) and Color3.fromRGB(0,0,0) or Color3.fromRGB(200,200,200)
+        callback(sel)
+    end
+    b1.MouseButton1Click:Connect(function() update(opt1) end)
+    b2.MouseButton1Click:Connect(function() update(opt2) end)
+end
+
+local function MakeSliderBox(labelText, default, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 28)
+    row.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    row.BorderSizePixel = 0
+    row.Parent = ScrollFrame
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -70, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(0, 58, 0, 20)
+    box.Position = UDim2.new(1, -64, 0.5, -10)
+    box.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    box.BorderSizePixel = 0
+    box.Text = tostring(default)
+    box.TextColor3 = Color3.fromRGB(255, 255, 255)
+    box.TextSize = 11
+    box.Font = Enum.Font.Gotham
+    box.Parent = row
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+
+    box.FocusLost:Connect(function()
+        local val = tonumber(box.Text)
+        if val then callback(val)
+        else box.Text = tostring(default) end
+    end)
+end
+
+-- ══════════════════════════════════════
+--           BUILD MENU ITEMS
+-- ══════════════════════════════════════
+
+-- TARGET LOCK
+MakeSection("🎯 TARGET LOCK")
+
+MakeToggle("Lock Target", false, function(v)
+    Config.LockEnabled = v
+    if not v then Config.CurrentTarget = nil end
+end)
+
+MakeModeSelector("Mode:", "Player", "NPC", "NPC", function(v)
+    Config.LockMode = v
+    Config.CurrentTarget = nil
+end)
+
+MakeSliderBox("Strength (0.01-1)", Config.LockStrength, function(v)
+    Config.LockStrength = math.clamp(v, 0.01, 1)
+end)
+
+MakeSliderBox("Range (studs)", Config.LockRange, function(v)
+    Config.LockRange = v
+end)
+
+-- ENEMY SCAN
+MakeSection("👁 ENEMY SCAN")
+
+MakeToggle("Show Scan", false, function(v)
+    Config.ScanEnabled = v
+end)
+
+MakeModeSelector("Mode:", "Player", "NPC", "NPC", function(v)
+    Config.ScanMode = v
+end)
+
+-- AUTO EVADE
+MakeSection("🏃 AUTO EVADE")
+
+MakeToggle("Auto Evade", false, function(v)
+    Config.EvadeEnabled = v
+end)
+
+MakeModeSelector("Mode:", "Player", "NPC", "NPC", function(v)
+    Config.EvadeMode = v
+end)
+
+MakeSliderBox("Evade Range", Config.EvadeRange, function(v)
+    Config.EvadeRange = v
+end)
+
+MakeSliderBox("Evade Speed", Config.EvadeSpeed, function(v)
+    Config.EvadeSpeed = v
+end)
+
+-- ══════════════════════════════════════
+--           DRAG SYSTEM
+-- ══════════════════════════════════════
+local dragging, dragStart, startPos
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = TopBar.Position
+    end
+end)
+TopBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        local newPos = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+        TopBar.Position = newPos
+        MenuFrame.Position = UDim2.new(
+            newPos.X.Scale, newPos.X.Offset,
+            newPos.Y.Scale, newPos.Y.Offset + 34
+        )
+    end
+end)
+
+-- ══════════════════════════════════════
+--           TOGGLE / CLOSE
+-- ══════════════════════════════════════
+ToggleBtn.MouseButton1Click:Connect(function()
+    Config.MenuOpen = not Config.MenuOpen
+    MenuFrame.Visible = Config.MenuOpen
+    ToggleBtn.Text = Config.MenuOpen and "▼ Hide" or "▶ Show"
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Scale Apply
+ScaleBox.FocusLost:Connect(function()
+    local v = tonumber(ScaleBox.Text)
+    if v then
+        Config.MenuScale = math.max(1, v)
+        local s = Config.MenuScale / 10
+        TopBar.Size = UDim2.new(0, 280 * s, 0, 32 * s)
+        MenuFrame.Size = UDim2.new(0, 280 * s, 0, 310 * s)
+        MenuFrame.Position = UDim2.new(
+            TopBar.Position.X.Scale, TopBar.Position.X.Offset,
+            TopBar.Position.Y.Scale, TopBar.Position.Y.Offset + 34 * s
+        )
+    else
+        ScaleBox.Text = tostring(Config.MenuScale)
+    end
+end)
+
+-- ══════════════════════════════════════
+--           HELPER FUNCTIONS
+-- ══════════════════════════════════════
+local function getChar(player)
+    return player and player.Character
+end
+
+local function getHRP(char)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHumanoid(char)
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function isAlive(char)
+    local h = getHumanoid(char)
+    return h and h.Health > 0
+end
+
+local function isSameTeam(player)
+    if not player.Team then return false end
+    return player.Team == LocalPlayer.Team
+end
+
+local function distanceTo(hrp)
+    if not hrp then return math.huge end
+    return (HumanoidRootPart.Position - hrp.Position).Magnitude
+end
+
+local function getTargets(mode)
+    local list = {}
+    if mode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local c = getChar(p)
+                if c and isAlive(c) then
+                    local hrp = getHRP(c)
+                    if hrp and distanceTo(hrp) <= Config.LockRange then
+                        if not isSameTeam(p) then
+                            table.insert(list, {char=c, hrp=hrp, player=p})
+                        end
+                    end
+                end
+            end
+        end
+    else -- NPC
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Humanoid") and obj.Health > 0 then
+                local c = obj.Parent
+                if c ~= Character then
+                    local hrp = getHRP(c)
+                    if hrp and distanceTo(hrp) <= Config.LockRange then
+                        table.insert(list, {char=c, hrp=hrp, player=nil})
+                    end
+                end
+            end
+        end
+    end
+    return list
 end
 
 local function getNearestTarget(mode)
-    local nearest, nearestDist = nil, math.huge
-    local myPos = HumanoidRootPart.Position
-    if mode == "Player" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local root = getCharacterRoot(p.Character)
-                local hum = getCharacterHumanoid(p.Character)
-                if root and hum and hum.Health > 0 then
-                    local d = getDistance(myPos, root.Position)
-                    if d < Config.LockRange and d < nearestDist then
-                        nearest = p.Character
-                        nearestDist = d
-                    end
-                end
-            end
-        end
-    else
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= Character then
-                local hum = getCharacterHumanoid(obj)
-                local root = getCharacterRoot(obj)
-                if hum and hum.Health > 0 and root and not Players:GetPlayerFromCharacter(obj) then
-                    local d = getDistance(myPos, root.Position)
-                    if d < Config.LockRange and d < nearestDist then
-                        nearest = obj
-                        nearestDist = d
-                    end
-                end
-            end
+    local targets = getTargets(mode)
+    local best, bestDist = nil, math.huge
+    for _, t in ipairs(targets) do
+        local d = distanceTo(t.hrp)
+        if d < bestDist then
+            bestDist = d
+            best = t
         end
     end
-    return nearest
+    return best
 end
 
-local function getTargetUnderCrosshair(mode)
-    local nearest, nearestDot = nil, -math.huge
+local function getLookedAtTarget(mode)
+    local targets = getTargets(mode)
+    local best, bestDot = nil, 0.7
     local camCF = Camera.CFrame
-    local myPos = HumanoidRootPart.Position
-    local function check(char)
-        if char == Character then return end
-        local root = getCharacterRoot(char)
-        local hum = getCharacterHumanoid(char)
-        if not root or not hum or hum.Health <= 0 then return end
-        local d = getDistance(myPos, root.Position)
-        if d > Config.LockRange then return end
-        local dir = (root.Position - camCF.Position).Unit
+    for _, t in ipairs(targets) do
+        local dir = (t.hrp.Position - camCF.Position).Unit
         local dot = camCF.LookVector:Dot(dir)
-        if dot > nearestDot then
-            nearest = char
-            nearestDot = dot
+        if dot > bestDot then
+            bestDot = dot
+            best = t
         end
     end
-    if mode == "Player" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then check(p.Character) end
-        end
-    else
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= Character and not Players:GetPlayerFromCharacter(obj) then
-                check(obj)
-            end
-        end
-    end
-    return nearest
+    return best
 end
 
--- Target Lock
-RunService.RenderStepped:Connect(function()
-    Character = LocalPlayer.Character
-    if not Character then return end
-    HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-    Humanoid = Character:FindFirstChild("Humanoid")
-    if not HumanoidRootPart or not Humanoid then return end
-    if Config.LockEnabled then
-        if Config.CurrentTarget then
-            local hum = getCharacterHumanoid(Config.CurrentTarget)
-            if not hum or hum.Health <= 0 then
-                Config.CurrentTarget = getNearestTarget(Config.LockMode)
+-- ══════════════════════════════════════
+--           DAMAGE DETECTION
+-- ══════════════════════════════════════
+local lastHP = Humanoid.Health
+Humanoid.HealthChanged:Connect(function(hp)
+    if hp < lastHP and Config.LockEnabled then
+        -- Find who damaged us
+        local allTargets = getTargets(Config.LockMode)
+        local attacker = nil
+        local bestDist = math.huge
+        -- pick nearest as attacker heuristic
+        for _, t in ipairs(allTargets) do
+            local d = distanceTo(t.hrp)
+            if d < bestDist then
+                bestDist = d
+                attacker = t
             end
-        else
-            Config.CurrentTarget = getTargetUnderCrosshair(Config.LockMode)
         end
-        if Config.CurrentTarget then
-            local root = getCharacterRoot(Config.CurrentTarget)
-            if root then
-                local targetPos = root.Position
-                local currentCF = Camera.CFrame
-                local direction = (targetPos - currentCF.Position).Unit
-                local newCF = CFrame.new(currentCF.Position, currentCF.Position + direction)
-                Camera.CFrame = currentCF:Lerp(newCF, Config.LockStrength)
-            end
+        if attacker then
+            Config.CurrentTarget = attacker
         end
     end
+    lastHP = hp
 end)
 
-Humanoid.HealthChanged:Connect(function()
-    if not Config.LockEnabled then return end
-    local attacker = getNearestTarget(Config.LockMode)
-    if attacker then Config.CurrentTarget = attacker end
-end)
+-- ══════════════════════════════════════
+--           ENEMY SCAN BOXES
+-- ══════════════════════════════════════
+local scanBoxes = {}
 
--- Flee
-RunService.Heartbeat:Connect(function()
+local function clearScanBoxes()
+    for _, box in ipairs(scanBoxes) do
+        box:Destroy()
+    end
+    scanBoxes = {}
+end
+
+local function updateScan()
+    clearScanBoxes()
+    if not Config.ScanEnabled then return end
+
+    local targets = getTargets(Config.ScanMode == "Player" and "Player" or "NPC")
+    for _, t in ipairs(targets) do
+        local hrp = t.hrp
+        local dist = math.floor(distanceTo(hrp))
+
+        -- Billboard
+        local bb = Instance.new("BillboardGui")
+        bb.Size = UDim2.new(0, 60, 0, 60)
+        bb.StudsOffset = Vector3.new(0, 3, 0)
+        bb.AlwaysOnTop = true
+        bb.Adornee = hrp
+        bb.Parent = hrp
+
+        -- Box border
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundTransparency = 1
+        frame.BorderSizePixel = 0
+        frame.Parent = bb
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(255, 255, 255)
+        stroke.Thickness = 1.5
+        stroke.Parent = frame
+
+        -- Distance label
+        local dlbl = Instance.new("TextLabel")
+        dlbl.Size = UDim2.new(1, 0, 0, 14)
+        dlbl.Position = UDim2.new(0, 0, -0.4, 0)
+        dlbl.BackgroundTransparency = 1
+        dlbl.Text = dist .. "m"
+        dlbl.TextColor3 = Color3.fromRGB(255, 220, 60)
+        dlbl.TextSize = 11
+        dlbl.Font = Enum.Font.GothamBold
+        dlbl.Parent = bb
+
+        table.insert(scanBoxes, bb)
+    end
+end
+
+-- ══════════════════════════════════════
+--           MAIN LOOP
+-- ══════════════════════════════════════
+local scanTick = 0
+
+RunService.Heartbeat:Connect(function(dt)
+    -- Refresh character refs
     Character = LocalPlayer.Character
     if not Character then return end
     HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
     Humanoid = Character:FindFirstChildOfClass("Humanoid")
     if not HumanoidRootPart or not Humanoid then return end
-    if not Config.FleeEnabled then return end
-    local myPos = HumanoidRootPart.Position
-    local fleeDir = Vector3.new(0,0,0)
-    local found = false
-    local function checkFlee(char)
-        if char == Character then return end
-        local root = getCharacterRoot(char)
-        local hum = getCharacterHumanoid(char)
-        if not root or not hum or hum.Health <= 0 then return end
-        local d = getDistance(myPos, root.Position)
-        if d < Config.FleeRange then
-            local away = (myPos - root.Position)
-            local speed = math.max(1, hum.WalkSpeed)
-            local weight = (Config.FleeRange - d) / Config.FleeRange * speed
-            fleeDir = fleeDir + away.Unit * weight
-            found = true
-        end
-    end
-    if Config.FleeMode == "Player" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then checkFlee(p.Character) end
-        end
-    else
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) and obj ~= Character then
-                checkFlee(obj)
-            end
-        end
-    end
-    if found and fleeDir.Magnitude > 0 then
-        local flatDir = Vector3.new(fleeDir.X, 0, fleeDir.Z).Unit
-        HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position, HumanoidRootPart.Position + flatDir)
-        Humanoid:MoveTo(HumanoidRootPart.Position + flatDir * 5)
-    end
-end)
 
-local scanBoxes = {}
-
-local function clearScanBoxes()
-    for _, v in pairs(scanBoxes) do v:Remove() end
-    scanBoxes = {}
-end
-
-RunService.RenderStepped:Connect(function()
-    if not Config.ScanEnabled then return end
-    clearScanBoxes()
-    Character = LocalPlayer.Character
-    if not Character then return end
-    HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-    if not HumanoidRootPart then return end
-
-    local function addBox(char)
-        if char == Character then return end
-        local root = getCharacterRoot(char)
-        local hum = getCharacterHumanoid(char)
-        if not root or not hum or hum.Health <= 0 then return end
-
-        local bb = Instance.new("BillboardGui")
-        bb.Adornee = root
-        bb.Size = UDim2.new(0, 60, 0, 80)
-        bb.StudsOffset = Vector3.new(0, 3, 0)
-        bb.AlwaysOnTop = true
-        bb.Parent = game.CoreGui
-
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1,0,1,0)
-        frame.BackgroundTransparency = 1
-        frame.BorderSizePixel = 0
-        frame.Parent = bb
-
-        local corners = {
-            {pos=UDim2.new(0,0,0,0),size=UDim2.new(0.3,0,0,2)},
-            {pos=UDim2.new(0,0,0,0),size=UDim2.new(0,2,0.3,0)},
-            {pos=UDim2.new(0.7,0,0,0),size=UDim2.new(0.3,0,0,2)},
-            {pos=UDim2.new(1,-2,0,0),size=UDim2.new(0,2,0.3,0)},
-            {pos=UDim2.new(0,0,1,-2),size=UDim2.new(0.3,0,0,2)},
-            {pos=UDim2.new(0,0,0.7,0),size=UDim2.new(0,2,0.3,0)},
-            {pos=UDim2.new(0.7,0,1,-2),size=UDim2.new(0.3,0,0,2)},
-            {pos=UDim2.new(1,-2,0.7,0),size=UDim2.new(0,2,0.3,0)},
-        }
-        for _, c in ipairs(corners) do
-            local line = Instance.new("Frame")
-            line.Position = c.pos
-            line.Size = c.size
-            line.BackgroundColor3 = Color3.fromRGB(255,220,50)
-            line.BorderSizePixel = 0
-            line.Parent = frame
+    -- ── TARGET LOCK ──
+    if Config.LockEnabled then
+        -- Auto pick if no target
+        if not Config.CurrentTarget or not isAlive(Config.CurrentTarget.char) then
+            local looked = getLookedAtTarget(Config.LockMode)
+            Config.CurrentTarget = looked or getNearestTarget(Config.LockMode)
         end
 
-        local dist = math.floor(getDistance(HumanoidRootPart.Position, root.Position))
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1,0,0,14)
-        label.Position = UDim2.new(0,0,1,2)
-        label.BackgroundTransparency = 1
-        label.Text = dist.."m"
-        label.TextColor3 = Color3.fromRGB(255,255,255)
-        label.TextSize = 11
-        label.Font = Enum.Font.GothamBold
-        label.Parent = frame
-        table.insert(scanBoxes, bb)
-    end
-
-    if Config.ScanMode == "Player" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then addBox(p.Character) end
-        end
-    else
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) and obj ~= Character then
-                addBox(obj)
-            end
-        end
-    end
-end)
-
--- ══════════════════════════════════════
--- GUI
--- ══════════════════════════════════════
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "KuyKuyMenu"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent = game.CoreGui
-
-local BASE = 10
-local function scale(n) return math.floor(n * (Config.MenuSize / BASE)) end
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, scale(220), 0, scale(320))
-MainFrame.Position = UDim2.new(0, 20, 0, 60)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15,15,15)
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, scale(8))
-local Stroke = Instance.new("UIStroke", MainFrame)
-Stroke.Color = Color3.fromRGB(80,80,80)
-Stroke.Thickness = 1
-
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, scale(28))
-TitleBar.BackgroundColor3 = Color3.fromRGB(25,25,25)
-TitleBar.BorderSizePixel = 0
-TitleBar.Parent = MainFrame
-Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, scale(8))
-
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -scale(90), 1, 0)
-TitleLabel.Position = UDim2.new(0, scale(8), 0, 0)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚔ KuyKuy Script"
-TitleLabel.TextColor3 = Color3.fromRGB(220,220,220)
-TitleLabel.TextSize = scale(11)
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = TitleBar
-
-local SizeBox = Instance.new("TextBox")
-SizeBox.Size = UDim2.new(0, scale(30), 0, scale(18))
-SizeBox.Position = UDim2.new(1, -scale(82), 0.5, -scale(9))
-SizeBox.BackgroundColor3 = Color3.fromRGB(40,40,40)
-SizeBox.BorderSizePixel = 0
-SizeBox.Text = "10"
-SizeBox.TextColor3 = Color3.fromRGB(200,200,200)
-SizeBox.TextSize = scale(10)
-SizeBox.Font = Enum.Font.Gotham
-SizeBox.Parent = TitleBar
-Instance.new("UICorner", SizeBox).CornerRadius = UDim.new(0, 4)
-
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, scale(34), 0, scale(18))
-ToggleBtn.Position = UDim2.new(1, -scale(48), 0.5, -scale(9))
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-ToggleBtn.BorderSizePixel = 0
-ToggleBtn.Text = "▼"
-ToggleBtn.TextColor3 = Color3.fromRGB(200,200,200)
-ToggleBtn.TextSize = scale(10)
-ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.Parent = TitleBar
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 4)
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, scale(18), 0, scale(18))
-CloseBtn.Position = UDim2.new(1, -scale(10), 0.5, -scale(9))
-CloseBtn.AnchorPoint = Vector2.new(1, 0)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(180,40,40)
-CloseBtn.BorderSizePixel = 0
-CloseBtn.Text = "✕"
-CloseBtn.TextColor3 = Color3.fromRGB(255,255,255)
-CloseBtn.TextSize = scale(9)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.Parent = TitleBar
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
-
-CloseBtn.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-    clearScanBoxes()
-end)
-
-local ContentFrame = Instance.new("ScrollingFrame")
-ContentFrame.Size = UDim2.new(1, 0, 1, -scale(30))
-ContentFrame.Position = UDim2.new(0, 0, 0, scale(30))
-ContentFrame.BackgroundTransparency = 1
-ContentFrame.BorderSizePixel = 0
-ContentFrame.ScrollBarThickness = 3
-ContentFrame.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
-ContentFrame.CanvasSize = UDim2.new(0, 0, 0, scale(480))
-ContentFrame.Parent = MainFrame
-local ListLayout = Instance.new("UIListLayout", ContentFrame)
-ListLayout.Padding = UDim.new(0, scale(4))
-ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-local Pad = Instance.new("UIPadding", ContentFrame)
-Pad.PaddingTop = UDim.new(0, scale(6))
-Pad.PaddingLeft = UDim.new(0, scale(6))
-Pad.PaddingRight = UDim.new(0, scale(6))
-
-local function makeSection(title)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 0, scale(16))
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "── "..title.." ──"
-    lbl.TextColor3 = Color3.fromRGB(140,140,140)
-    lbl.TextSize = scale(9)
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = ContentFrame
-end
-
-local function makeToggleRow(labelText, state, callback)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, scale(24))
-    row.BackgroundColor3 = Color3.fromRGB(25,25,25)
-    row.BorderSizePixel = 0
-    row.Parent = ContentFrame
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -scale(50), 1, 0)
-    lbl.Position = UDim2.new(0, scale(8), 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = Color3.fromRGB(200,200,200)
-    lbl.TextSize = scale(10)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, scale(42), 0, scale(16))
-    btn.Position = UDim2.new(1, -scale(48), 0.5, -scale(8))
-    btn.BorderSizePixel = 0
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = scale(9)
-    btn.Parent = row
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, scale(4))
-    local on = state
-    local function refresh()
-        btn.Text = on and "ON" or "OFF"
-        btn.BackgroundColor3 = on and Color3.fromRGB(60,180,80) or Color3.fromRGB(60,60,60)
-        btn.TextColor3 = on and Color3.fromRGB(255,255,255) or Color3.fromRGB(150,150,150)
-    end
-    refresh()
-    btn.MouseButton1Click:Connect(function() on = not on refresh() callback(on) end)
-end
-
-local function makeModeRow(labelText, options, current, callback)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, scale(24))
-    row.BackgroundColor3 = Color3.fromRGB(25,25,25)
-    row.BorderSizePixel = 0
-    row.Parent = ContentFrame
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0.45, 0, 1, 0)
-    lbl.Position = UDim2.new(0, scale(8), 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = Color3.fromRGB(160,160,160)
-    lbl.TextSize = scale(9)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-    local idx = 1
-    for i, v in ipairs(options) do if v == current then idx = i end end
-    local btns = {}
-    for i, opt in ipairs(options) do
-        local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0, scale(38), 0, scale(16))
-        b.Position = UDim2.new(0.48, (i-1)*scale(40), 0.5, -scale(8))
-        b.BorderSizePixel = 0
-        b.Text = opt
-        b.TextSize = scale(9)
-        b.Font = Enum.Font.GothamBold
-        b.Parent = row
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, scale(4))
-        btns[i] = b
-        local function refreshBtns()
-            for j, bb in ipairs(btns) do
-                bb.BackgroundColor3 = j==idx and Color3.fromRGB(200,200,200) or Color3.fromRGB(50,50,50)
-                bb.TextColor3 = j==idx and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150)
-            end
-        end
-        refreshBtns()
-        b.MouseButton1Click:Connect(function() idx=i refreshBtns() callback(options[idx]) end)
-    end
-end
-
-local function makeInputRow(labelText, default, callback)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, scale(24))
-    row.BackgroundColor3 = Color3.fromRGB(25,25,25)
-    row.BorderSizePixel = 0
-    row.Parent = ContentFrame
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0.55, 0, 1, 0)
-    lbl.Position = UDim2.new(0, scale(8), 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = Color3.fromRGB(160,160,160)
-    lbl.TextSize = scale(9)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0, scale(52), 0, scale(16))
-    box.Position = UDim2.new(1, -scale(58), 0.5, -scale(8))
-    box.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    box.BorderSizePixel = 0
-    box.Text = tostring(default)
-    box.TextColor3 = Color3.fromRGB(220,220,220)
-    box.TextSize = scale(10)
-    box.Font = Enum.Font.Gotham
-    box.Parent = row
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, scale(4))
-    box.FocusLost:Connect(function()
-        local v = tonumber(box.Text)
-        if v then callback(v) end
-    end)
-end
-
--- Build Menu
-makeSection("🎯 Target Lock")
-makeToggleRow("Lock Target", false, function(v) Config.LockEnabled=v if not v then Config.CurrentTarget=nil end end)
-makeModeRow("Mode", {"Player","NPC"}, Config.LockMode, function(v) Config.LockMode=v Config.CurrentTarget=nil end)
-makeInputRow("Strength (0.1-1)", Config.LockStrength, function(v) Config.LockStrength=math.clamp(v,0.01,1) end)
-makeInputRow("Range (studs)", Config.LockRange, function(v) Config.LockRange=v end)
-
-makeSection("📡 Enemy Scan")
-makeToggleRow("Show ESP", false, function(v) Config.ScanEnabled=v if not v then clearScanBoxes() end end)
-makeModeRow("Mode", {"Player","NPC"}, Config.ScanMode, function(v) Config.ScanMode=v end)
-
-makeSection("🏃 Flee System")
-makeToggleRow("Auto Flee", false, function(v) Config.FleeEnabled=v end)
-makeModeRow("Mode", {"Player","NPC"}, Config.FleeMode, function(v) Config.FleeMode=v end)
-makeInputRow("Flee Range (studs)", Config.FleeRange, function(v) Config.FleeRange=math.max(1,v) end)
-
--- Draggable
-local dragging, dragStart, startPos
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
--- Toggle Menu
-ToggleBtn.MouseButton1Click:Connect(function()
-    Config.MenuOpen = not Config.MenuOpen
-    ContentFrame.Visible = Config.MenuOpen
-    MainFrame.Size = Config.MenuOpen and UDim2.new(0,scale(220),0,scale(320)) or UDim2.new(0,scale(220),0,scale(28))
-    ToggleBtn.Text = Config.MenuOpen and "▼" or "▶"
-end)
-
--- Resize
-SizeBox.FocusLost:Connect(function()
-    local v = tonumber(SizeBox.Text)
-    if not v then return end
-    Config.MenuSize = math.max(4, v)
-    local function s(n) return math.floor(n*(Config.MenuSize/BASE)) end
-    MainFrame.Size = UDim2.new(0,s(220),0,s(320))
-    TitleBar.Size = UDim2.new(1,0,0,s(28))
-    TitleLabel.TextSize = s(11)
-    ToggleBtn.Size = UDim2.new(0,s(34),0,s(18))
-    ToggleBtn.Position = UDim2.new(1,-s(48),0.5,-s(9))
-    CloseBtn.Size = UDim2.new(0,s(18),0,s(18))
-    SizeBox.Size = UDim2.new(0,s(30),0,s(18))
-    SizeBox.Position = UDim2.new(1,-s(82),0.5,-s(9))
-end)
+        if Config.CurrentTarget and Config.CurrentTarget.hrp then
+            local hrp = Config.CurrentTarget.hrp
+            if isAlive(Config.CurrentTarget.char) and distanceTo(hrp) <= Config.LockRange then
+                -- Smooth camera lock
+                local targetPos = hrp.Position
+                local currentCF = Camera.CFrame
+                local newCF = CFrame.lookAt(
+              
