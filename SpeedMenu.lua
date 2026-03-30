@@ -1,4 +1,3 @@
-โค้ดพร้อมคัดลอกครับ เพิ่ม Fly เข้าไปใน UI เดิมเลย:
 --// SERVICES
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -330,8 +329,3 @@ end)
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 	scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 10)
 end)
-สิ่งที่เพิ่มมา:
-ปุ่ม Fly ON/OFF พร้อม TextBox ใส่ความเร็วบิน
-กด W/A/S/D บินไปทิศนั้น, Space ขึ้น, Shift ลง
-กด Reset ก็หยุดบินด้วย
-frame สูงขึ้นเป็น 270 รองรับปุ่มใหม่
