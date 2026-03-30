@@ -1,11 +1,10 @@
-Lock Menu v3 | NPC/Player | Scan + Color Filter | Fixed Strength
--- Mobile friendly | Codex compatible
+-- Lock Menu v3 | NPC/Player | Scan + Color Filter | Fixed for Codex Mobile
+-- FIXED: forward reference errors, pcall wrapper, mobile safe
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
-local Teams = game:GetService("Teams")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -28,7 +27,7 @@ local Settings = {
     Mode = "NPC",
     Enabled = false,
     NearestMode = false,
-    FilterColor = nil, -- nil = แสดงทุกสี
+    FilterColor = nil,
 }
 
 local currentTarget = nil
@@ -36,9 +35,7 @@ local targetList = {}
 local targetIndex = 1
 local lockConnection = nil
 local SCAN_INTERVAL = 0.5
-
--- เก็บ unique colors ที่ scan เจอ
-local foundColors = {} -- { hexStr = Color3 }
+local foundColors = {}
 
 pcall(function()
     local old = CoreGui:FindFirstChild("LockMenu")
@@ -61,9 +58,6 @@ local function ColorToHex(c)
         math.floor(c.B * 255))
 end
 
--- ══════════════════════════════
---   DRAG HELPER (Mobile Safe)
--- ══════════════════════════════
 local function MakeDraggable(frame, handle)
     local dragging = false
     local dragStart, startPos
@@ -249,10 +243,14 @@ end
 UpdateModeUI()
 
 ModePlayer.MouseButton1Click:Connect(function()
-    Settings.Mode = "Player" currentTarget = nil UpdateModeUI()
+    Settings.Mode = "Player"
+    currentTarget = nil
+    UpdateModeUI()
 end)
 ModeNPC.MouseButton1Click:Connect(function()
-    Settings.Mode = "NPC" currentTarget = nil UpdateModeUI()
+    Settings.Mode = "NPC"
+    currentTarget = nil
+    UpdateModeUI()
 end)
 
 Divider(Content, S(54))
@@ -266,7 +264,6 @@ SmallLabel(Content, "📏 Range", S(58), 112)
 local StrBox = InputBox(Content, Settings.LockStrength, S(72), 90, 8)
 local RangeBox = InputBox(Content, Settings.LockRange, S(72), 90, 112)
 
--- clamp strength ไม่ให้เกิน 1
 StrBox.FocusLost:Connect(function()
     local v = tonumber(StrBox.Text)
     if v then
@@ -381,7 +378,7 @@ StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 StatusLabel.Parent = Content
 
 -- ══════════════════════════════════════
---   SCAN FRAME (แยกหน้าต่าง)
+--   SCAN FRAME
 -- ══════════════════════════════════════
 local ScanFrame = Instance.new("Frame")
 ScanFrame.Size = UDim2.new(0, SS(220), 0, SS(320))
@@ -411,7 +408,6 @@ ScanTitle.Font = Enum.Font.GothamBold
 ScanTitle.TextXAlignment = Enum.TextXAlignment.Left
 ScanTitle.Parent = ScanTitleBar
 
--- ปุ่มสีขนาดเล็กข้างๆ minimize (เปิด color picker)
 local ColorPickerBtn = Instance.new("TextButton")
 ColorPickerBtn.Size = UDim2.new(0, SS(20), 0, SS(20))
 ColorPickerBtn.Position = UDim2.new(1, -SS(56), 0.5, -SS(10))
@@ -448,8 +444,39 @@ ScanCloseBtn.Font = Enum.Font.GothamBold
 ScanCloseBtn.Parent = ScanTitleBar
 Instance.new("UICorner", ScanCloseBtn).CornerRadius = UDim.new(0,4)
 
+local FilterBar = Instance.new("Frame")
+FilterBar.Size = UDim2.new(1, -SS(16), 0, SS(22))
+FilterBar.Position = UDim2.new(0, SS(8), 0, SS(30))
+FilterBar.BackgroundColor3 = Color3.fromRGB(20,20,20)
+FilterBar.BorderSizePixel = 0
+FilterBar.Parent = ScanFrame
+Instance.new("UICorner", FilterBar).CornerRadius = UDim.new(0,5)
+
+local FilterLabel = Instance.new("TextLabel")
+FilterLabel.Size = UDim2.new(1, -SS(30), 1, 0)
+FilterLabel.Position = UDim2.new(0, SS(6), 0, 0)
+FilterLabel.BackgroundTransparency = 1
+FilterLabel.Text = "🎨 Filter: ทั้งหมด"
+FilterLabel.TextColor3 = Color3.fromRGB(160,160,160)
+FilterLabel.TextSize = SS(9)
+FilterLabel.Font = Enum.Font.Gotham
+FilterLabel.TextXAlignment = Enum.TextXAlignment.Left
+FilterLabel.Parent = FilterBar
+
+local ClearFilterBtn = Instance.new("TextButton")
+ClearFilterBtn.Size = UDim2.new(0, SS(24), 0, SS(18))
+ClearFilterBtn.Position = UDim2.new(1, -SS(26), 0.5, -SS(9))
+ClearFilterBtn.BackgroundColor3 = Color3.fromRGB(80,40,40)
+ClearFilterBtn.BorderSizePixel = 0
+ClearFilterBtn.Text = "✕"
+ClearFilterBtn.TextColor3 = Color3.fromRGB(255,180,180)
+ClearFilterBtn.TextSize = SS(9)
+ClearFilterBtn.Font = Enum.Font.GothamBold
+ClearFilterBtn.Parent = FilterBar
+Instance.new("UICorner", ClearFilterBtn).CornerRadius = UDim.new(0,4)
+
 local DoScanBtn = Instance.new("TextButton")
-.Size = UDim2.new(1, -SS(16), 0, SS(26))
+DoScanBtn.Size = UDim2.new(1, -SS(16), 0, SS(26))
 DoScanBtn.Position = UDim2.new(0, SS(8), 0, SS(56))
 DoScanBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
 DoScanBtn.BorderSizePixel = 0
@@ -486,7 +513,7 @@ ScanLayout.Padding = UDim.new(0, SS(3))
 ScanLayout.Parent = ScanScroll
 
 -- ══════════════════════════════════════
---   COLOR PICKER POPUP (แยก frame)
+--   COLOR PICKER POPUP
 -- ══════════════════════════════════════
 local ColorPopup = Instance.new("Frame")
 ColorPopup.Size = UDim2.new(0, SS(200), 0, SS(220))
@@ -561,7 +588,7 @@ CPLayout.Padding = UDim.new(0, SS(3))
 CPLayout.Parent = CPScroll
 
 -- ══════════════════════════════
---        TEAM COLOR
+--   CORE FUNCTIONS (ประกาศหลัง UI ทั้งหมด)
 -- ══════════════════════════════
 local function GetTeamColor(model)
     local p = Players:GetPlayerFromCharacter(model)
@@ -574,13 +601,9 @@ local function GetTeamColor(model)
             return Color3.fromRGB(220,60,60)
         end
     end
-    -- NPC default แยกตามชื่อ (ถ้าเกมไม่มีทีม)
     return Color3.fromRGB(220,120,50)
 end
 
--- ══════════════════════════════
---        CORE FUNCTIONS
--- ══════════════════════════════
 local function GetTargetList()
     if not HumanoidRootPart then return {} end
     local list = {}
@@ -620,7 +643,6 @@ local function GetTargetList()
     return list
 end
 
--- กรอง list ตาม filter color
 local function FilterList(list)
     if not Settings.FilterColor then return list end
     local fHex = ColorToHex(Settings.FilterColor)
@@ -646,9 +668,6 @@ local function SetTarget(model)
     end
 end
 
--- ══════════════════════════════
---   COLOR PICKER POPULATE
--- ══════════════════════════════
 local function UpdateColorPicker()
     for _, c in ipairs(CPScroll:GetChildren()) do
         if c:IsA("TextButton") then c:Destroy() end
@@ -671,7 +690,6 @@ local function UpdateColorPicker()
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0,4)
         Instance.new("UIPadding", btn).PaddingLeft = UDim.new(0, SS(6))
 
-        -- highlight ถ้าเลือกอยู่
         if Settings.FilterColor and ColorToHex(Settings.FilterColor) == hexStr then
             local outline = Instance.new("UIStroke")
             outline.Color = Color3.fromRGB(255,255,255)
@@ -741,12 +759,9 @@ local function StartLock()
                 SetTarget(nil)
                 return
             end
-            -- FIX SHAKE: ใช้ Lerp แบบ frame-independent
-            -- ยิ่ง strength สูง = snap เร็ว ไม่สั่น
             local targetPos = hrp.Position
             local currentCF = Camera.CFrame
             local lookAt = CFrame.lookAt(currentCF.Position, targetPos)
-            -- clamp dt ป้องกัน spike
             local safeDt = math.min(dt, 0.05)
             local lerpAlpha = 1 - (1 - strength) ^ (safeDt * 60)
             Camera.CFrame = currentCF:Lerp(lookAt, lerpAlpha)
@@ -800,7 +815,6 @@ NextBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- MAIN MINIMIZE
 local minimized = false
 MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
@@ -815,7 +829,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
--- SCAN TOGGLE
 local scanVisible = false
 ScanToggleBtn.MouseButton1Click:Connect(function()
     scanVisible = not scanVisible
@@ -833,7 +846,6 @@ ScanCloseBtn.MouseButton1Click:Connect(function()
     ScanToggleBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
 end)
 
--- SCAN MINIMIZE
 local scanMin = false
 ScanMinBtn.MouseButton1Click:Connect(function()
     scanMin = not scanMin
@@ -847,7 +859,6 @@ ScanMinBtn.MouseButton1Click:Connect(function()
     if scanMin then ColorPopup.Visible = false end
 end)
 
--- SCAN NOW
 DoScanBtn.MouseButton1Click:Connect(function()
     for _, c in ipairs(ScanScroll:GetChildren()) do
         if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
@@ -855,7 +866,6 @@ DoScanBtn.MouseButton1Click:Connect(function()
 
     local raw = GetTargetList()
 
-    -- เก็บ unique colors ที่เจอ
     foundColors = {}
     for _, entry in ipairs(raw) do
         local hex = ColorToHex(entry.color)
@@ -881,7 +891,6 @@ DoScanBtn.MouseButton1Click:Connect(function()
         btn.Parent = ScanScroll
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0,4)
 
-        -- dot สีซ้าย
         local dot = Instance.new("Frame")
         dot.Size = UDim2.new(0, SS(6), 0, SS(6))
         dot.Position = UDim2.new(0, SS(4), 0.5, -SS(3))
@@ -900,7 +909,6 @@ DoScanBtn.MouseButton1Click:Connect(function()
     UpdateColorPicker()
 end)
 
--- COLOR PICKER TOGGLE
 ColorPickerBtn.MouseButton1Click:Connect(function()
     ColorPopup.Visible = not ColorPopup.Visible
     if ColorPopup.Visible then
@@ -912,7 +920,6 @@ CPCloseBtn.MouseButton1Click:Connect(function()
     ColorPopup.Visible = false
 end)
 
--- CLEAR FILTER
 ClearFilterBtn.MouseButton1Click:Connect(function()
     Settings.FilterColor = nil
     FilterLabel.Text = "🎨 Filter: ทั้งหมด"
