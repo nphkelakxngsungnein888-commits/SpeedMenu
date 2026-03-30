@@ -1,5 +1,3 @@
-โค้ดพร้อมคัดลอกครับ แก้ Fly ให้ใช้ Thumbstick แทน keyboard:
---// SERVICES
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
