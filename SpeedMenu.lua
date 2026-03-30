@@ -1,544 +1,680 @@
+โอเค ส่งครึ่งแรกมาก่อนเลยครับ:
+-- // Target Lock + ESP + Auto Evade System
+-- // By: kuy kuy | Roblox Lua
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
-local Humanoid = Character:WaitForChild("Humanoid")
+local Mouse = LocalPlayer:GetMouse()
 
-local Config = {
-    LockEnabled = false,
-    LockMode = "NPC",
-    LockStrength = 0.3,
-    LockRange = 100,
-    CurrentTarget = nil,
-    ScanEnabled = false,
-    ScanMode = "NPC",
-    FleeEnabled = false,
-    FleeMode = "NPC",
-    FleeRange = 20,
-    MenuSize = 10,
-    MenuOpen = true,
+-- ═══════════════════════════════════════
+-- // SETTINGS
+-- ═══════════════════════════════════════
+local Settings = {
+    TargetLock = {
+        Enabled = false,
+        Mode = "NPC",
+        Strength = 0.15,
+        Range = 100,
+    },
+    ESP = {
+        Enabled = false,
+        Mode = "NPC",
+    },
+    Evade = {
+        Enabled = false,
+        Mode = "NPC",
+        Range = 20,
+        Speed = 30,
+    },
 }
 
+local CurrentTarget = nil
+
+-- ═══════════════════════════════════════
+-- // HELPER FUNCTIONS
+-- ═══════════════════════════════════════
+local function getCharacter(player)
+    return player and player.Character
+end
+
+local function getRootPart(char)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHumanoid(char)
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function isAlive(char)
+    local hum = getHumanoid(char)
+    return hum and hum.Health > 0
+end
+
 local function getDistance(a, b)
-    return (a - b).Magnitude
+    if not a or not b then return math.huge end
+    return (a.Position - b.Position).Magnitude
 end
 
-local function getCharacterRoot(char)
-    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("RootPart")
-end
+local function getAllEnemies()
+    local enemies = {}
+    local myRoot = getRootPart(LocalPlayer.Character)
+    if not myRoot then return enemies end
 
-local function getCharacterHumanoid(char)
-    return char:FindFirstChildOfClass("Humanoid")
-end
-
-local function getNearestTarget(mode)
-    local nearest, nearestDist = nil, math.huge
-    local myPos = HumanoidRootPart.Position
-    if mode == "Player" then
+    if Settings.TargetLock.Mode == "Player" then
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local root = getCharacterRoot(p.Character)
-                local hum = getCharacterHumanoid(p.Character)
-                if root and hum and hum.Health > 0 then
-                    local d = getDistance(myPos, root.Position)
-                    if d < Config.LockRange and d < nearestDist then
-                        nearest = p.Character
-                        nearestDist = d
+            if p ~= LocalPlayer then
+                local char = p.Character
+                if char and isAlive(char) then
+                    local root = getRootPart(char)
+                    if root and getDistance(myRoot, root) <= Settings.TargetLock.Range then
+                        table.insert(enemies, char)
                     end
                 end
             end
         end
     else
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= Character then
-                local hum = getCharacterHumanoid(obj)
-                local root = getCharacterRoot(obj)
-                if hum and hum.Health > 0 and root and not Players:GetPlayerFromCharacter(obj) then
-                    local d = getDistance(myPos, root.Position)
-                    if d < Config.LockRange and d < nearestDist then
-                        nearest = obj
-                        nearestDist = d
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                local hum = getHumanoid(obj)
+                local root = getRootPart(obj)
+                if hum and hum.Health > 0 and root then
+                    local isPlayer = false
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p.Character == obj then isPlayer = true break end
+                    end
+                    if not isPlayer and getDistance(myRoot, root) <= Settings.TargetLock.Range then
+                        table.insert(enemies, obj)
                     end
                 end
             end
         end
     end
+    return enemies
+end
+
+local function getNearestEnemy()
+    local myRoot = getRootPart(LocalPlayer.Character)
+    if not myRoot then return nil end
+    local nearest, nearDist = nil, math.huge
+    for _, char in ipairs(getAllEnemies()) do
+        local root = getRootPart(char)
+        if root then
+            local d = getDistance(myRoot, root)
+            if d < nearDist then nearest = char nearDist = d end
+        end
+    end
     return nearest
 end
 
-local function getTargetUnderCrosshair(mode)
-    local nearest, nearestDot = nil, -math.huge
+local function getLookedEnemy()
+    local myRoot = getRootPart(LocalPlayer.Character)
+    if not myRoot then return nil end
+    local bestChar, bestDot = nil, -1
     local camCF = Camera.CFrame
-    local myPos = HumanoidRootPart.Position
-    local function check(char)
-        if char == Character then return end
-        local root = getCharacterRoot(char)
-        local hum = getCharacterHumanoid(char)
-        if not root or not hum or hum.Health <= 0 then return end
-        local d = getDistance(myPos, root.Position)
-        if d > Config.LockRange then return end
-        local dir = (root.Position - camCF.Position).Unit
-        local dot = camCF.LookVector:Dot(dir)
-        if dot > nearestDot then
-            nearest = char
-            nearestDot = dot
+    for _, char in ipairs(getAllEnemies()) do
+        local root = getRootPart(char)
+        if root then
+            local dir = (root.Position - camCF.Position).Unit
+            local dot = camCF.LookVector:Dot(dir)
+            if dot > bestDot then bestChar = char bestDot = dot end
         end
     end
-    if mode == "Player" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then check(p.Character) end
-        end
-    else
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= Character and not Players:GetPlayerFromCharacter(obj) then
-                check(obj)
-            end
-        end
-    end
-    return nearest
+    return bestChar
 end
 
--- Target Lock
-RunService.RenderStepped:Connect(function()
-    Character = LocalPlayer.Character
-    if not Character then return end
-    HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-    Humanoid = Character:FindFirstChild("Humanoid")
-    if not HumanoidRootPart or not Humanoid then return end
-    if Config.LockEnabled then
-        if Config.CurrentTarget then
-            local hum = getCharacterHumanoid(Config.CurrentTarget)
-            if not hum or hum.Health <= 0 then
-                Config.CurrentTarget = getNearestTarget(Config.LockMode)
-            end
-        else
-            Config.CurrentTarget = getTargetUnderCrosshair(Config.LockMode)
+-- ═══════════════════════════════════════
+-- // DAMAGE DETECTION
+-- ═══════════════════════════════════════
+local function setupDamageDetection()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = getHumanoid(char)
+    if not hum then return end
+    hum.HealthChanged:Connect(function(newHealth)
+        if newHealth < hum.MaxHealth then
+            local attacker = getNearestEnemy()
+            if attacker then CurrentTarget = attacker end
         end
-        if Config.CurrentTarget then
-            local root = getCharacterRoot(Config.CurrentTarget)
-            if root then
-                local targetPos = root.Position
-                local currentCF = Camera.CFrame
-                local direction = (targetPos - currentCF.Position).Unit
-                local newCF = CFrame.new(currentCF.Position, currentCF.Position + direction)
-                Camera.CFrame = currentCF:Lerp(newCF, Config.LockStrength)
-            end
-        end
-    end
-end)
+    end)
+end
 
-Humanoid.HealthChanged:Connect(function()
-    if not Config.LockEnabled then return end
-    local attacker = getNearestTarget(Config.LockMode)
-    if attacker then Config.CurrentTarget = attacker end
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    setupDamageDetection()
 end)
+if LocalPlayer.Character then
+    task.wait(0.5)
+    setupDamageDetection()
+end
 
--- Flee
+-- ═══════════════════════════════════════
+-- // TARGET LOCK LOGIC
+-- ═══════════════════════════════════════
 RunService.Heartbeat:Connect(function()
-    Character = LocalPlayer.Character
-    if not Character then return end
-    HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-    Humanoid = Character:FindFirstChildOfClass("Humanoid")
-    if not HumanoidRootPart or not Humanoid then return end
-    if not Config.FleeEnabled then return end
-    local myPos = HumanoidRootPart.Position
-    local fleeDir = Vector3.new(0,0,0)
-    local found = false
-    local function checkFlee(char)
-        if char == Character then return end
-        local root = getCharacterRoot(char)
-        local hum = getCharacterHumanoid(char)
-        if not root or not hum or hum.Health <= 0 then return end
-        local d = getDistance(myPos, root.Position)
-        if d < Config.FleeRange then
-            local away = (myPos - root.Position)
-            local speed = math.max(1, hum.WalkSpeed)
-            local weight = (Config.FleeRange - d) / Config.FleeRange * speed
-            fleeDir = fleeDir + away.Unit * weight
-            found = true
-        end
-    end
-    if Config.FleeMode == "Player" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then checkFlee(p.Character) end
+    if not Settings.TargetLock.Enabled then return end
+    if CurrentTarget then
+        if not isAlive(CurrentTarget) then
+            CurrentTarget = getNearestEnemy()
         end
     else
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) and obj ~= Character then
-                checkFlee(obj)
-            end
-        end
+        CurrentTarget = getLookedEnemy()
     end
-    if found and fleeDir.Magnitude > 0 then
-        local flatDir = Vector3.new(fleeDir.X, 0, fleeDir.Z).Unit
-        HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position, HumanoidRootPart.Position + flatDir)
-        Humanoid:MoveTo(HumanoidRootPart.Position + flatDir * 5)
+    if CurrentTarget then
+        local root = getRootPart(CurrentTarget)
+        local myRoot = getRootPart(LocalPlayer.Character)
+        if root and myRoot then
+            local targetCF = CFrame.new(myRoot.Position, root.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(
+                targetCF + (Camera.CFrame.Position - myRoot.Position),
+                Settings.TargetLock.Strength
+            )
+        end
     end
 end)
 
-local scanBoxes = {}
+-- ═══════════════════════════════════════
+-- // ESP SYSTEM
+-- ═══════════════════════════════════════
+local ESPFolder = Instance.new("Folder", game.CoreGui)
+ESPFolder.Name = "ESP_Folder"
 
-local function clearScanBoxes()
-    for _, v in pairs(scanBoxes) do v:Remove() end
-    scanBoxes = {}
+local function clearESP()
+    for _, v in ipairs(ESPFolder:GetChildren()) do v:Destroy() end
 end
 
-RunService.RenderStepped:Connect(function()
-    if not Config.ScanEnabled then return end
-    clearScanBoxes()
-    Character = LocalPlayer.Character
-    if not Character then return end
-    HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-    if not HumanoidRootPart then return end
+local espConnections = {}
 
-    local function addBox(char)
-        if char == Character then return end
-        local root = getCharacterRoot(char)
-        local hum = getCharacterHumanoid(char)
-        if not root or not hum or hum.Health <= 0 then return end
+local function updateESP()
+    clearESP()
+    for _, c in ipairs(espConnections) do c:Disconnect() end
+    espConnections = {}
+    if not Settings.ESP.Enabled then return end
 
-        local bb = Instance.new("BillboardGui")
-        bb.Adornee = root
-        bb.Size = UDim2.new(0, 60, 0, 80)
-        bb.StudsOffset = Vector3.new(0, 3, 0)
-        bb.AlwaysOnTop = true
-        bb.Parent = game.CoreGui
+    local function drawESP(char)
+        local root = getRootPart(char)
+        if not root then return end
+        local billGui = Instance.new("BillboardGui")
+        billGui.Adornee = root
+        billGui.Size = UDim2.new(0, 60, 0, 60)
+        billGui.StudsOffset = Vector3.new(0, 2, 0)
+        billGui.AlwaysOnTop = true
+        billGui.Parent = ESPFolder
 
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1,0,1,0)
+        local frame = Instance.new("Frame", billGui)
+        frame.Size = UDim2.new(1, 0, 1, 0)
         frame.BackgroundTransparency = 1
         frame.BorderSizePixel = 0
-        frame.Parent = bb
 
-        local corners = {
-            {pos=UDim2.new(0,0,0,0),size=UDim2.new(0.3,0,0,2)},
-            {pos=UDim2.new(0,0,0,0),size=UDim2.new(0,2,0.3,0)},
-            {pos=UDim2.new(0.7,0,0,0),size=UDim2.new(0.3,0,0,2)},
-            {pos=UDim2.new(1,-2,0,0),size=UDim2.new(0,2,0.3,0)},
-            {pos=UDim2.new(0,0,1,-2),size=UDim2.new(0.3,0,0,2)},
-            {pos=UDim2.new(0,0,0.7,0),size=UDim2.new(0,2,0.3,0)},
-            {pos=UDim2.new(0.7,0,1,-2),size=UDim2.new(0.3,0,0,2)},
-            {pos=UDim2.new(1,-2,0.7,0),size=UDim2.new(0,2,0.3,0)},
-        }
-        for _, c in ipairs(corners) do
-            local line = Instance.new("Frame")
-            line.Position = c.pos
-            line.Size = c.size
-            line.BackgroundColor3 = Color3.fromRGB(255,220,50)
-            line.BorderSizePixel = 0
-            line.Parent = frame
-        end
+        local box = Instance.new("Frame", frame)
+        box.Size = UDim2.new(1, 0, 1, 0)
+        box.BackgroundTransparency = 1
+        box.BorderSizePixel = 2
+        box.BorderColor3 = Color3.fromRGB(255, 255, 255)
 
-        local dist = math.floor(getDistance(HumanoidRootPart.Position, root.Position))
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1,0,0,14)
-        label.Position = UDim2.new(0,0,1,2)
-        label.BackgroundTransparency = 1
-        label.Text = dist.."m"
-        label.TextColor3 = Color3.fromRGB(255,255,255)
-        label.TextSize = 11
-        label.Font = Enum.Font.GothamBold
-        label.Parent = frame
-        table.insert(scanBoxes, bb)
+        local distLabel = Instance.new("TextLabel", billGui)
+        distLabel.Size = UDim2.new(0, 80, 0, 16)
+        distLabel.Position = UDim2.new(0.5, -40, -0.6, 0)
+        distLabel.BackgroundTransparency = 1
+        distLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
+        distLabel.TextSize = 11
+        distLabel.Font = Enum.Font.GothamBold
+        distLabel.Text = "..."
+
+        local conn = RunService.Heartbeat:Connect(function()
+            local myRoot = getRootPart(LocalPlayer.Character)
+            if not myRoot or not root or not root.Parent then
+                billGui:Destroy()
+                return
+            end
+            distLabel.Text = math.floor(getDistance(myRoot, root)) .. " st"
+        end)
+        table.insert(espConnections, conn)
     end
 
-    if Config.ScanMode == "Player" then
+    if Settings.ESP.Mode == "Player" then
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then addBox(p.Character) end
+            if p ~= LocalPlayer and p.Character then drawESP(p.Character) end
         end
     else
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) and obj ~= Character then
-                addBox(obj)
+            if obj:IsA("Model") then
+                local hum = getHumanoid(obj)
+                if hum and hum.Health > 0 then
+                    local isPlayer = false
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p.Character == obj then isPlayer = true break end
+                    end
+                    if not isPlayer then drawESP(obj) end
+                end
             end
         end
     end
+end
+
+-- ═══════════════════════════════════════
+-- // EVADE SYSTEM
+-- ═══════════════════════════════════════
+RunService.Heartbeat:Connect(function()
+    if not Settings.Evade.Enabled then return end
+    local myChar = LocalPlayer.Character
+    local myRoot = getRootPart(myChar)
+    if not myRoot then return end
+    local hum = getHumanoid(myChar)
+    if not hum then return end
+
+    local threats = {}
+
+    local function addThreat(root)
+        if getDistance(myRoot, root) < Settings.Evade.Range then
+            table.insert(threats, root)
+        end
+    end
+
+    if Settings.Evade.Mode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local r = getRootPart(p.Character)
+                if r then addThreat(r) end
+            end
+        end
+    else
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") then
+                local h = getHumanoid(obj)
+                local r = getRootPart(obj)
+                if h and h.Health > 0 and r then
+                    local isP = false
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p.Character == obj then isP = true break end
+                    end
+                    if not isP then addThreat(r) end
+                end
+            end
+        end
+    end
+
+    if #threats == 0 then hum.WalkSpeed = 16 return end
+
+    local evadeDir = Vector3.new(0, 0, 0)
+    local avgThreatPos = Vector3.new(0, 0, 0)
+    for _, threatRoot in ipairs(threats) do
+        local away = myRoot.Position - threatRoot.Position
+        away = Vector3.new(away.X, 0, away.Z)
+        if away.Magnitude > 0 then evadeDir = evadeDir + away.Unit end
+        avgThreatPos = avgThreatPos + threatRoot.Position
+    end
+    avgThreatPos = avgThreatPos / #threats
+
+    if evadeDir.Magnitude > 0 then
+        evadeDir = evadeDir.Unit
+        hum.WalkSpeed = Settings.Evade.Speed
+        myRoot.CFrame = CFrame.new(myRoot.Position,
+            Vector3.new(avgThreatPos.X, myRoot.Position.Y, avgThreatPos.Z))
+        myRoot.CFrame = myRoot.CFrame * CFrame.new(evadeDir * Settings.Evade.Speed * 0.01)
+    end
 end)
 
--- ══════════════════════════════════════
--- GUI
--- ══════════════════════════════════════
+-- ═══════════════════════════════════════
+-- // GUI SYSTEM
+-- ═══════════════════════════════════════
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "KuyKuyMenu"
+ScreenGui.Name = "KuyMenu"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = game.CoreGui
 
-local BASE = 10
-local function scale(n) return math.floor(n * (Config.MenuSize / BASE)) end
+local menuSize = 10
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, scale(220), 0, scale(320))
-MainFrame.Position = UDim2.new(0, 20, 0, 60)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15,15,15)
+MainFrame.Size = UDim2.new(0, 200, 0, 300)
+MainFrame.Position = UDim2.new(0.5, -100, 0.5, -150)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, scale(8))
-local Stroke = Instance.new("UIStroke", MainFrame)
-Stroke.Color = Color3.fromRGB(80,80,80)
-Stroke.Thickness = 1
 
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+local UIStroke = Instance.new("UIStroke", MainFrame)
+UIStroke.Color = Color3.fromRGB(70, 70, 70)
+UIStroke.Thickness = 1
+
+-- Title Bar
 local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, scale(28))
-TitleBar.BackgroundColor3 = Color3.fromRGB(25,25,25)
+TitleBar.Size = UDim2.new(1, 0, 0, 28)
+TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 TitleBar.BorderSizePixel = 0
 TitleBar.Parent = MainFrame
-Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, scale(8))
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
 
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -scale(90), 1, 0)
-TitleLabel.Position = UDim2.new(0, scale(8), 0, 0)
+local TitleLabel = Instance.new("TextLabel", TitleBar)
+TitleLabel.Size = UDim2.new(1, -90, 1, 0)
+TitleLabel.Position = UDim2.new(0, 8, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚔ KuyKuy Script"
-TitleLabel.TextColor3 = Color3.fromRGB(220,220,220)
-TitleLabel.TextSize = scale(11)
+TitleLabel.Text = "⚔ KuyLock"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 12
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = TitleBar
 
-local SizeBox = Instance.new("TextBox")
-SizeBox.Size = UDim2.new(0, scale(30), 0, scale(18))
-SizeBox.Position = UDim2.new(1, -scale(82), 0.5, -scale(9))
-SizeBox.BackgroundColor3 = Color3.fromRGB(40,40,40)
+-- Size Box
+local SizeBox = Instance.new("TextBox", TitleBar)
+SizeBox.Size = UDim2.new(0, 30, 0, 20)
+SizeBox.Position = UDim2.new(1, -80, 0, 4)
+SizeBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 SizeBox.BorderSizePixel = 0
 SizeBox.Text = "10"
-SizeBox.TextColor3 = Color3.fromRGB(200,200,200)
-SizeBox.TextSize = scale(10)
+SizeBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+SizeBox.TextSize = 11
 SizeBox.Font = Enum.Font.Gotham
-SizeBox.Parent = TitleBar
+SizeBox.ClearTextOnFocus = false
 Instance.new("UICorner", SizeBox).CornerRadius = UDim.new(0, 4)
 
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, scale(34), 0, scale(18))
-ToggleBtn.Position = UDim2.new(1, -scale(48), 0.5, -scale(9))
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+SizeBox.FocusLost:Connect(function()
+    local val = tonumber(SizeBox.Text)
+    if val then
+        val = math.max(1, val)
+        menuSize = val
+        local scale = val / 10
+        MainFrame.Size = UDim2.new(0, 200 * scale, 0, 300 * scale)
+    end
+end)
+
+-- Toggle Button
+local ToggleBtn = Instance.new("TextButton", TitleBar)
+ToggleBtn.Size = UDim2.new(0, 36, 0, 20)
+ToggleBtn.Position = UDim2.new(1, -42, 0, 4)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 ToggleBtn.BorderSizePixel = 0
-ToggleBtn.Text = "▼"
-ToggleBtn.TextColor3 = Color3.fromRGB(200,200,200)
-ToggleBtn.TextSize = scale(10)
+ToggleBtn.Text = "━"
+ToggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+ToggleBtn.TextSize = 12
 ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.Parent = TitleBar
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, scale(18), 0, scale(18))
-CloseBtn.Position = UDim2.new(1, -scale(10), 0.5, -scale(9))
-CloseBtn.AnchorPoint = Vector2.new(1, 0)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(180,40,40)
+-- Close Button
+local CloseBtn = Instance.new("TextButton", TitleBar)
+CloseBtn.Size = UDim2.new(0, 22, 0, 20)
+CloseBtn.Position = UDim2.new(1, -16, 0, 4)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 CloseBtn.BorderSizePixel = 0
 CloseBtn.Text = "✕"
-CloseBtn.TextColor3 = Color3.fromRGB(255,255,255)
-CloseBtn.TextSize = scale(9)
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 11
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.Parent = TitleBar
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
 
 CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
-    clearScanBoxes()
+    clearESP()
 end)
 
+-- Content Frame
 local ContentFrame = Instance.new("ScrollingFrame")
-ContentFrame.Size = UDim2.new(1, 0, 1, -scale(30))
-ContentFrame.Position = UDim2.new(0, 0, 0, scale(30))
+ContentFrame.Size = UDim2.new(1, 0, 1, -28)
+ContentFrame.Position = UDim2.new(0, 0, 0, 28)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.BorderSizePixel = 0
 ContentFrame.ScrollBarThickness = 3
-ContentFrame.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
-ContentFrame.CanvasSize = UDim2.new(0, 0, 0, scale(480))
+ContentFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentFrame.Parent = MainFrame
-local ListLayout = Instance.new("UIListLayout", ContentFrame)
-ListLayout.Padding = UDim.new(0, scale(4))
-ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-local Pad = Instance.new("UIPadding", ContentFrame)
-Pad.PaddingTop = UDim.new(0, scale(6))
-Pad.PaddingLeft = UDim.new(0, scale(6))
-Pad.PaddingRight = UDim.new(0, scale(6))
 
+local UIPadding = Instance.new("UIPadding", ContentFrame)
+UIPadding.PaddingLeft = UDim.new(0, 6)
+UIPadding.PaddingRight = UDim.new(0, 6)
+UIPadding.PaddingTop = UDim.new(0, 6)
+
+local UIListLayout = Instance.new("UIListLayout", ContentFrame)
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 4)
+
+-- ═══════════════════════════════
+-- // UI BUILDERS
+-- ═══════════════════════════════
 local function makeSection(title)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 0, scale(16))
+    local lbl = Instance.new("TextLabel", ContentFrame)
+    lbl.Size = UDim2.new(1, 0, 0, 16)
     lbl.BackgroundTransparency = 1
-    lbl.Text = "── "..title.." ──"
-    lbl.TextColor3 = Color3.fromRGB(140,140,140)
-    lbl.TextSize = scale(9)
+    lbl.Text = "▸ " .. title
+    lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+    lbl.TextSize = 10
     lbl.Font = Enum.Font.GothamBold
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = ContentFrame
 end
 
-local function makeToggleRow(labelText, state, callback)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, scale(24))
-    row.BackgroundColor3 = Color3.fromRGB(25,25,25)
+local function makeToggle(label, callback)
+    local row = Instance.new("Frame", ContentFrame)
+    row.Size = UDim2.new(1, 0, 0, 24)
+    row.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
     row.BorderSizePixel = 0
-    row.Parent = ContentFrame
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -scale(50), 1, 0)
-    lbl.Position = UDim2.new(0, scale(8), 0, 0)
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1, -48, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = Color3.fromRGB(200,200,200)
-    lbl.TextSize = scale(10)
+    lbl.Text = label
+    lbl.TextColor3 = Color3.fromRGB(210, 210, 210)
+    lbl.TextSize = 11
     lbl.Font = Enum.Font.Gotham
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, scale(42), 0, scale(16))
-    btn.Position = UDim2.new(1, -scale(48), 0.5, -scale(8))
+
+    local state = false
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 38, 0, 16)
+    btn.Position = UDim2.new(1, -44, 0.5, -8)
     btn.BorderSizePixel = 0
+    btn.TextSize = 9
     btn.Font = Enum.Font.GothamBold
-    btn.TextSize = scale(9)
-    btn.Parent = row
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, scale(4))
-    local on = state
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
     local function refresh()
-        btn.Text = on and "ON" or "OFF"
-        btn.BackgroundColor3 = on and Color3.fromRGB(60,180,80) or Color3.fromRGB(60,60,60)
-        btn.TextColor3 = on and Color3.fromRGB(255,255,255) or Color3.fromRGB(150,150,150)
+        if state then
+            btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            btn.TextColor3 = Color3.fromRGB(0, 0, 0)
+            btn.Text = "ON"
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            btn.TextColor3 = Color3.fromRGB(150, 150, 150)
+            btn.Text = "OFF"
+        end
     end
     refresh()
-    btn.MouseButton1Click:Connect(function() on = not on refresh() callback(on) end)
-end
 
-local function makeModeRow(labelText, options, current, callback)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, scale(24))
-    row.BackgroundColor3 = Color3.fromRGB(25,25,25)
-    row.BorderSizePixel = 0
-    row.Parent = ContentFrame
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0.45, 0, 1, 0)
-    lbl.Position = UDim2.new(0, scale(8), 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = Color3.fromRGB(160,160,160)
-    lbl.TextSize = scale(9)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-    local idx = 1
-    for i, v in ipairs(options) do if v == current then idx = i end end
-    local btns = {}
-    for i, opt in ipairs(options) do
-        local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0, scale(38), 0, scale(16))
-        b.Position = UDim2.new(0.48, (i-1)*scale(40), 0.5, -scale(8))
-        b.BorderSizePixel = 0
-        b.Text = opt
-        b.TextSize = scale(9)
-        b.Font = Enum.Font.GothamBold
-        b.Parent = row
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, scale(4))
-        btns[i] = b
-        local function refreshBtns()
-            for j, bb in ipairs(btns) do
-                bb.BackgroundColor3 = j==idx and Color3.fromRGB(200,200,200) or Color3.fromRGB(50,50,50)
-                bb.TextColor3 = j==idx and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150)
-            end
-        end
-        refreshBtns()
-        b.MouseButton1Click:Connect(function() idx=i refreshBtns() callback(options[idx]) end)
-    end
-end
-
-local function makeInputRow(labelText, default, callback)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, scale(24))
-    row.BackgroundColor3 = Color3.fromRGB(25,25,25)
-    row.BorderSizePixel = 0
-    row.Parent = ContentFrame
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, scale(5))
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0.55, 0, 1, 0)
-    lbl.Position = UDim2.new(0, scale(8), 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = Color3.fromRGB(160,160,160)
-    lbl.TextSize = scale(9)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0, scale(52), 0, scale(16))
-    box.Position = UDim2.new(1, -scale(58), 0.5, -scale(8))
-    box.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    box.BorderSizePixel = 0
-    box.Text = tostring(default)
-    box.TextColor3 = Color3.fromRGB(220,220,220)
-    box.TextSize = scale(10)
-    box.Font = Enum.Font.Gotham
-    box.Parent = row
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, scale(4))
-    box.FocusLost:Connect(function()
-        local v = tonumber(box.Text)
-        if v then callback(v) end
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        refresh()
+        callback(state)
     end)
 end
 
--- Build Menu
-makeSection("🎯 Target Lock")
-makeToggleRow("Lock Target", false, function(v) Config.LockEnabled=v if not v then Config.CurrentTarget=nil end end)
-makeModeRow("Mode", {"Player","NPC"}, Config.LockMode, function(v) Config.LockMode=v Config.CurrentTarget=nil end)
-makeInputRow("Strength (0.1-1)", Config.LockStrength, function(v) Config.LockStrength=math.clamp(v,0.01,1) end)
-makeInputRow("Range (studs)", Config.LockRange, function(v) Config.LockRange=v end)
+local function makeModeSelector(options, default, callback)
+    local row = Instance.new("Frame", ContentFrame)
+    row.Size = UDim2.new(1, 0, 0, 24)
+    row.BackgroundTransparency = 1
 
-makeSection("📡 Enemy Scan")
-makeToggleRow("Show ESP", false, function(v) Config.ScanEnabled=v if not v then clearScanBoxes() end end)
-makeModeRow("Mode", {"Player","NPC"}, Config.ScanMode, function(v) Config.ScanMode=v end)
+    local layout = Instance.new("UIListLayout", row)
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.Padding = UDim.new(0, 4)
 
-makeSection("🏃 Flee System")
-makeToggleRow("Auto Flee", false, function(v) Config.FleeEnabled=v end)
-makeModeRow("Mode", {"Player","NPC"}, Config.FleeMode, function(v) Config.FleeMode=v end)
-makeInputRow("Flee Range (studs)", Config.FleeRange, function(v) Config.FleeRange=math.max(1,v) end)
+    local current = default
+    local buttons = {}
 
--- Draggable
-local dragging, dragStart, startPos
+    local function refreshBtns()
+        for _, data in ipairs(buttons) do
+            if data.value == current then
+                data.btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                data.btn.TextColor3 = Color3.fromRGB(0, 0, 0)
+            else
+                data.btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                data.btn.TextColor3 = Color3.fromRGB(150, 150, 150)
+            end
+        end
+    end
+
+    for _, opt in ipairs(options) do
+        local btn = Instance.new("TextButton", row)
+        btn.Size = UDim2.new(0, 80, 1, 0)
+        btn.BorderSizePixel = 0
+        btn.Text = opt
+        btn.TextSize = 10
+        btn.Font = Enum.Font.GothamBold
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+        table.insert(buttons, {btn = btn, value = opt})
+        btn.MouseButton1Click:Connect(function()
+            current = opt
+            refreshBtns()
+            callback(opt)
+        end)
+    end
+    refreshBtns()
+end
+
+local function makeInput(label, default, callback)
+    local row = Instance.new("Frame", ContentFrame)
+    row.Size = UDim2.new(1, 0, 0, 24)
+    row.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+    row.BorderSizePixel = 0
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.55, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
+    lbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+    lbl.TextSize = 10
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local box = Instance.new("TextBox", row)
+    box.Size = UDim2.new(0.38, 0, 0, 18)
+    box.Position = UDim2.new(0.58, 0, 0.5, -9)
+    box.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    box.BorderSizePixel = 0
+    box.Text = tostring(default)
+    box.TextColor3 = Color3.fromRGB(220, 220, 220)
+    box.TextSize = 10
+    box.Font = Enum.Font.Gotham
+    box.ClearTextOnFocus = false
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+
+    box.FocusLost:Connect(function()
+        local val = tonumber(box.Text)
+        if val then callback(val) end
+    end)
+end
+
+-- ═══════════════════════════════
+-- // BUILD MENU
+-- ═══════════════════════════════
+makeSection("TARGET LOCK")
+makeToggle("Lock Target", function(v)
+    Settings.TargetLock.Enabled = v
+    if v then CurrentTarget = getLookedEnemy() else CurrentTarget = nil end
+end)
+makeModeSelector({"Player","NPC"}, "NPC", function(v)
+    Settings.TargetLock.Mode = v
+    CurrentTarget = nil
+end)
+makeInput("Strength", 0.15, function(v)
+    Settings.TargetLock.Strength = math.clamp(v, 0.01, 1)
+end)
+makeInput("Range (st)", 100, function(v)
+    Settings.TargetLock.Range = v
+end)
+makeToggle("Next Target", function(v)
+    if v then CurrentTarget = getNearestEnemy() end
+end)
+
+makeSection("ESP SCAN")
+makeToggle("Show ESP", function(v)
+    Settings.ESP.Enabled = v
+    updateESP()
+    if v then
+        task.spawn(function()
+            while Settings.ESP.Enabled do
+                updateESP()
+                task.wait(3)
+            end
+        end)
+    end
+end)
+makeModeSelector({"Player","NPC"}, "NPC", function(v)
+    Settings.ESP.Mode = v
+    updateESP()
+end)
+
+makeSection("AUTO EVADE")
+makeToggle("Evade Enable", function(v)
+    Settings.Evade.Enabled = v
+    if not v then
+        local hum = getHumanoid(LocalPlayer.Character)
+        if hum then hum.WalkSpeed = 16 end
+    end
+end)
+makeModeSelector({"Player","NPC"}, "NPC", function(v)
+    Settings.Evade.Mode = v
+end)
+makeInput("Evade Range", 20, function(v) Settings.Evade.Range = v end)
+makeInput("Evade Speed", 30, function(v) Settings.Evade.Speed = v end)
+
+UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    ContentFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
+end)
+
+-- ═══════════════════════════════
+-- // DRAG
+-- ═══════════════════════════════
+local dragging, dragInput, dragStart, startPos
+
 TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
     end
 end)
+
+TitleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+    if input == dragInput and dragging then
         local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
     end
 end)
 
--- Toggle Menu
+-- ═══════════════════════════════
+-- // FOLD
+-- ═══════════════════════════════
+local folded = false
 ToggleBtn.MouseButton1Click:Connect(function()
-    Config.MenuOpen = not Config.MenuOpen
-    ContentFrame.Visible = Config.MenuOpen
-    MainFrame.Size = Config.MenuOpen and UDim2.new(0,scale(220),0,scale(320)) or UDim2.new(0,scale(220),0,scale(28))
-    ToggleBtn.Text = Config.MenuOpen and "▼" or "▶"
-end)
-
--- Resize
-SizeBox.FocusLost:Connect(function()
-    local v = tonumber(SizeBox.Text)
-    if not v then return end
-    Config.MenuSize = math.max(4, v)
-    local function s(n) return math.floor(n*(Config.MenuSize/BASE)) end
-    MainFrame.Size = UDim2.new(0,s(220),0,s(320))
-    TitleBar.Size = UDim2.new(1,0,0,s(28))
-    TitleLabel.TextSize = s(11)
-    ToggleBtn.Size = UDim2.new(0,s(34),0,s(18))
-    ToggleBtn.Position = UDim2.new(1,-s(48),0.5,-s(9))
-    CloseBtn.Size = UDim2.new(0,s(18),0,s(18))
-    SizeBox.Size = UDim2.new(0,s(30),0,s(18))
-    SizeBox.Position = UDim2.new(1,-s(82),0.5,-s(9))
+    folded = not folded
+    ContentFrame.Visible = not folded
+    if folded then
+        MainFrame.Size = UDim2.new(MainFrame.Size.X.Scale, MainFrame.Size.X.Offset, 0, 28)
+        ToggleBtn.Text = "▲"
+    else
+        local scale = menuSize / 10
+        MainFrame.Size = UDim2.new(0, 200 * scale, 0, 300 * scale)
+        ToggleBtn.Text = "━"
+    end
 end)
