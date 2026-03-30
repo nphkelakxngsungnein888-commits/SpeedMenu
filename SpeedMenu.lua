@@ -1,5 +1,5 @@
--- Advanced Combat Script by kuy kuy
--- Target Lock | Enemy Scan | Auto Evade
+-- Advanced Combat Script by kuy kuy v2
+-- Target Lock | Enemy Scan | Auto Evade | Auto Lock Attacker
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -28,11 +28,12 @@ local Config = {
     MenuScale = 10,
 }
 
+-- ===================== GUI =====================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "CombatMenu"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = LocalPlayer.PlayerGui  -- แก้แล้ว
+ScreenGui.Parent = LocalPlayer.PlayerGui
 
 local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
@@ -47,7 +48,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -150, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚔ Combat"
+TitleLabel.Text = "⚔ Combat v2"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextSize = 14
 TitleLabel.Font = Enum.Font.GothamBold
@@ -187,7 +188,6 @@ local function MakeToggle(labelText, default, callback)
         }):Play()
         callback(state)
     end)
-
     return btn
 end
 
@@ -215,10 +215,10 @@ local function MakeModeSelector(labelText, opt1, opt2, default, callback)
         local b = Instance.new("TextButton")
         b.Size = UDim2.new(0, 72, 0, 20)
         b.Position = UDim2.new(1, xPos, 0.5, -10)
-        b.BackgroundColor3 = (txt == current) and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(55, 55, 55)
+        b.BackgroundColor3 = (txt == current) and Color3.fromRGB(200,200,200) or Color3.fromRGB(55,55,55)
         b.BorderSizePixel = 0
         b.Text = txt
-        b.TextColor3 = (txt == current) and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(200, 200, 200)
+        b.TextColor3 = (txt == current) and Color3.fromRGB(0,0,0) or Color3.fromRGB(200,200,200)
         b.TextSize = 10
         b.Font = Enum.Font.GothamBold
         b.Parent = row
@@ -231,10 +231,10 @@ local function MakeModeSelector(labelText, opt1, opt2, default, callback)
 
     local function update(sel)
         current = sel
-        b1.BackgroundColor3 = (sel == opt1) and Color3.fromRGB(200,200,200) or Color3.fromRGB(55,55,55)
-        b1.TextColor3 = (sel == opt1) and Color3.fromRGB(0,0,0) or Color3.fromRGB(200,200,200)
-        b2.BackgroundColor3 = (sel == opt2) and Color3.fromRGB(200,200,200) or Color3.fromRGB(55,55,55)
-        b2.TextColor3 = (sel == opt2) and Color3.fromRGB(0,0,0) or Color3.fromRGB(200,200,200)
+        b1.BackgroundColor3 = (sel==opt1) and Color3.fromRGB(200,200,200) or Color3.fromRGB(55,55,55)
+        b1.TextColor3 = (sel==opt1) and Color3.fromRGB(0,0,0) or Color3.fromRGB(200,200,200)
+        b2.BackgroundColor3 = (sel==opt2) and Color3.fromRGB(200,200,200) or Color3.fromRGB(55,55,55)
+        b2.TextColor3 = (sel==opt2) and Color3.fromRGB(0,0,0) or Color3.fromRGB(200,200,200)
         callback(sel)
     end
     b1.MouseButton1Click:Connect(function() update(opt1) end)
@@ -279,6 +279,7 @@ local function MakeSliderBox(labelText, default, callback)
     end)
 end
 
+-- ===================== MENU ITEMS =====================
 MakeSection("🎯 TARGET LOCK")
 MakeToggle("Lock Target", false, function(v)
     Config.LockEnabled = v
@@ -317,22 +318,27 @@ MakeSliderBox("Evade Speed", Config.EvadeSpeed, function(v)
     Config.EvadeSpeed = v
 end)
 
--- DRAG
+-- ===================== DRAG =====================
 local dragging, dragStart, startPos
 TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = TopBar.Position
     end
 end)
 TopBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
     end
 end)
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch
+    ) then
         local delta = input.Position - dragStart
         local newPos = UDim2.new(
             startPos.X.Scale, startPos.X.Offset + delta.X,
@@ -372,7 +378,7 @@ ScaleBox.FocusLost:Connect(function()
     end
 end)
 
--- HELPERS
+-- ===================== HELPERS =====================
 local function getHRP(char)
     return char and char:FindFirstChild("HumanoidRootPart")
 end
@@ -396,7 +402,8 @@ local function distanceTo(hrp)
     return (HumanoidRootPart.Position - hrp.Position).Magnitude
 end
 
-local function getTargets(mode)
+local function getTargets(mode, rangeOverride)
+    local range = rangeOverride or Config.LockRange
     local list = {}
     if mode == "Player" then
         for _, p in ipairs(Players:GetPlayers()) do
@@ -404,7 +411,7 @@ local function getTargets(mode)
                 local c = p.Character
                 if c and isAlive(c) then
                     local hrp = getHRP(c)
-                    if hrp and distanceTo(hrp) <= Config.LockRange and not isSameTeam(p) then
+                    if hrp and distanceTo(hrp) <= range and not isSameTeam(p) then
                         table.insert(list, {char=c, hrp=hrp, player=p})
                     end
                 end
@@ -416,7 +423,7 @@ local function getTargets(mode)
                 local c = obj.Parent
                 if c ~= Character then
                     local hrp = getHRP(c)
-                    if hrp and distanceTo(hrp) <= Config.LockRange then
+                    if hrp and distanceTo(hrp) <= range then
                         table.insert(list, {char=c, hrp=hrp, player=nil})
                     end
                 end
@@ -448,130 +455,153 @@ local function getLookedAtTarget(mode)
     return best
 end
 
--- DAMAGE DETECTION
-Humanoid.HealthChanged:Connect(function(hp)
-    if hp < Humanoid.Health and Config.LockEnabled then
-        local nearest = getNearestTarget(Config.LockMode)
-        if nearest then Config.CurrentTarget = nearest end
+-- ===================== HIGHLIGHT =====================
+local lastHighlight = nil
+local function setHighlight(hrp)
+    if lastHighlight then
+        pcall(function() lastHighlight:Destroy() end)
+        lastHighlight = nil
     end
-end)
-
--- SCAN BOXES
-local scanBoxes = {}
-local function clearScanBoxes()
-    for _, box in ipairs(scanBoxes) do pcall(function() box:Destroy() end) end
-    scanBoxes = {}
+    if not hrp then return end
+    local h = Instance.new("SelectionBox")
+    h.Color3 = Color3.fromRGB(255, 60, 60)
+    h.LineThickness = 0.05
+    h.SurfaceTransparency = 0.8
+    h.SurfaceColor3 = Color3.fromRGB(255, 60, 60)
+    h.Adornee = hrp.Parent
+    h.Parent = workspace
+    lastHighlight = h
 end
 
-local function updateScan()
-    clearScanBoxes()
-    if not Config.ScanEnabled then return end
-    local targets = getTargets(Config.ScanMode)
-    for _, t in ipairs(targets) do
-        local hrp = t.hrp
-        local dist = math.floor(distanceTo(hrp))
-        local bb = Instance.new("BillboardGui")
-        bb.Size = UDim2.new(0, 60, 0, 60)
-        bb.StudsOffset = Vector3.new(0, 3, 0)
-        bb.AlwaysOnTop = true
-        bb.Adornee = hrp
-        bb.Parent = hrp
+-- ===================== AUTO LOCK ATTACKER =====================
+-- ล็อคตัวที่โจมตีเราทันที ไม่สนว่ากำลังล็อคอะไรอยู่
+local lastHealth = Humanoid.Health
 
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1, 0, 1, 0)
-        frame.BackgroundTransparency = 1
-        frame.BorderSizePixel = 0
-        frame.Parent = bb
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(255, 255, 255)
-        stroke.Thickness = 1.5
-        stroke.Parent = frame
+local function findAttacker()
+    -- หา target ที่ใกล้ที่สุดในระยะ 60 studs (มักจะเป็นคนที่ตีเรา)
+    local best, bestDist = nil, math.huge
+    local searchMode = Config.LockMode
 
-        local dlbl = Instance.new("TextLabel")
-        dlbl.Size = UDim2.new(1, 0, 0, 14)
-        dlbl.Position = UDim2.new(0, 0, -0.4, 0)
-        dlbl.BackgroundTransparency = 1
-        dlbl.Text = dist .. "m"
-        dlbl.TextColor3 = Color3.fromRGB(255, 220, 60)
-        dlbl.TextSize = 11
-        dlbl.Font = Enum.Font.GothamBold
-        dlbl.Parent = bb
-
-        table.insert(scanBoxes, bb)
-    end
-end
-
--- MAIN LOOP
-local scanTick = 0
-RunService.Heartbeat:Connect(function(dt)
-    Character = LocalPlayer.Character
-    if not Character then return end
-    HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-    Humanoid = Character:FindFirstChildOfClass("Humanoid")
-    if not HumanoidRootPart or not Humanoid then return end
-
-    -- TARGET LOCK
-    if Config.LockEnabled then
-        if not Config.CurrentTarget or not isAlive(Config.CurrentTarget.char) then
-            Config.CurrentTarget = getLookedAtTarget(Config.LockMode) or getNearestTarget(Config.LockMode)
-        end
-        if Config.CurrentTarget and Config.CurrentTarget.hrp then
-            if isAlive(Config.CurrentTarget.char) and distanceTo(Config.CurrentTarget.hrp) <= Config.LockRange then
-                local newCF = CFrame.lookAt(Camera.CFrame.Position, Config.CurrentTarget.hrp.Position)
-                Camera.CFrame = Camera.CFrame:Lerp(newCF, Config.LockStrength)
-            else
-                Config.CurrentTarget = getNearestTarget(Config.LockMode)
-            end
-        end
-    end
-
-    -- AUTO EVADE
-    if Config.EvadeEnabled then
-        local evadeDir = Vector3.new(0, 0, 0)
-        local allEvade = getTargets(Config.EvadeMode)
-        local foundThreat = false
-        for _, t in ipairs(allEvade) do
-            local d = distanceTo(t.hrp)
-            if d <= Config.EvadeRange then
-                foundThreat = true
-                local away = HumanoidRootPart.Position - t.hrp.Position
-                away = Vector3.new(away.X, 0, away.Z)
-                if away.Magnitude > 0 then
-                    evadeDir = evadeDir + away.Unit * (Config.EvadeRange - d + 1)
+    if searchMode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local c = p.Character
+                if c and isAlive(c) then
+                    local hrp = getHRP(c)
+                    if hrp then
+                        local d = distanceTo(hrp)
+                        if d < bestDist and d <= 60 then
+                            bestDist = d; best = {char=c, hrp=hrp, player=p}
+                        end
+                    end
                 end
             end
         end
-        if foundThreat and evadeDir.Magnitude > 0 then
-            local moveDir = evadeDir.Unit
-            HumanoidRootPart.CFrame = CFrame.lookAt(HumanoidRootPart.Position, HumanoidRootPart.Position + moveDir)
-            local newPos = HumanoidRootPart.Position + moveDir * Config.EvadeSpeed * dt
-            HumanoidRootPart.CFrame = CFrame.new(newPos) * (HumanoidRootPart.CFrame - HumanoidRootPart.CFrame.Position)
-        end
-    end
-
-    -- SCAN
-    scanTick = scanTick + dt
-    if scanTick >= 0.3 then
-        scanTick = 0
-        updateScan()
-    end
-end)
-
--- SWITCH TARGET (Tab)
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.Tab and Config.LockEnabled then
-        local targets = getTargets(Config.LockMode)
-        if #targets == 0 then return end
-        local currentIdx = 0
-        for i, t in ipairs(targets) do
-            if Config.CurrentTarget and t.char == Config.CurrentTarget.char then
-                currentIdx = i
-                break
+    else
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Humanoid") and obj.Health > 0 then
+                local c = obj.Parent
+                if c ~= Character then
+                    local hrp = getHRP(c)
+                    if hrp then
+                        local d = distanceTo(hrp)
+                        if d < bestDist and d <= 60 then
+                            bestDist = d; best = {char=c, hrp=hrp, player=nil}
+                        end
+                    end
+                end
             end
         end
-        Config.CurrentTarget = targets[(currentIdx % #targets) + 1]
     end
+    return best
+end
+
+Humanoid.HealthChanged:Connect(function(hp)
+    if hp < lastHealth then
+        -- โดนโจมตี → ล็อคตัวที่ใกล้ที่สุดทันที
+        if Config.LockEnabled then
+            local attacker = findAttacker()
+            if attacker then
+                Config.CurrentTarget = attacker
+                setHighlight(attacker.hrp)
+            end
+        end
+    end
+    lastHealth = hp
 end)
 
-print("✅ Combat Script Loaded | Tab = Switch Target")
+-- ===================== SCAN (Optimized Pool) =====================
+-- ใช้ pool ลด instance create/destroy ทุก frame
+local scanPool = {}     -- { bb, frame, dlbl, used }
+local activeScan = {}   -- bb ที่กำลังใช้อยู่
+
+local function getScanBillboard()
+    for _, item in ipairs(scanPool) do
+        if not item.used then
+            item.used = true
+            item.bb.Enabled = true
+            return item
+        end
+    end
+    -- สร้างใหม่เมื่อ pool หมด
+    local bb = Instance.new("BillboardGui")
+    bb.Size = UDim2.new(0, 60, 0, 60)
+    bb.StudsOffset = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop = true
+    bb.Parent = workspace
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+    frame.Parent = bb
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 1.5
+    stroke.Parent = frame
+
+    local dlbl = Instance.new("TextLabel")
+    dlbl.Size = UDim2.new(1, 0, 0, 14)
+    dlbl.Position = UDim2.new(0, 0, -0.4, 0)
+    dlbl.BackgroundTransparency = 1
+    dlbl.TextColor3 = Color3.fromRGB(255, 220, 60)
+    dlbl.TextSize = 11
+    dlbl.Font = Enum.Font.GothamBold
+    dlbl.Parent = bb
+
+    local item = {bb=bb, dlbl=dlbl, used=true}
+    table.insert(scanPool, item)
+    return item
+end
+
+local function releaseScanPool()
+    for _, item in ipairs(scanPool) do
+        item.used = false
+        item.bb.Adornee = nil
+        item.bb.Enabled = false
+    end
+end
+
+local function updateScan()
+    releaseScanPool()
+    if not Config.ScanEnabled then return end
+
+    local targets = getTargets(Config.ScanMode, 200)
+    for _, t in ipairs(targets) do
+        local dist = math.floor(distanceTo(t.hrp))
+        local item = getScanBillboard()
+        item.bb.Adornee = t.hrp
+        item.bb.Enabled = true
+        item.dlbl.Text = dist .. "m"
+        -- เปลี่ยนสีตามระยะ
+        if dist <= 30 then
+            item.dlbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+        elseif dist <= 60 then
+            item.dlbl.TextColor3 = Color3.fromRGB(255, 200, 60)
+        else
+            item.dlbl.TextColor3 = Color3.fromRGB(100, 220, 100)
+        end
+    end
+end
+
+-- =======
