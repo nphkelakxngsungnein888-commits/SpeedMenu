@@ -1,4 +1,3 @@
-ได้เลย! นี่คือ script เมนู GUI สำหรับ Roblox:
 -- Mobile-Friendly GUI Menu | Black & White Theme
 -- Target Lock System (Player / NPC)
 
