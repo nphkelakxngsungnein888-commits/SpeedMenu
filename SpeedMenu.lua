@@ -31,10 +31,22 @@ local flyConnection
 local bodyVelocity
 local bodyGyro
 
---// UI
-local gui = Instance.new("ScreenGui", game.CoreGui)
+--// UI FIX (สำคัญ)
+local gui = Instance.new("ScreenGui")
 gui.Name = "Light_UI"
+gui.ResetOnSpawn = false
 
+local success, playerGui = pcall(function()
+	return Players.LocalPlayer:WaitForChild("PlayerGui")
+end)
+
+if success and playerGui then
+	gui.Parent = playerGui
+else
+	gui.Parent = game.CoreGui
+end
+
+--// UI
 local frame = Instance.new("Frame", gui)
 frame.Size = UDim2.new(0, 200, 0, 270)
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
@@ -185,38 +197,31 @@ local function startFly()
 
 	bodyVelocity = Instance.new("BodyVelocity", hrp)
 	bodyVelocity.MaxForce = Vector3.new(1e5,1e5,1e5)
-	bodyVelocity.Velocity = Vector3.zero
 
 	bodyGyro = Instance.new("BodyGyro", hrp)
 	bodyGyro.MaxTorque = Vector3.new(1e5,1e5,1e5)
-	bodyGyro.P = 1e4
 
 	flyConnection = RunService.RenderStepped:Connect(function()
 		local cam = workspace.CurrentCamera
 		local dir = Vector3.zero
 
-		if UIS:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
-		if UIS:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
-		if UIS:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
-		if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
-		if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
-		if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then dir = dir - Vector3.new(0,1,0) end
+		if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
+		if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.new(0,1,0) end
 
-		if dir.Magnitude > 0 then
-			bodyVelocity.Velocity = dir.Unit * flySpeed
-		else
-			bodyVelocity.Velocity = Vector3.zero
-		end
-
+		bodyVelocity.Velocity = dir.Magnitude > 0 and dir.Unit * flySpeed or Vector3.zero
 		bodyGyro.CFrame = cam.CFrame
 	end)
 end
 
 local function stopFly()
 	local char = Players.LocalPlayer.Character
-	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-	if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
-	if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+	if flyConnection then flyConnection:Disconnect() end
+	if bodyVelocity then bodyVelocity:Destroy() end
+	if bodyGyro then bodyGyro:Destroy() end
 	if char then
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if hum then hum.PlatformStand = false end
@@ -227,65 +232,23 @@ end
 brightBtn.MouseButton1Click:Connect(function()
 	brightEnabled = not brightEnabled
 	darkEnabled = false
-	brightBtn.Text = brightEnabled and "FullBright ON" or "FullBright OFF"
-	brightBtn.BackgroundColor3 = brightEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-	darkBtn.Text = "Dark OFF"
-	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 	applyLighting()
 end)
 
 darkBtn.MouseButton1Click:Connect(function()
 	darkEnabled = not darkEnabled
 	brightEnabled = false
-	darkBtn.Text = darkEnabled and "Dark ON" or "Dark OFF"
-	darkBtn.BackgroundColor3 = darkEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-	brightBtn.Text = "FullBright OFF"
-	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 	applyLighting()
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
 	speedEnabled = not speedEnabled
-	speedBtn.Text = speedEnabled and "Speed ON" or "Speed OFF"
-	speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-	local char = Players.LocalPlayer.Character
-	if char then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
-		end
-	end
+	applySpeed()
 end)
 
 flyBtn.MouseButton1Click:Connect(function()
 	flyEnabled = not flyEnabled
-	flyBtn.Text = flyEnabled and "Fly ON" or "Fly OFF"
-	flyBtn.BackgroundColor3 = flyEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
 	if flyEnabled then startFly() else stopFly() end
-end)
-
---// INPUT
-brightBox.FocusLost:Connect(function()
-	local n = tonumber(brightBox.Text)
-	if n then brightnessValue = n applyLighting() end
-end)
-
-darkBox.FocusLost:Connect(function()
-	local n = tonumber(darkBox.Text)
-	if n then darkValue = n applyLighting() end
-end)
-
-speedBox.FocusLost:Connect(function()
-	local n = tonumber(speedBox.Text)
-	if n then
-		speedValue = math.clamp(n,0,500)
-		if speedEnabled then applySpeed() end
-	end
-end)
-
-flyBox.FocusLost:Connect(function()
-	local n = tonumber(flyBox.Text)
-	if n then flySpeed = math.clamp(n,1,500) end
 end)
 
 --// LOOP
@@ -297,32 +260,6 @@ RunService.RenderStepped:Connect(function()
 			hum.WalkSpeed = speedEnabled and (speedValue or defaultWalkSpeed) or defaultWalkSpeed
 		end
 	end
-end)
-
---// RESET
-resetBtn.MouseButton1Click:Connect(function()
-	brightEnabled = false
-	darkEnabled = false
-	speedEnabled = false
-	flyEnabled = false
-
-	applyLighting()
-	stopFly()
-
-	local char = Players.LocalPlayer.Character
-	if char then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then hum.WalkSpeed = defaultWalkSpeed end
-	end
-
-	brightBtn.Text = "FullBright OFF"
-	brightBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	darkBtn.Text = "Dark OFF"
-	darkBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	speedBtn.Text = "Speed OFF"
-	speedBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-	flyBtn.Text = "Fly OFF"
-	flyBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 end)
 
 --// AUTO SCROLL
