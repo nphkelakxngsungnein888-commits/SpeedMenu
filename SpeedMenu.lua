@@ -1,4 +1,3 @@
-โอเคครับ นี่คือโค้ดที่รันได้ของคุณ แก้แค่ส่วน Fly ให้ใช้ Thumbstick + ปุ่ม Up/Down แทน keyboard:
 --// SERVICES
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -26,15 +25,15 @@ local brightnessValue = 5
 local darkValue = 0
 local speedValue = 50
 local flySpeed = 50
-local verticalDir = 0
-local thumbstickDir = Vector2.zero
 
 --// FLY VARS
 local flyConnection
 local bodyVelocity
 local bodyGyro
+local verticalDir = 0
+local thumbstickDir = Vector2.zero
 
---// UI FIX
+--// UI FIX (สำคัญ)
 local gui = Instance.new("ScreenGui")
 gui.Name = "Light_UI"
 gui.ResetOnSpawn = false
@@ -105,33 +104,29 @@ local function createBlock(text, placeholder)
 	return btn, box
 end
 
-local function createUpDown()
-	local f = Instance.new("Frame", scroll)
-	f.Size = UDim2.new(1,-5,0,25)
-	f.BackgroundTransparency = 1
-
-	local upBtn = Instance.new("TextButton", f)
-	upBtn.Size = UDim2.new(0.48,0,1,0)
-	upBtn.Text = "▲ Up"
-	upBtn.BackgroundColor3 = Color3.fromRGB(60,60,150)
-	upBtn.TextColor3 = Color3.new(1,1,1)
-
-	local downBtn = Instance.new("TextButton", f)
-	downBtn.Size = UDim2.new(0.48,0,1,0)
-	downBtn.Position = UDim2.new(0.52,0,0,0)
-	downBtn.Text = "▼ Down"
-	downBtn.BackgroundColor3 = Color3.fromRGB(60,60,150)
-	downBtn.TextColor3 = Color3.new(1,1,1)
-
-	return upBtn, downBtn
-end
-
 --// UI CREATE
 local brightBtn, brightBox = createBlock("FullBright OFF","Brightness")
 local darkBtn, darkBox = createBlock("Dark OFF","Dark")
 local speedBtn, speedBox = createBlock("Speed OFF","WalkSpeed")
 local flyBtn, flyBox = createBlock("Fly OFF","Fly Speed")
-local upBtn, downBtn = createUpDown()
+
+--// ปุ่ม UP/DOWN
+local udFrame = Instance.new("Frame", scroll)
+udFrame.Size = UDim2.new(1,-5,0,25)
+udFrame.BackgroundTransparency = 1
+
+local upBtn = Instance.new("TextButton", udFrame)
+upBtn.Size = UDim2.new(0.48,0,1,0)
+upBtn.Text = "▲ Up"
+upBtn.BackgroundColor3 = Color3.fromRGB(60,60,150)
+upBtn.TextColor3 = Color3.new(1,1,1)
+
+local downBtn = Instance.new("TextButton", udFrame)
+downBtn.Size = UDim2.new(0.48,0,1,0)
+downBtn.Position = UDim2.new(0.52,0,0,0)
+downBtn.Text = "▼ Down"
+downBtn.BackgroundColor3 = Color3.fromRGB(60,60,150)
+downBtn.TextColor3 = Color3.new(1,1,1)
 
 local resetBtn = Instance.new("TextButton", scroll)
 resetBtn.Size = UDim2.new(1,-5,0,25)
