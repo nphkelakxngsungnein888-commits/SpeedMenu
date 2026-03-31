@@ -31,14 +31,17 @@ local function getRoot(model)
 	return model and model:FindFirstChild("HumanoidRootPart")
 end
 
---// BUILD LIST
+--// BUILD LIST (FIX NPC)
 local function buildTargetList()
 	targetList = {}
 
 	if lockMode == "Player" then
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= player and p.Character then
-				table.insert(targetList, p.Character)
+				local root = getRoot(p.Character)
+				if root then
+					table.insert(targetList, p.Character)
+				end
 			end
 		end
 	else
@@ -47,10 +50,11 @@ local function buildTargetList()
 			if p.Character then playerChars[p.Character] = true end
 		end
 
-		for _, obj in ipairs(workspace:GetChildren()) do
+		for _, obj in ipairs(workspace:GetDescendants()) do
 			if obj:IsA("Model")
 			and not playerChars[obj]
-			and obj:FindFirstChildOfClass("Humanoid") then
+			and obj:FindFirstChildOfClass("Humanoid")
+			and obj:FindFirstChild("HumanoidRootPart") then
 				table.insert(targetList, obj)
 			end
 		end
@@ -79,7 +83,7 @@ local function getFrontTarget()
 	return best
 end
 
---// LOCK
+--// LOCK (FIX CAMERA FOLLOW)
 local function startLock()
 	if lockConn then lockConn:Disconnect() end
 
@@ -87,6 +91,8 @@ local function startLock()
 
 	lockConn = RunService.RenderStepped:Connect(function()
 		if not lockEnabled then return end
+
+		local char, hrp = getChar()
 
 		if not lockedTarget then
 			lockedTarget = getFrontTarget()
@@ -99,14 +105,16 @@ local function startLock()
 			return
 		end
 
-		local _, hrp = getChar()
-
+		-- rotate character
 		local flat = (root.Position - hrp.Position) * Vector3.new(1,0,1)
 		if flat.Magnitude > 0.1 then
 			hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat)
 		end
 
-		camera.CFrame = CFrame.lookAt(camera.CFrame.Position, root.Position)
+		-- CAMERA FOLLOW PLAYER + LOOK TARGET
+		local camOffset = CFrame.new(0, 5, 10) -- ระยะกล้องหลังตัว
+		local camPos = hrp.CFrame * camOffset
+		camera.CFrame = CFrame.lookAt(camPos.Position, root.Position)
 	end)
 end
 
@@ -159,7 +167,7 @@ local lockBtn = makeBtn("Lock: OFF", 200)
 local nextBtn = makeBtn("Next Target", 250)
 local modeBtn = makeBtn("Mode: Player", 300)
 
---// BUTTON EVENTS
+--// EVENTS
 lockBtn.MouseButton1Click:Connect(function()
 	toggleLock(lockBtn)
 end)
