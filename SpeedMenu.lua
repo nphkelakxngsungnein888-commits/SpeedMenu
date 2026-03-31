@@ -1,148 +1,174 @@
--- /client/auto_evade.lua  
+--// SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
-local Players = game:GetService("Players")  
-local RunService = game:GetService("RunService")  
-local UIS = game:GetService("UserInputService")  
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
-local player = Players.LocalPlayer  
+--// GUI
+local gui = Instance.new("ScreenGui")
+gui.Name = "MobileLockUI"
+gui.ResetOnSpawn = false
+gui.Parent = game:GetService("CoreGui")
 
-local char, humanoid, root  
+--// STATE
+local lockEnabled = false
+local lockMode = "Player"
 
-local function setupCharacter(c)  
-    char = c  
-    humanoid = c:WaitForChild("Humanoid")  
-    root = c:WaitForChild("HumanoidRootPart")  
-end  
+local targetList = {}
+local targetIndex = 1
+local lockedTarget = nil
+local lockConn
 
-setupCharacter(player.Character or player.CharacterAdded:Wait())  
-player.CharacterAdded:Connect(setupCharacter)  
+--// SAFE
+local function getChar()
+	local char = player.Character or player.CharacterAdded:Wait()
+	local hrp = char:WaitForChild("HumanoidRootPart")
+	return char, hrp
+end
 
--- CONFIG  
-local enabled = false  
-local mode = "Player"  
-local safeDistance = 20  
+local function getRoot(model)
+	return model and model:FindFirstChild("HumanoidRootPart")
+end
 
--- UI  
-local gui = Instance.new("ScreenGui", game.CoreGui)  
-gui.Name = "EvadeUI"  
+--// BUILD LIST
+local function buildTargetList()
+	targetList = {}
 
-local frame = Instance.new("Frame", gui)  
-frame.Size = UDim2.new(0, 240, 0, 160)  
-frame.Position = UDim2.new(0.5, -120, 0.5, -80)  
-frame.BackgroundColor3 = Color3.fromRGB(25,25,25)  
-frame.Active = true  
-frame.Draggable = true  
+	if lockMode == "Player" then
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= player and p.Character then
+				table.insert(targetList, p.Character)
+			end
+		end
+	else
+		local playerChars = {}
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p.Character then playerChars[p.Character] = true end
+		end
 
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)  
+		for _, obj in ipairs(workspace:GetChildren()) do
+			if obj:IsA("Model")
+			and not playerChars[obj]
+			and obj:FindFirstChildOfClass("Humanoid") then
+				table.insert(targetList, obj)
+			end
+		end
+	end
+end
 
-local toggle = Instance.new("TextButton", frame)  
-toggle.Size = UDim2.new(1, -20, 0, 30)  
-toggle.Position = UDim2.new(0,10,0,10)  
-toggle.Text = "OFF"  
+--// FRONT TARGET
+local function getFrontTarget()
+	buildTargetList()
 
-local modeBtn = Instance.new("TextButton", frame)  
-modeBtn.Size = UDim2.new(1, -20, 0, 30)  
-modeBtn.Position = UDim2.new(0,10,0,50)  
-modeBtn.Text = "Mode: Player"  
+	local best, bestDot = nil, -math.huge
+	local camCF = camera.CFrame
 
-local box = Instance.new("TextBox", frame)  
-box.Size = UDim2.new(1, -20, 0, 30)  
-box.Position = UDim2.new(0,10,0,90)  
-box.Text = tostring(safeDistance)  
+	for _, t in ipairs(targetList) do
+		local root = getRoot(t)
+		if root then
+			local dir = (root.Position - camCF.Position).Unit
+			local dot = camCF.LookVector:Dot(dir)
+			if dot > bestDot then
+				bestDot = dot
+				best = t
+			end
+		end
+	end
 
-toggle.MouseButton1Click:Connect(function()  
-    enabled = not enabled  
-    toggle.Text = enabled and "ON" or "OFF"  
-end)  
+	return best
+end
 
-modeBtn.MouseButton1Click:Connect(function()  
-    mode = (mode == "Player") and "Monster" or "Player"  
-    modeBtn.Text = "Mode: "..mode  
-end)  
+--// LOCK
+local function startLock()
+	if lockConn then lockConn:Disconnect() end
 
-box.FocusLost:Connect(function()  
-    local num = tonumber(box.Text)  
-    if num then safeDistance = num end  
-end)  
+	lockedTarget = getFrontTarget()
 
--- MONSTER CACHE  
-local monsterCache = {}
+	lockConn = RunService.RenderStepped:Connect(function()
+		if not lockEnabled then return end
 
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        local newCache = {}
-        for _,v in pairs(workspace:GetChildren()) do
-            if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") then
-                local hum = v:FindFirstChild("Humanoid")
-                if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(v) then
-                    table.insert(newCache, v)
-                end
-            end
-        end
-        monsterCache = newCache
-    end
+		if not lockedTarget then
+			lockedTarget = getFrontTarget()
+			return
+		end
+
+		local root = getRoot(lockedTarget)
+		if not root then
+			lockedTarget = nil
+			return
+		end
+
+		local _, hrp = getChar()
+
+		local flat = (root.Position - hrp.Position) * Vector3.new(1,0,1)
+		if flat.Magnitude > 0.1 then
+			hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat)
+		end
+
+		camera.CFrame = CFrame.lookAt(camera.CFrame.Position, root.Position)
+	end)
+end
+
+local function stopLock()
+	if lockConn then lockConn:Disconnect() end
+	lockedTarget = nil
+end
+
+--// SWITCH
+local function switchTarget()
+	buildTargetList()
+	if #targetList == 0 then return end
+
+	targetIndex = targetIndex + 1
+	if targetIndex > #targetList then
+		targetIndex = 1
+	end
+
+	lockedTarget = targetList[targetIndex]
+end
+
+--// TOGGLE
+local function toggleLock(btn)
+	lockEnabled = not lockEnabled
+
+	btn.Text = "Lock: " .. (lockEnabled and "ON" or "OFF")
+	btn.BackgroundColor3 = lockEnabled and Color3.fromRGB(0,200,0) or Color3.fromRGB(200,0,0)
+
+	if lockEnabled then
+		camera.CameraType = Enum.CameraType.Scriptable
+		startLock()
+	else
+		camera.CameraType = Enum.CameraType.Custom
+		stopLock()
+	end
+end
+
+--// UI
+local function makeBtn(text, y)
+	local b = Instance.new("TextButton", gui)
+	b.Size = UDim2.new(0,120,0,40)
+	b.Position = UDim2.new(0,10,0,y)
+	b.Text = text
+	b.BackgroundColor3 = Color3.fromRGB(50,50,50)
+	b.TextColor3 = Color3.new(1,1,1)
+	return b
+end
+
+local lockBtn = makeBtn("Lock: OFF", 200)
+local nextBtn = makeBtn("Next Target", 250)
+local modeBtn = makeBtn("Mode: Player", 300)
+
+--// BUTTON EVENTS
+lockBtn.MouseButton1Click:Connect(function()
+	toggleLock(lockBtn)
 end)
 
--- GET THREATS  
-local function getThreats()  
-    local threats = {}  
+nextBtn.MouseButton1Click:Connect(function()
+	switchTarget()
+end)
 
-    if mode == "Player" then  
-        for _,p in pairs(Players:GetPlayers()) do  
-            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then  
-                local hum = p.Character:FindFirstChild("Humanoid")
-                if hum and hum.Health > 0 then
-                    local dist = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude  
-                    if dist < safeDistance then  
-                        table.insert(threats, p.Character)  
-                    end  
-                end
-            end  
-        end  
-    else  
-        for _,v in pairs(monsterCache) do
-            local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude  
-            if dist < safeDistance then  
-                table.insert(threats, v)  
-            end  
-        end  
-    end  
-
-    return threats  
-end  
-
--- MAIN LOOP (FINAL FIX)
-RunService.Heartbeat:Connect(function()  
-    if not enabled or not root or not humanoid then return end  
-
-    local threats = getThreats()  
-    if #threats == 0 then return end  
-
-    local totalDirection = Vector3.zero  
-
-    for _,target in pairs(threats) do  
-        local tRoot = target:FindFirstChild("HumanoidRootPart")  
-        local hum = target:FindFirstChild("Humanoid")
-
-        if tRoot and hum and hum.Health > 0 then  
-            local offset = root.Position - tRoot.Position  
-            local dist = offset.Magnitude  
-
-            if dist > 0.1 then  
-                totalDirection += offset.Unit / dist  
-            end  
-        end  
-    end  
-
-    if totalDirection.Magnitude == 0 then return end  
-
-    local moveDir = totalDirection.Unit  
-
-    -- 🔥 MoveTo (หลัก)
-    local targetPos = root.Position + (moveDir * 20)
-    humanoid:MoveTo(targetPos)
-
-    -- 🔥 fallback วาร์ปนิด (กันโดนล็อค)
-    root.CFrame = root.CFrame + (moveDir * 0.5)
+modeBtn.MouseButton1Click:Connect(function()
+	lockMode = (lockMode == "Player") and "NPC" or "Player"
+	modeBtn.Text = "Mode: " .. lockMode
 end)
