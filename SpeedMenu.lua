@@ -1,4 +1,4 @@
---Lock Menu v5 | Codex Mobile Safe | pcall wrapped
+-- Lock Menu v5 | Codex Mobile Safe | pcall wrapped
 -- NPC/Player | Scan | Color Filter | Root Rotate Fix
 
 local ok, err = pcall(function()
@@ -519,7 +519,7 @@ ColorPopup.ZIndex = 10
 ColorPopup.Parent = ScreenGui
 Instance.new("UICorner", ColorPopup).CornerRadius = UDim.new(0,8)
 
-  local CPTitleBar = Instance.new("Frame")
+local CPTitleBar = Instance.new("Frame")
 CPTitleBar.Size = UDim2.new(1, 0, 0, SS(26))
 CPTitleBar.BackgroundColor3 = Color3.fromRGB(30,30,30)
 CPTitleBar.BorderSizePixel = 0
