@@ -31,7 +31,7 @@ local function getRoot(model)
 	return model and model:FindFirstChild("HumanoidRootPart")
 end
 
---// BUILD LIST (FIX NPC)
+--// BUILD TARGET LIST
 local function buildTargetList()
 	targetList = {}
 
@@ -61,7 +61,7 @@ local function buildTargetList()
 	end
 end
 
---// FRONT TARGET
+--// GET FRONT TARGET
 local function getFrontTarget()
 	buildTargetList()
 
@@ -83,7 +83,7 @@ local function getFrontTarget()
 	return best
 end
 
---// LOCK (FIX CAMERA FOLLOW)
+--// LOCK SYSTEM
 local function startLock()
 	if lockConn then lockConn:Disconnect() end
 
@@ -111,10 +111,11 @@ local function startLock()
 			hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat)
 		end
 
-		-- CAMERA FOLLOW PLAYER + LOOK TARGET
-		local camOffset = CFrame.new(0, 5, 10) -- ระยะกล้องหลังตัว
-		local camPos = hrp.CFrame * camOffset
-		camera.CFrame = CFrame.lookAt(camPos.Position, root.Position)
+		-- natural camera (smooth)
+		local camPos = camera.CFrame.Position
+		local targetCF = CFrame.lookAt(camPos, root.Position)
+
+		camera.CFrame = camera.CFrame:Lerp(targetCF, 0.15)
 	end)
 end
 
@@ -123,7 +124,7 @@ local function stopLock()
 	lockedTarget = nil
 end
 
---// SWITCH
+--// SWITCH TARGET
 local function switchTarget()
 	buildTargetList()
 	if #targetList == 0 then return end
@@ -136,7 +137,7 @@ local function switchTarget()
 	lockedTarget = targetList[targetIndex]
 end
 
---// TOGGLE
+--// TOGGLE LOCK
 local function toggleLock(btn)
 	lockEnabled = not lockEnabled
 
@@ -144,7 +145,7 @@ local function toggleLock(btn)
 	btn.BackgroundColor3 = lockEnabled and Color3.fromRGB(0,200,0) or Color3.fromRGB(200,0,0)
 
 	if lockEnabled then
-		camera.CameraType = Enum.CameraType.Scriptable
+		camera.CameraType = Enum.CameraType.Custom
 		startLock()
 	else
 		camera.CameraType = Enum.CameraType.Custom
@@ -155,7 +156,7 @@ end
 --// UI
 local function makeBtn(text, y)
 	local b = Instance.new("TextButton", gui)
-	b.Size = UDim2.new(0,120,0,40)
+	b.Size = UDim2.new(0,130,0,40)
 	b.Position = UDim2.new(0,10,0,y)
 	b.Text = text
 	b.BackgroundColor3 = Color3.fromRGB(50,50,50)
