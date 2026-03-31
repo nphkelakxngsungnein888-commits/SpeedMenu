@@ -7,9 +7,7 @@ local camera = workspace.CurrentCamera
 
 --// GUI
 local gui = Instance.new("ScreenGui")
-gui.Name = "MobileLockUI"
-gui.ResetOnSpawn = false
-gui.Parent = game:GetService("CoreGui")
+gui.Parent = game.CoreGui
 
 --// STATE
 local lockEnabled = false
@@ -24,24 +22,22 @@ local lockConn
 local function getChar()
 	local char = player.Character or player.CharacterAdded:Wait()
 	local hrp = char:WaitForChild("HumanoidRootPart")
-	return char, hrp
+	local head = char:WaitForChild("Head")
+	return char, hrp, head
 end
 
 local function getRoot(model)
 	return model and model:FindFirstChild("HumanoidRootPart")
 end
 
---// BUILD TARGET LIST
+--// TARGET LIST
 local function buildTargetList()
 	targetList = {}
 
 	if lockMode == "Player" then
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= player and p.Character then
-				local root = getRoot(p.Character)
-				if root then
-					table.insert(targetList, p.Character)
-				end
+				table.insert(targetList, p.Character)
 			end
 		end
 	else
@@ -61,7 +57,7 @@ local function buildTargetList()
 	end
 end
 
---// GET FRONT TARGET
+--// FRONT TARGET
 local function getFrontTarget()
 	buildTargetList()
 
@@ -83,7 +79,7 @@ local function getFrontTarget()
 	return best
 end
 
---// LOCK SYSTEM
+--// LOCK FIRST PERSON
 local function startLock()
 	if lockConn then lockConn:Disconnect() end
 
@@ -92,7 +88,7 @@ local function startLock()
 	lockConn = RunService.RenderStepped:Connect(function()
 		if not lockEnabled then return end
 
-		local char, hrp = getChar()
+		local char, hrp, head = getChar()
 
 		if not lockedTarget then
 			lockedTarget = getFrontTarget()
@@ -105,17 +101,15 @@ local function startLock()
 			return
 		end
 
-		-- rotate character
+		-- หมุนตัวละคร
 		local flat = (root.Position - hrp.Position) * Vector3.new(1,0,1)
 		if flat.Magnitude > 0.1 then
 			hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat)
 		end
 
-		-- natural camera (smooth)
-		local camPos = camera.CFrame.Position
-		local targetCF = CFrame.lookAt(camPos, root.Position)
-
-		camera.CFrame = camera.CFrame:Lerp(targetCF, 0.15)
+		-- กล้อง First Person (ติดหัว)
+		local headPos = head.Position
+		camera.CFrame = CFrame.lookAt(headPos, root.Position)
 	end)
 end
 
@@ -129,7 +123,7 @@ local function switchTarget()
 	buildTargetList()
 	if #targetList == 0 then return end
 
-	targetIndex = targetIndex + 1
+	targetIndex += 1
 	if targetIndex > #targetList then
 		targetIndex = 1
 	end
@@ -137,18 +131,18 @@ local function switchTarget()
 	lockedTarget = targetList[targetIndex]
 end
 
---// TOGGLE LOCK
+--// TOGGLE
 local function toggleLock(btn)
 	lockEnabled = not lockEnabled
 
 	btn.Text = "Lock: " .. (lockEnabled and "ON" or "OFF")
-	btn.BackgroundColor3 = lockEnabled and Color3.fromRGB(0,200,0) or Color3.fromRGB(200,0,0)
 
 	if lockEnabled then
 		camera.CameraType = Enum.CameraType.Custom
+		player.CameraMode = Enum.CameraMode.LockFirstPerson -- 🔥 สำคัญ
 		startLock()
 	else
-		camera.CameraType = Enum.CameraType.Custom
+		player.CameraMode = Enum.CameraMode.Classic
 		stopLock()
 	end
 end
@@ -159,13 +153,11 @@ local function makeBtn(text, y)
 	b.Size = UDim2.new(0,130,0,40)
 	b.Position = UDim2.new(0,10,0,y)
 	b.Text = text
-	b.BackgroundColor3 = Color3.fromRGB(50,50,50)
-	b.TextColor3 = Color3.new(1,1,1)
 	return b
 end
 
 local lockBtn = makeBtn("Lock: OFF", 200)
-local nextBtn = makeBtn("Next Target", 250)
+local nextBtn = makeBtn("Next", 250)
 local modeBtn = makeBtn("Mode: Player", 300)
 
 --// EVENTS
