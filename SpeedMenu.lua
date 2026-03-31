@@ -1,4 +1,4 @@
-Lock Menu v5 | Codex Mobile Safe | pcall wrapped
+--Lock Menu v5 | Codex Mobile Safe | pcall wrapped
 -- NPC/Player | Scan | Color Filter | Root Rotate Fix
 
 local ok, err = pcall(function()
