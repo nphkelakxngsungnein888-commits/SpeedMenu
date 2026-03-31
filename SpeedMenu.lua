@@ -1,4 +1,4 @@
-Lock Menu v3 | NPC/Player | Scan + Color Filter | Fixed for Codex Mobile
+--Lock Menu v3 | NPC/Player | Scan + Color Filter | Fixed for Codex Mobile
 -- FIXED: forward reference errors, pcall wrapper, mobile safe
 
 local Players = game:GetService("Players")
