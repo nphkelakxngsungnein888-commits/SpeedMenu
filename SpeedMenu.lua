@@ -1,253 +1,148 @@
---[[ 
- ANYTHING FLY - MASTER VERSION
- Fly + NoClip + Record / Replay System
- Designed by PRO ENGINEER
-]]
+-- /client/auto_evade.lua  
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")  
+local RunService = game:GetService("RunService")  
+local UIS = game:GetService("UserInputService")  
 
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local player = Players.LocalPlayer  
 
-------------------------------------------------
--- CONFIG
-------------------------------------------------
-local BASE_SPEED = 60
-local SPEED_MULT = 1
-local DEADZONE = 0.12
+local char, humanoid, root  
 
-local flying = false
-local noclip = false
+local function setupCharacter(c)  
+    char = c  
+    humanoid = c:WaitForChild("Humanoid")  
+    root = c:WaitForChild("HumanoidRootPart")  
+end  
 
-local MODE = "MANUAL" -- MANUAL / RECORD / REPLAY
+setupCharacter(player.Character or player.CharacterAdded:Wait())  
+player.CharacterAdded:Connect(setupCharacter)  
 
-local humanoid
-local controlPart
-local modeType
+-- CONFIG  
+local enabled = false  
+local mode = "Player"  
+local safeDistance = 20  
 
-local alignOri
-local linearVel
+-- UI  
+local gui = Instance.new("ScreenGui", game.CoreGui)  
+gui.Name = "EvadeUI"  
 
-------------------------------------------------
--- RECORD DATA
-------------------------------------------------
-local recordData = {}
-local recordIndex = 1
-local recording = false
-local replaying = false
+local frame = Instance.new("Frame", gui)  
+frame.Size = UDim2.new(0, 240, 0, 160)  
+frame.Position = UDim2.new(0.5, -120, 0.5, -80)  
+frame.BackgroundColor3 = Color3.fromRGB(25,25,25)  
+frame.Active = true  
+frame.Draggable = true  
 
-------------------------------------------------
--- CONTROL PART
-------------------------------------------------
-local function getModelCenter(model)
-	local cf = model:GetBoundingBox()
-	local part = Instance.new("Part")
-	part.Size = Vector3.new(2,2,2)
-	part.Transparency = 1
-	part.CanCollide = false
-	part.Anchored = false
-	part.CFrame = cf
-	part.Name = "_FlyControl"
-	part.Parent = model
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)  
 
-	local weld = Instance.new("WeldConstraint", part)
-	weld.Part0 = part
-	weld.Part1 = model:FindFirstChildWhichIsA("BasePart")
+local toggle = Instance.new("TextButton", frame)  
+toggle.Size = UDim2.new(1, -20, 0, 30)  
+toggle.Position = UDim2.new(0,10,0,10)  
+toggle.Text = "OFF"  
 
-	return part
-end
+local modeBtn = Instance.new("TextButton", frame)  
+modeBtn.Size = UDim2.new(1, -20, 0, 30)  
+modeBtn.Position = UDim2.new(0,10,0,50)  
+modeBtn.Text = "Mode: Player"  
 
-local function getControl()
-	local char = player.Character
-	if not char then return end
+local box = Instance.new("TextBox", frame)  
+box.Size = UDim2.new(1, -20, 0, 30)  
+box.Position = UDim2.new(0,10,0,90)  
+box.Text = tostring(safeDistance)  
 
-	humanoid = char:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
+toggle.MouseButton1Click:Connect(function()  
+    enabled = not enabled  
+    toggle.Text = enabled and "ON" or "OFF"  
+end)  
 
-	if humanoid.SeatPart then
-		local model = humanoid.SeatPart:FindFirstAncestorOfClass("Model")
-		if model then
-			modeType = "VEH"
-			return model.PrimaryPart or getModelCenter(model)
-		end
-	end
+modeBtn.MouseButton1Click:Connect(function()  
+    mode = (mode == "Player") and "Monster" or "Player"  
+    modeBtn.Text = "Mode: "..mode  
+end)  
 
-	modeType = "CHAR"
-	return char:FindFirstChild("HumanoidRootPart")
-end
+box.FocusLost:Connect(function()  
+    local num = tonumber(box.Text)  
+    if num then safeDistance = num end  
+end)  
 
-------------------------------------------------
--- NOCLIP
-------------------------------------------------
-local function applyNoClip(state)
-	if player.Character then
-		for _,v in pairs(player.Character:GetDescendants()) do
-			if v:IsA("BasePart") then
-				v.CanCollide = not state
-			end
-		end
-	end
-end
+-- MONSTER CACHE  
+local monsterCache = {}
 
-------------------------------------------------
--- FLY CORE
-------------------------------------------------
-local function startFly()
-	if flying then return end
-	controlPart = getControl()
-	if not controlPart then return end
-	flying = true
-
-	if modeType == "CHAR" then
-		humanoid.PlatformStand = true
-	end
-
-	pcall(function()
-		controlPart:SetNetworkOwner(player)
-	end)
-
-	local att = Instance.new("Attachment", controlPart)
-
-	alignOri = Instance.new("AlignOrientation")
-	alignOri.Attachment0 = att
-	alignOri.MaxTorque = math.huge
-	alignOri.Responsiveness = 25
-	alignOri.Parent = controlPart
-
-	linearVel = Instance.new("LinearVelocity")
-	linearVel.Attachment0 = att
-	linearVel.MaxForce = math.huge
-	linearVel.Parent = controlPart
-end
-
-local function stopFly()
-	flying = false
-	if humanoid then humanoid.PlatformStand = false end
-	if alignOri then alignOri:Destroy() end
-	if linearVel then linearVel:Destroy() end
-end
-
-------------------------------------------------
--- UI
-------------------------------------------------
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.ResetOnSpawn = false
-
-local menuBtn = Instance.new("TextButton", gui)
-menuBtn.Size = UDim2.fromScale(0.1,0.045)
-menuBtn.Position = UDim2.fromScale(0.02,0.6)
-menuBtn.Text = "∆ MODE"
-menuBtn.TextScaled = true
-menuBtn.BackgroundColor3 = Color3.fromRGB(0,120,255)
-menuBtn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", menuBtn)
-
-local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.fromScale(0.3,0.28)
-panel.Position = UDim2.fromScale(0.35,0.34)
-panel.Visible = false
-panel.Active = true
-panel.Draggable = true
-panel.BackgroundColor3 = Color3.fromRGB(20,20,20)
-Instance.new("UICorner", panel)
-
-local function createBtn(text,y)
-	local b = Instance.new("TextButton", panel)
-	b.Size = UDim2.fromScale(0.85,0.18)
-	b.Position = UDim2.fromScale(0.075,y)
-	b.Text = text
-	b.TextScaled = true
-	b.Font = Enum.Font.GothamBold
-	b.BackgroundColor3 = Color3.fromRGB(60,60,60)
-	b.TextColor3 = Color3.new(1,1,1)
-	Instance.new("UICorner", b)
-	return b
-end
-
-local flyBtn = createBtn("FLY : OFF",0.05)
-local manualBtn = createBtn("MODE : MANUAL",0.28)
-local recordBtn = createBtn("● RECORD",0.51)
-local replayBtn = createBtn("▶ REPLAY",0.74)
-
-------------------------------------------------
--- UI LOGIC
-------------------------------------------------
-menuBtn.MouseButton1Click:Connect(function()
-	panel.Visible = not panel.Visible
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        local newCache = {}
+        for _,v in pairs(workspace:GetChildren()) do
+            if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") then
+                local hum = v:FindFirstChild("Humanoid")
+                if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(v) then
+                    table.insert(newCache, v)
+                end
+            end
+        end
+        monsterCache = newCache
+    end
 end)
 
-flyBtn.MouseButton1Click:Connect(function()
-	if flying then
-		stopFly()
-		flyBtn.Text = "FLY : OFF"
-	else
-		startFly()
-		flyBtn.Text = "FLY : ON"
-	end
+-- GET THREATS  
+local function getThreats()  
+    local threats = {}  
+
+    if mode == "Player" then  
+        for _,p in pairs(Players:GetPlayers()) do  
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then  
+                local hum = p.Character:FindFirstChild("Humanoid")
+                if hum and hum.Health > 0 then
+                    local dist = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude  
+                    if dist < safeDistance then  
+                        table.insert(threats, p.Character)  
+                    end  
+                end
+            end  
+        end  
+    else  
+        for _,v in pairs(monsterCache) do
+            local dist = (root.Position - v.HumanoidRootPart.Position).Magnitude  
+            if dist < safeDistance then  
+                table.insert(threats, v)  
+            end  
+        end  
+    end  
+
+    return threats  
+end  
+
+-- MAIN LOOP (FINAL FIX)
+RunService.Heartbeat:Connect(function()  
+    if not enabled or not root or not humanoid then return end  
+
+    local threats = getThreats()  
+    if #threats == 0 then return end  
+
+    local totalDirection = Vector3.zero  
+
+    for _,target in pairs(threats) do  
+        local tRoot = target:FindFirstChild("HumanoidRootPart")  
+        local hum = target:FindFirstChild("Humanoid")
+
+        if tRoot and hum and hum.Health > 0 then  
+            local offset = root.Position - tRoot.Position  
+            local dist = offset.Magnitude  
+
+            if dist > 0.1 then  
+                totalDirection += offset.Unit / dist  
+            end  
+        end  
+    end  
+
+    if totalDirection.Magnitude == 0 then return end  
+
+    local moveDir = totalDirection.Unit  
+
+    -- 🔥 MoveTo (หลัก)
+    local targetPos = root.Position + (moveDir * 20)
+    humanoid:MoveTo(targetPos)
+
+    -- 🔥 fallback วาร์ปนิด (กันโดนล็อค)
+    root.CFrame = root.CFrame + (moveDir * 0.5)
 end)
-
-manualBtn.MouseButton1Click:Connect(function()
-	MODE = "MANUAL"
-	manualBtn.Text = "MODE : MANUAL"
-end)
-
-recordBtn.MouseButton1Click:Connect(function()
-	MODE = "RECORD"
-	recordData = {}
-	recording = true
-	replaying = false
-	recordIndex = 1
-end)
-
-replayBtn.MouseButton1Click:Connect(function()
-	if #recordData == 0 then return end
-	MODE = "REPLAY"
-	recording = false
-	replaying = true
-	recordIndex = 1
-end)
-
-------------------------------------------------
--- MAIN LOOP
-------------------------------------------------
-RunService.RenderStepped:Connect(function(dt)
-	if not flying or not controlPart then return end
-
-	if MODE == "REPLAY" and replaying then
-		local frame = recordData[recordIndex]
-		if frame then
-			controlPart.CFrame = frame.cf
-			recordIndex += 1
-		else
-			replaying = false
-			MODE = "MANUAL"
-		end
-		return
-	end
-
-	alignOri.CFrame = camera.CFrame
-
-	local dir = humanoid.MoveDirection
-	local vel = Vector3.new(
-		dir.X * BASE_SPEED * SPEED_MULT,
-		0,
-		dir.Z * BASE_SPEED * SPEED_MULT
-	)
-
-	if dir.Magnitude > 0.05 then
-		local y = camera.CFrame.LookVector.Y
-		if math.abs(y) > DEADZONE then
-			vel += Vector3.new(0,y*BASE_SPEED*0.75*SPEED_MULT,0)
-		end
-	end
-
-	linearVel.VectorVelocity = vel
-
-	if MODE == "RECORD" and recording then
-		table.insert(recordData,{
-			cf = controlPart.CFrame
-		})
-	end
-end)
-
