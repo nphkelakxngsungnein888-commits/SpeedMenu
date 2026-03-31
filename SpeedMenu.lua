@@ -1,5 +1,5 @@
---Lock Menu v3 | NPC/Player | Scan + Color Filter | Fixed for Codex Mobile
--- FIXED: forward reference errors, pcall wrapper, mobile safe
+ Lock Menu v4 | NPC/Player | Scan + Color Filter
+-- Mobile Codex Ready | Root Rotate Fix | Universal Humanoid Finder
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -590,6 +590,32 @@ CPLayout.Parent = CPScroll
 -- ══════════════════════════════
 --   CORE FUNCTIONS (ประกาศหลัง UI ทั้งหมด)
 -- ══════════════════════════════
+
+-- หา HumanoidRootPart ทุกชื่อที่เกมใช้
+local ROOT_NAMES = {"HumanoidRootPart", "RootPart", "Root", "Torso", "UpperTorso", "HRP"}
+local function FindRoot(model)
+    for _, name in ipairs(ROOT_NAMES) do
+        local p = model:FindFirstChild(name)
+        if p and p:IsA("BasePart") then return p end
+    end
+    -- fallback: หา BasePart ตัวแรกที่ไม่ใช่ accessory
+    for _, p in ipairs(model:GetDescendants()) do
+        if p:IsA("BasePart") and p.Name ~= "Handle" then return p end
+    end
+    return nil
+end
+
+-- หา Humanoid ชื่ออะไรก็ได้
+local function FindHumanoid(model)
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if hum then return hum end
+    -- บางเกม rename Humanoid
+    for _, obj in ipairs(model:GetDescendants()) do
+        if obj:IsA("Humanoid") then return obj end
+    end
+    return nil
+end
+
 local function GetTeamColor(model)
     local p = Players:GetPlayerFromCharacter(model)
     if p and p.Team then return p.Team.TeamColor.Color end
@@ -612,8 +638,8 @@ local function GetTargetList()
     if Settings.Mode == "Player" then
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
-                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                local hum = p.Character:FindFirstChild("Humanoid")
+                local hrp = FindRoot(p.Character)
+                local hum = FindHumanoid(p.Character)
                 if hrp and hum and hum.Health > 0 then
                     local dist = (hrp.Position - HumanoidRootPart.Position).Magnitude
                     if dist <= range then
@@ -625,10 +651,10 @@ local function GetTargetList()
         end
     else
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= Character then
-                local hrp = obj:FindFirstChild("HumanoidRootPart")
-                local hum = obj:FindFirstChildOfClass("Humanoid")
-                if hrp and hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
+            if obj:IsA("Model") and obj ~= Character and not Players:GetPlayerFromCharacter(obj) then
+                local hrp = FindRoot(obj)
+                local hum = FindHumanoid(obj)
+                if hrp and hum and hum.Health > 0 then
                     local dist = (hrp.Position - HumanoidRootPart.Position).Magnitude
                     if dist <= range then
                         local col = GetTeamColor(obj)
@@ -725,11 +751,23 @@ end
 -- ══════════════════════════════
 --     LOCK CORE
 -- ══════════════════════════════
+local originalCameraType = Enum.CameraType.Custom
+
 local function StartLock()
     if lockConnection then lockConnection:Disconnect() lockConnection = nil end
+
+    originalCameraType = Camera.CameraType
+    Camera.CameraType = Enum.CameraType.Scriptable
+
     local timer = 0
-    lockConnection = RunService.Heartbeat:Connect(function(dt)
+    lockConnection = RunService.RenderStepped:Connect(function(dt)
         if not HumanoidRootPart then return end
+
+        -- force Scriptable ทุก frame เพราะเกมบางเกม reset กลับ
+        if Camera.CameraType ~= Enum.CameraType.Scriptable then
+            Camera.CameraType = Enum.CameraType.Scriptable
+        end
+
         local strength = math.clamp(tonumber(StrBox.Text) or 0.3, 0.01, 1)
         Settings.LockStrength = strength
 
@@ -753,8 +791,8 @@ local function StartLock()
         end
 
         if currentTarget then
-            local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
-            local hum = currentTarget:FindFirstChildOfClass("Humanoid")
+            local hrp = FindRoot(currentTarget)
+            local hum = FindHumanoid(currentTarget)
             if not hrp or not hum or hum.Health <= 0 then
                 SetTarget(nil)
                 return
@@ -764,6 +802,10 @@ local function StartLock()
             local lookAt = CFrame.lookAt(currentCF.Position, targetPos)
             local safeDt = math.min(dt, 0.05)
             local lerpAlpha = 1 - (1 - strength) ^ (safeDt * 60)
+            -- หมุน root ตัวละครหันหาเป้า (วิธีที่ทำให้ล็อคได้ในเกมที่ camera ตาม character)
+            if HumanoidRootPart then
+                HumanoidRootPart.CFrame = CFrame.new(HumanoidRootPart.Position, Vector3.new(targetPos.X, HumanoidRootPart.Position.Y, targetPos.Z))
+            end
             Camera.CFrame = currentCF:Lerp(lookAt, lerpAlpha)
         end
     end)
@@ -771,6 +813,9 @@ end
 
 local function StopLock()
     if lockConnection then lockConnection:Disconnect() lockConnection = nil end
+    pcall(function()
+        Camera.CameraType = originalCameraType
+    end)
     SetTarget(nil)
 end
 
