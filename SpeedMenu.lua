@@ -1,4 +1,4 @@
---Lock Menu v3 | NPC/Player | Scan + Color Filter | Fixed for Codex Mobile
+-- Lock Menu v3 | NPC/Player | Scan + Color Filter | Fixed for Codex Mobile
 -- FIXED: forward reference errors, pcall wrapper, mobile safe
 
 local Players = game:GetService("Players")
@@ -433,7 +433,7 @@ ScanMinBtn.Parent = ScanTitleBar
 Instance.new("UICorner", ScanMinBtn).CornerRadius = UDim.new(0,4)
 
 local ScanCloseBtn = Instance.new("TextButton")
-ScanCloseBtn.Size = UDim2.new(0, SS(20), 0, SS(20))
+.Size = UDim2.new(0, SS(20), 0, SS(20))
 ScanCloseBtn.Position = UDim2.new(1, -SS(12), 0.5, -SS(10))
 ScanCloseBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 ScanCloseBtn.BorderSizePixel = 0
