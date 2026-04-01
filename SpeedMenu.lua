@@ -1,50 +1,36 @@
 --// SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 --// GUI ROOT
 local gui = Instance.new("ScreenGui")
-gui.Name = "AimLockGUI"
+gui.Name = "LockGUI"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = game.CoreGui
 
 --// STATE
 local lockEnabled = false
-local nearestEnabled = false
-local scanWindowOpen = false
+local lockNearest = false
 local lockMode = "Player"
 local lockedTarget = nil
 local lockConn = nil
-local scanConn = nil
+local scanEnabled = false
+
 local lockStrength = 1
 local detectionRange = 500
-local selectedTeamColors = {}
 local mainScale = 10
 local scanScale = 10
 
---// COLORS
-local C = {
-	BG        = Color3.fromRGB(15, 15, 15),
-	BG2       = Color3.fromRGB(22, 22, 22),
-	BG3       = Color3.fromRGB(30, 30, 30),
-	BORDER    = Color3.fromRGB(50, 50, 50),
-	TEXT      = Color3.fromRGB(230, 230, 230),
-	TEXTDIM   = Color3.fromRGB(130, 130, 130),
-	ACCENT    = Color3.fromRGB(210, 210, 210),
-	ON        = Color3.fromRGB(200, 200, 200),
-	OFF       = Color3.fromRGB(70, 70, 70),
-	HOVER     = Color3.fromRGB(40, 40, 40),
-	RED       = Color3.fromRGB(220, 80, 80),
-}
+local selectedColors = {}
+local teamColorMap = {}
 
---// HELPERS
+--// UTILS
 local function getChar()
 	local char = player.Character or player.CharacterAdded:Wait()
 	return char, char:WaitForChild("HumanoidRootPart"), char:WaitForChild("Head")
@@ -54,444 +40,29 @@ local function getRoot(model)
 	return model and model:FindFirstChild("HumanoidRootPart")
 end
 
-local function getHumanoid(model)
-	return model and model:FindFirstChildOfClass("Humanoid")
-end
-
 local function isAlive(model)
-	local h = getHumanoid(model)
+	local h = model and model:FindFirstChildOfClass("Humanoid")
 	return h and h.Health > 0
 end
 
-local function getTeamColor(p)
-	if p and p.Team then
-		return p.Team.TeamColor.Color
-	end
-	return Color3.fromRGB(180, 180, 180)
+local function getDistance(model)
+	local char = player.Character
+	if not char then return math.huge end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local root = getRoot(model)
+	if not hrp or not root then return math.huge end
+	return (hrp.Position - root.Position).Magnitude
 end
-
---// CORNER
-local function addCorner(inst, rad)
-	local c = Instance.new("UICorner", inst)
-	c.CornerRadius = UDim.new(0, rad or 6)
-end
-
-local function addStroke(inst, color, thickness)
-	local s = Instance.new("UIStroke", inst)
-	s.Color = color or C.BORDER
-	s.Thickness = thickness or 1
-end
-
---// BASE FRAME BUILDER
-local function makeFrame(parent, size, pos, bg, zindex)
-	local f = Instance.new("Frame", parent)
-	f.Size = size
-	f.Position = pos
-	f.BackgroundColor3 = bg or C.BG
-	f.BorderSizePixel = 0
-	if zindex then f.ZIndex = zindex end
-	return f
-end
-
-local function makeLabel(parent, text, size, pos, color, fontSize, zindex)
-	local l = Instance.new("TextLabel", parent)
-	l.Size = size
-	l.Position = pos
-	l.Text = text
-	l.TextColor3 = color or C.TEXT
-	l.BackgroundTransparency = 1
-	l.Font = Enum.Font.GothamBold
-	l.TextSize = fontSize or 12
-	l.TextXAlignment = Enum.TextXAlignment.Left
-	if zindex then l.ZIndex = zindex end
-	return l
-end
-
-local function makeBtn(parent, text, size, pos, zindex)
-	local b = Instance.new("TextButton", parent)
-	b.Size = size
-	b.Position = pos
-	b.Text = text
-	b.TextColor3 = C.TEXT
-	b.BackgroundColor3 = C.BG3
-	b.BorderSizePixel = 0
-	b.Font = Enum.Font.GothamBold
-	b.TextSize = 11
-	b.AutoButtonColor = false
-	if zindex then b.ZIndex = zindex end
-	addCorner(b, 5)
-	addStroke(b, C.BORDER, 1)
-	b.MouseEnter:Connect(function() b.BackgroundColor3 = C.HOVER end)
-	b.MouseLeave:Connect(function() b.BackgroundColor3 = C.BG3 end)
-	return b
-end
-
-local function makeInput(parent, default, size, pos, zindex)
-	local box = Instance.new("TextBox", parent)
-	box.Size = size
-	box.Position = pos
-	box.Text = tostring(default)
-	box.TextColor3 = C.TEXT
-	box.BackgroundColor3 = C.BG3
-	box.BorderSizePixel = 0
-	box.Font = Enum.Font.Gotham
-	box.TextSize = 11
-	box.ClearTextOnFocus = false
-	if zindex then box.ZIndex = zindex end
-	addCorner(box, 5)
-	addStroke(box, C.BORDER, 1)
-	return box
-end
-
-local function makeDivider(parent, y, zindex)
-	local d = makeFrame(parent, UDim2.new(1, -16, 0, 1), UDim2.new(0, 8, 0, y), C.BORDER)
-	if zindex then d.ZIndex = zindex end
-	return d
-end
-
---// DRAG FUNCTION
-local function makeDraggable(frame, handle)
-	local dragging = false
-	local dragStart, startPos
-
-	handle.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = frame.Position
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging then
-			if input.UserInputType == Enum.UserInputType.MouseMovement
-				or input.UserInputType == Enum.UserInputType.Touch then
-				local delta = input.Position - dragStart
-				frame.Position = UDim2.new(
-					startPos.X.Scale, startPos.X.Offset + delta.X,
-					startPos.Y.Scale, startPos.Y.Offset + delta.Y
-				)
-			end
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
-	end)
-end
-
---// SCALE APPLY
-local function applyScale(frame, scale, baseW, baseH)
-	local factor = scale / 10
-	frame.Size = UDim2.new(0, math.floor(baseW * factor), 0, math.floor(baseH * factor))
-end
-
---// ─────────────────────────────────────────────
---//  MAIN WINDOW
---// ─────────────────────────────────────────────
-local MAIN_BASE_W = 200
-local MAIN_BASE_H = 330
-
-local mainWin = makeFrame(gui,
-	UDim2.new(0, MAIN_BASE_W, 0, MAIN_BASE_H),
-	UDim2.new(0, 20, 0, 100),
-	C.BG, 10)
-addCorner(mainWin, 10)
-addStroke(mainWin, C.BORDER, 1)
-mainWin.ClipsDescendants = true
-
--- Shadow
-local shadow = makeFrame(gui,
-	UDim2.new(0, MAIN_BASE_W + 10, 0, MAIN_BASE_H + 10),
-	UDim2.new(0, 15, 0, 95),
-	Color3.fromRGB(0,0,0), 9)
-addCorner(shadow, 12)
-shadow.BackgroundTransparency = 0.7
-
--- Title bar
-local titleBar = makeFrame(mainWin,
-	UDim2.new(1, 0, 0, 34),
-	UDim2.new(0, 0, 0, 0),
-	C.BG2, 11)
-addCorner(titleBar, 10)
-
--- fix bottom corners of titlebar
-local titleFix = makeFrame(mainWin,
-	UDim2.new(1, 0, 0, 10),
-	UDim2.new(0, 0, 0, 24),
-	C.BG2, 11)
-
-local titleLabel = makeLabel(titleBar, "◈  AIMLOCK", UDim2.new(1, -70, 1, 0), UDim2.new(0, 12, 0, 0), C.TEXT, 12, 12)
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-
--- Minimize button
-local minBtn = makeBtn(titleBar, "—", UDim2.new(0, 24, 0, 20), UDim2.new(1, -54, 0, 7), 12)
-minBtn.TextSize = 13
-
--- Close button
-local closeBtn = makeBtn(titleBar, "✕", UDim2.new(0, 24, 0, 20), UDim2.new(1, -26, 0, 7), 12)
-closeBtn.BackgroundColor3 = Color3.fromRGB(50, 20, 20)
-
--- Scale label + input (top right of titlebar)
-local scaleLabel = makeLabel(titleBar, "SIZE", UDim2.new(0, 28, 0, 14), UDim2.new(1, -130, 0, 10), C.TEXTDIM, 9, 12)
-local scaleInput = makeInput(titleBar, "10", UDim2.new(0, 28, 0, 20), UDim2.new(1, -102, 0, 7), 12)
-scaleInput.TextXAlignment = Enum.TextXAlignment.Center
-
-makeDraggable(mainWin, titleBar)
-makeDraggable(shadow, titleBar)
-
--- Content frame (scrollable area)
-local contentFrame = makeFrame(mainWin,
-	UDim2.new(1, 0, 1, -34),
-	UDim2.new(0, 0, 0, 34),
-	C.BG, 11)
-
-local scroll = Instance.new("ScrollingFrame", contentFrame)
-scroll.Size = UDim2.new(1, 0, 1, 0)
-scroll.Position = UDim2.new(0, 0, 0, 0)
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 2
-scroll.ScrollBarImageColor3 = C.BORDER
-scroll.CanvasSize = UDim2.new(0, 0, 0, 280)
-scroll.ZIndex = 11
-
-local function row(y)
-	return UDim2.new(0, 8, 0, y)
-end
-
--- Section: LOCK
-local s1 = makeLabel(scroll, "LOCK", UDim2.new(1, -16, 0, 14), row(8), C.TEXTDIM, 9, 12)
-s1.TextXAlignment = Enum.TextXAlignment.Left
-
-local lockBtn = makeBtn(scroll, "LOCK  OFF", UDim2.new(1, -16, 0, 30), row(24), 12)
-lockBtn.TextXAlignment = Enum.TextXAlignment.Center
-
-local nearBtn = makeBtn(scroll, "NEAREST  OFF", UDim2.new(1, -16, 0, 30), row(60), 12)
-nearBtn.TextXAlignment = Enum.TextXAlignment.Center
-
-makeDivider(scroll, 98, 12)
-
--- Section: MODE
-local s2 = makeLabel(scroll, "MODE", UDim2.new(1, -16, 0, 14), row(106), C.TEXTDIM, 9, 12)
-
-local modeBtn = makeBtn(scroll, "MODE  PLAYER", UDim2.new(1, -16, 0, 30), row(122), 12)
-modeBtn.TextXAlignment = Enum.TextXAlignment.Center
-
-local scanToggleBtn = makeBtn(scroll, "SCAN  OFF", UDim2.new(1, -16, 0, 30), row(158), 12)
-scanToggleBtn.TextXAlignment = Enum.TextXAlignment.Center
-
-makeDivider(scroll, 196, 12)
-
--- Section: SETTINGS
-local s3 = makeLabel(scroll, "SETTINGS", UDim2.new(1, -16, 0, 14), row(204), C.TEXTDIM, 9, 12)
-
-local rangeLabel = makeLabel(scroll, "Detection Range", UDim2.new(0, 110, 0, 14), row(220), C.TEXT, 10, 12)
-local rangeInput = makeInput(scroll, "500", UDim2.new(0, 60, 0, 22), UDim2.new(0, 124, 0, 220), 12)
-rangeInput.TextXAlignment = Enum.TextXAlignment.Center
-
-local strengthLabel = makeLabel(scroll, "Lock Strength", UDim2.new(0, 110, 0, 14), row(248), C.TEXT, 10, 12)
-local strengthInput = makeInput(scroll, "1", UDim2.new(0, 60, 0, 22), UDim2.new(0, 124, 0, 248), 12)
-strengthInput.TextXAlignment = Enum.TextXAlignment.Center
-
--- minimized state
-local minimized = false
-local function toggleMinimize()
-	minimized = not minimized
-	local targetH = minimized and 34 or MAIN_BASE_H
-	local factor = mainScale / 10
-	TweenService:Create(mainWin, TweenInfo.new(0.2), {
-		Size = UDim2.new(0, math.floor(MAIN_BASE_W * factor), 0, math.floor(targetH * factor))
-	}):Play()
-	TweenService:Create(shadow, TweenInfo.new(0.2), {
-		Size = UDim2.new(0, math.floor((MAIN_BASE_W+10) * factor), 0, math.floor((targetH+10) * factor))
-	}):Play()
-	contentFrame.Visible = not minimized
-	minBtn.Text = minimized and "▢" or "—"
-end
-
-minBtn.MouseButton1Click:Connect(toggleMinimize)
-
-closeBtn.MouseButton1Click:Connect(function()
-	TweenService:Create(mainWin, TweenInfo.new(0.15), {Size = UDim2.new(0,0,0,0)}):Play()
-	TweenService:Create(shadow, TweenInfo.new(0.15), {Size = UDim2.new(0,0,0,0)}):Play()
-	wait(0.15)
-	gui:Destroy()
-end)
-
-scaleInput.FocusLost:Connect(function()
-	local v = tonumber(scaleInput.Text)
-	if v then
-		mainScale = v
-		local factor = v / 10
-		local targetH = minimized and 34 or MAIN_BASE_H
-		mainWin.Size = UDim2.new(0, math.floor(MAIN_BASE_W * factor), 0, math.floor(targetH * factor))
-		shadow.Size = UDim2.new(0, math.floor((MAIN_BASE_W+10) * factor), 0, math.floor((targetH+10) * factor))
-	end
-end)
-
-rangeInput.FocusLost:Connect(function()
-	local v = tonumber(rangeInput.Text)
-	if v then detectionRange = v end
-end)
-
-strengthInput.FocusLost:Connect(function()
-	local v = tonumber(strengthInput.Text)
-	if v then lockStrength = v end
-end)
-
---// ─────────────────────────────────────────────
---//  SCAN WINDOW
---// ─────────────────────────────────────────────
-local SCAN_BASE_W = 220
-local SCAN_BASE_H = 300
-
-local scanWin = makeFrame(gui,
-	UDim2.new(0, SCAN_BASE_W, 0, SCAN_BASE_H),
-	UDim2.new(0, 240, 0, 100),
-	C.BG, 10)
-addCorner(scanWin, 10)
-addStroke(scanWin, C.BORDER, 1)
-scanWin.Visible = false
-scanWin.ClipsDescendants = true
-
-local scanShadow = makeFrame(gui,
-	UDim2.new(0, SCAN_BASE_W+10, 0, SCAN_BASE_H+10),
-	UDim2.new(0, 235, 0, 95),
-	Color3.fromRGB(0,0,0), 9)
-addCorner(scanShadow, 12)
-scanShadow.BackgroundTransparency = 0.7
-scanShadow.Visible = false
-
--- Scan title bar
-local scanTitleBar = makeFrame(scanWin, UDim2.new(1,0,0,34), UDim2.new(0,0,0,0), C.BG2, 11)
-addCorner(scanTitleBar, 10)
-local scanTitleFix = makeFrame(scanWin, UDim2.new(1,0,0,10), UDim2.new(0,0,0,24), C.BG2, 11)
-
-local scanTitleLabel = makeLabel(scanTitleBar, "◈  SCAN", UDim2.new(1,-100,1,0), UDim2.new(0,12,0,0), C.TEXT, 12, 12)
-
--- Color filter button
-local colorFilterBtn = makeBtn(scanTitleBar, "🎨", UDim2.new(0,24,0,20), UDim2.new(1,-84,0,7), 12)
-colorFilterBtn.TextSize = 14
-
--- Minimize scan
-local scanMinBtn = makeBtn(scanTitleBar, "—", UDim2.new(0,24,0,20), UDim2.new(1,-54,0,7), 12)
-
--- Close scan
-local scanCloseBtn = makeBtn(scanTitleBar, "✕", UDim2.new(0,24,0,20), UDim2.new(1,-26,0,7), 12)
-scanCloseBtn.BackgroundColor3 = Color3.fromRGB(50,20,20)
-
--- Scan size
-local scanScaleLabel = makeLabel(scanTitleBar, "SIZE", UDim2.new(0,28,0,14), UDim2.new(1,-160,0,10), C.TEXTDIM, 9, 12)
-local scanScaleInput = makeInput(scanTitleBar, "10", UDim2.new(0,28,0,20), UDim2.new(1,-132,0,7), 12)
-scanScaleInput.TextXAlignment = Enum.TextXAlignment.Center
-
-makeDraggable(scanWin, scanTitleBar)
-makeDraggable(scanShadow, scanTitleBar)
-
--- Scan body
-local scanBody = makeFrame(scanWin, UDim2.new(1,0,1,-34), UDim2.new(0,0,0,34), C.BG, 11)
-
--- Scan button
-local scanBtn = makeBtn(scanBody, "▶  SCAN NOW", UDim2.new(1,-16,0,28), UDim2.new(0,8,0,8), 12)
-scanBtn.TextXAlignment = Enum.TextXAlignment.Center
-scanBtn.BackgroundColor3 = C.BG3
-
--- Results area
-local scanScroll = Instance.new("ScrollingFrame", scanBody)
-scanScroll.Size = UDim2.new(1,-8, 1, -48)
-scanScroll.Position = UDim2.new(0, 4, 0, 44)
-scanScroll.BackgroundTransparency = 1
-scanScroll.BorderSizePixel = 0
-scanScroll.ScrollBarThickness = 2
-scanScroll.ScrollBarImageColor3 = C.BORDER
-scanScroll.CanvasSize = UDim2.new(0,0,0,0)
-scanScroll.ZIndex = 12
-
-local scanList = Instance.new("UIListLayout", scanScroll)
-scanList.Padding = UDim.new(0, 3)
-scanList.SortOrder = Enum.SortOrder.LayoutOrder
-
--- Color filter popup
-local colorPopup = makeFrame(scanWin, UDim2.new(0,150,0,120), UDim2.new(1,-158,0,34), C.BG2, 15)
-addCorner(colorPopup, 8)
-addStroke(colorPopup, C.BORDER, 1)
-colorPopup.Visible = false
-local colorPopupLabel = makeLabel(colorPopup, "SHOW COLORS", UDim2.new(1,0,0,16), UDim2.new(0,8,0,4), C.TEXTDIM, 9, 16)
-colorPopupLabel.TextXAlignment = Enum.TextXAlignment.Left
-local colorList = Instance.new("ScrollingFrame", colorPopup)
-colorList.Size = UDim2.new(1,-8,1,-24)
-colorList.Position = UDim2.new(0,4,0,22)
-colorList.BackgroundTransparency = 1
-colorList.BorderSizePixel = 0
-colorList.ScrollBarThickness = 2
-colorList.ScrollBarImageColor3 = C.BORDER
-colorList.CanvasSize = UDim2.new(0,0,0,0)
-colorList.ZIndex = 16
-local colorUIList = Instance.new("UIListLayout", colorList)
-colorUIList.Padding = UDim.new(0,3)
-
--- scan minimized
-local scanMinimized = false
-local function toggleScanMinimize()
-	scanMinimized = not scanMinimized
-	local targetH = scanMinimized and 34 or SCAN_BASE_H
-	local factor = scanScale / 10
-	TweenService:Create(scanWin, TweenInfo.new(0.2), {
-		Size = UDim2.new(0, math.floor(SCAN_BASE_W*factor), 0, math.floor(targetH*factor))
-	}):Play()
-	TweenService:Create(scanShadow, TweenInfo.new(0.2), {
-		Size = UDim2.new(0, math.floor((SCAN_BASE_W+10)*factor), 0, math.floor((targetH+10)*factor))
-	}):Play()
-	scanBody.Visible = not scanMinimized
-	scanMinBtn.Text = scanMinimized and "▢" or "—"
-end
-
-scanMinBtn.MouseButton1Click:Connect(toggleScanMinimize)
-
-scanCloseBtn.MouseButton1Click:Connect(function()
-	scanWin.Visible = false
-	scanShadow.Visible = false
-	scanWindowOpen = false
-	scanToggleBtn.Text = "SCAN  OFF"
-	colorPopup.Visible = false
-end)
-
-scanScaleInput.FocusLost:Connect(function()
-	local v = tonumber(scanScaleInput.Text)
-	if v then
-		scanScale = v
-		local factor = v / 10
-		local targetH = scanMinimized and 34 or SCAN_BASE_H
-		scanWin.Size = UDim2.new(0, math.floor(SCAN_BASE_W*factor), 0, math.floor(targetH*factor))
-		scanShadow.Size = UDim2.new(0, math.floor((SCAN_BASE_W+10)*factor), 0, math.floor((targetH+10)*factor))
-	end
-end)
-
-colorFilterBtn.MouseButton1Click:Connect(function()
-	colorPopup.Visible = not colorPopup.Visible
-end)
 
 --// BUILD TARGET LIST
 local function buildTargetList()
 	local list = {}
-	local char = player.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return list end
-
 	if lockMode == "Player" then
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= player and p.Character and isAlive(p.Character) then
-				local root = getRoot(p.Character)
-				if root then
-					local dist = (root.Position - hrp.Position).Magnitude
-					if dist <= detectionRange then
-						table.insert(list, {model = p.Character, name = p.Name, isPlayer = true, playerObj = p})
-					end
+				local d = getDistance(p.Character)
+				if d <= detectionRange then
+					table.insert(list, { model = p.Character, name = p.Name, team = p.Team, isPlayer = true })
 				end
 			end
 		end
@@ -501,15 +72,15 @@ local function buildTargetList()
 			if p.Character then playerChars[p.Character] = true end
 		end
 		for _, obj in ipairs(workspace:GetDescendants()) do
-			if obj:IsA("Model") and not playerChars[obj]
+			if obj:IsA("Model")
+				and not playerChars[obj]
 				and obj:FindFirstChildOfClass("Humanoid")
-				and obj:FindFirstChild("HumanoidRootPart") and isAlive(obj) then
-				local root = getRoot(obj)
-				if root then
-					local dist = (root.Position - hrp.Position).Magnitude
-					if dist <= detectionRange then
-						table.insert(list, {model = obj, name = obj.Name, isPlayer = false, playerObj = nil})
-					end
+				and obj:FindFirstChild("HumanoidRootPart")
+				and isAlive(obj)
+			then
+				local d = getDistance(obj)
+				if d <= detectionRange then
+					table.insert(list, { model = obj, name = obj.Name, team = nil, isPlayer = false })
 				end
 			end
 		end
@@ -517,21 +88,31 @@ local function buildTargetList()
 	return list
 end
 
---// GET NEAREST
-local function getNearestTarget(list)
-	local char = player.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return nil end
-
-	local best, bestDist = nil, math.huge
+--// GET FRONT TARGET
+local function getFrontTarget(list)
+	local best, bestDot = nil, -math.huge
+	local camCF = camera.CFrame
 	for _, t in ipairs(list) do
 		local root = getRoot(t.model)
 		if root then
-			local d = (root.Position - hrp.Position).Magnitude
-			if d < bestDist then
-				bestDist = d
+			local dir = (root.Position - camCF.Position).Unit
+			local dot = camCF.LookVector:Dot(dir)
+			if dot > bestDot then
+				bestDot = dot
 				best = t
 			end
+		end
+	end
+	return best
+end
+
+local function getNearestTarget(list)
+	local best, bestDist = nil, math.huge
+	for _, t in ipairs(list) do
+		local d = getDistance(t.model)
+		if d < bestDist then
+			bestDist = d
+			best = t
 		end
 	end
 	return best
@@ -540,33 +121,40 @@ end
 --// LOCK LOGIC
 local function startLock()
 	if lockConn then lockConn:Disconnect() end
+
+	local list = buildTargetList()
+	if lockNearest then
+		lockedTarget = getNearestTarget(list)
+	else
+		lockedTarget = getFrontTarget(list)
+	end
+
 	lockConn = RunService.RenderStepped:Connect(function()
 		if not lockEnabled then return end
 		local ok, char, hrp, head = pcall(getChar)
-		if not ok then return end
+		if not ok or not hrp then return end
 
-		if lockedTarget == nil then
-			if nearestEnabled then
-				local list = buildTargetList()
-				local t = getNearestTarget(list)
-				if t then lockedTarget = t.model end
-			end
-			return
+		if not lockedTarget or not isAlive(lockedTarget.model) then
+			local newList = buildTargetList()
+			lockedTarget = getNearestTarget(newList)
+			if not lockedTarget then return end
 		end
 
-		local root = getRoot(lockedTarget)
-		if not root or not isAlive(lockedTarget) then
+		local root = getRoot(lockedTarget.model)
+		if not root then
 			lockedTarget = nil
 			return
 		end
 
-		local s = math.clamp(lockStrength * 0.1, 0.01, 1)
-		local flat = (root.Position - hrp.Position) * Vector3.new(1,0,1)
+		local targetPos = root.Position
+		local myPos = hrp.Position
+
+		local flat = (targetPos - myPos) * Vector3.new(1, 0, 1)
 		if flat.Magnitude > 0.1 then
-			local targetCF = CFrame.lookAt(hrp.Position, hrp.Position + flat)
-			hrp.CFrame = hrp.CFrame:Lerp(targetCF, s)
+			local alpha = math.clamp(lockStrength * 0.1, 0.01, 1)
+			local newCF = CFrame.lookAt(myPos, myPos + flat)
+			hrp.CFrame = hrp.CFrame:Lerp(newCF, alpha)
 		end
-		camera.CFrame = camera.CFrame:Lerp(CFrame.lookAt(head.Position, root.Position), s)
 	end)
 end
 
@@ -575,152 +163,659 @@ local function stopLock()
 	lockedTarget = nil
 end
 
---// SCAN DISPLAY
-local foundColors = {}
+--// ==================== UI BUILDER ====================
 
-local function runScan()
-	-- clear old entries
-	for _, c in ipairs(scanScroll:GetChildren()) do
-		if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
-	end
-	foundColors = {}
+local FONT = Enum.Font.GothamBold
+local FONT_LIGHT = Enum.Font.Gotham
 
-	local list = buildTargetList()
+local COLOR_BG = Color3.fromRGB(12, 12, 12)
+local COLOR_PANEL = Color3.fromRGB(20, 20, 20)
+local COLOR_BORDER = Color3.fromRGB(50, 50, 50)
+local COLOR_WHITE = Color3.fromRGB(240, 240, 240)
+local COLOR_GRAY = Color3.fromRGB(140, 140, 140)
+local COLOR_ACCENT = Color3.fromRGB(220, 220, 220)
+local COLOR_ON = Color3.fromRGB(200, 200, 200)
+local COLOR_OFF = Color3.fromRGB(60, 60, 60)
+local COLOR_BTN = Color3.fromRGB(30, 30, 30)
+local COLOR_BTN_HOVER = Color3.fromRGB(45, 45, 45)
 
-	-- collect unique team colors for color popup
-	for _, c in ipairs(colorList:GetChildren()) do
-		if not c:IsA("UIListLayout") then c:Destroy() end
-	end
+local function addCorner(parent, radius)
+	local c = Instance.new("UICorner", parent)
+	c.CornerRadius = UDim.new(0, radius or 6)
+end
 
-	local colorSet = {}
-	for _, t in ipairs(list) do
-		local col
-		if t.isPlayer then
-			col = getTeamColor(t.playerObj)
-		else
-			col = Color3.fromRGB(220, 80, 80)
-		end
-		local key = math.floor(col.R*255).."_"..math.floor(col.G*255).."_"..math.floor(col.B*255)
-		if not colorSet[key] then
-			colorSet[key] = col
-			foundColors[key] = {color = col, show = true}
+local function addStroke(parent, color, thickness)
+	local s = Instance.new("UIStroke", parent)
+	s.Color = color or COLOR_BORDER
+	s.Thickness = thickness or 1
+end
 
-			-- color toggle button
-			local cb = Instance.new("TextButton", colorList)
-			cb.Size = UDim2.new(1,-4,0,22)
-			cb.BackgroundColor3 = col
-			cb.TextColor3 = Color3.fromRGB(255,255,255)
-			cb.Font = Enum.Font.GothamBold
-			cb.TextSize = 10
-			cb.Text = "● " .. key:gsub("_",",")
-			cb.BorderSizePixel = 0
-			addCorner(cb, 4)
-			local showing = true
-			cb.MouseButton1Click:Connect(function()
-				showing = not showing
-				foundColors[key].show = showing
-				cb.BackgroundTransparency = showing and 0 or 0.6
-				cb.Text = (showing and "●" or "○") .. " " .. key:gsub("_",",")
-			end)
-		end
-	end
+local function makeDraggable(frame, handle)
+	local dragging = false
+	local dragStart, startPos
 
-	local colorListH = #colorSet * 25
-	colorList.CanvasSize = UDim2.new(0,0,0,colorListH)
-
-	-- now display filtered entries
-	local totalH = 0
-	for _, t in ipairs(list) do
-		local col
-		if t.isPlayer then
-			col = getTeamColor(t.playerObj)
-		else
-			col = Color3.fromRGB(220, 80, 80)
-		end
-		local key = math.floor(col.R*255).."_"..math.floor(col.G*255).."_"..math.floor(col.B*255)
-		if foundColors[key] and foundColors[key].show then
-			local btn = Instance.new("TextButton", scanScroll)
-			btn.Size = UDim2.new(1,-4,0,26)
-			btn.BackgroundColor3 = C.BG3
-			btn.TextColor3 = col
-			btn.Font = Enum.Font.GothamBold
-			btn.TextSize = 11
-			btn.Text = "  ◆ " .. t.name
-	btn.TextXAlignment = Enum.TextXAlignment.Left
-			btn.BorderSizePixel = 0
-			btn.AutoButtonColor = false
-			addCorner(btn, 5)
-			addStroke(btn, col, 1)
-
-			local tRef = t
-			btn.MouseButton1Click:Connect(function()
-				lockedTarget = tRef.model
-				if not lockEnabled then
-					lockEnabled = true
-					lockBtn.Text = "LOCK  ON"
-					lockBtn.BackgroundColor3 = C.BG
-					addStroke(lockBtn, C.ON, 1.5)
-					camera.CameraType = Enum.CameraType.Custom
-					player.CameraMode = Enum.CameraMode.LockFirstPerson
-					startLock()
+	local function input(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
 				end
 			end)
-
-			btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.HOVER end)
-			btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.BG3 end)
-
-			totalH = totalH + 29
 		end
 	end
 
-	scanScroll.CanvasSize = UDim2.new(0,0,0,totalH)
+	handle.InputBegan:Connect(input)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			frame.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
 end
 
-scanBtn.MouseButton1Click:Connect(runScan)
-
---// TOGGLE SCAN WINDOW
-local function toggleScanWindow()
-	scanWindowOpen = not scanWindowOpen
-	scanWin.Visible = scanWindowOpen
-	scanShadow.Visible = scanWindowOpen
-	scanToggleBtn.Text = "SCAN  " .. (scanWindowOpen and "ON" or "OFF")
-	scanToggleBtn.BackgroundColor3 = scanWindowOpen and C.BG or C.BG3
+local function makeLabel(parent, text, size, color, font)
+	local l = Instance.new("TextLabel", parent)
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.TextSize = size or 13
+	l.TextColor3 = color or COLOR_WHITE
+	l.Font = font or FONT_LIGHT
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	return l
 end
 
-scanToggleBtn.MouseButton1Click:Connect(toggleScanWindow)
+local function makeInput(parent, defaultVal, placeholder)
+	local box = Instance.new("TextBox", parent)
+	box.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+	box.TextColor3 = COLOR_WHITE
+	box.PlaceholderText = placeholder or ""
+	box.Text = tostring(defaultVal)
+	box.Font = FONT_LIGHT
+	box.TextSize = 12
+	box.ClearTextOnFocus = false
+	addCorner(box, 4)
+	addStroke(box, COLOR_BORDER)
+	return box
+end
 
---// LOCK BUTTON
-lockBtn.MouseButton1Click:Connect(function()
-	lockEnabled = not lockEnabled
-	if lockEnabled then
-		lockBtn.Text = "LOCK  ON"
-		camera.CameraType = Enum.CameraType.Custom
-		player.CameraMode = Enum.CameraMode.LockFirstPerson
+local function makeButton(parent, text, onClick)
+	local btn = Instance.new("TextButton", parent)
+	btn.BackgroundColor3 = COLOR_BTN
+	btn.TextColor3 = COLOR_WHITE
+	btn.Text = text
+	btn.Font = FONT
+	btn.TextSize = 12
+	btn.AutoButtonColor = false
+	addCorner(btn, 5)
+	addStroke(btn, COLOR_BORDER)
+
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = COLOR_BTN_HOVER }):Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = COLOR_BTN }):Play()
+	end)
+	btn.MouseButton1Click:Connect(onClick)
+	return btn
+end
+
+local function makeToggleBtn(parent, label, initState, onChange)
+	local row = Instance.new("Frame", parent)
+	row.BackgroundTransparency = 1
+	row.Size = UDim2.new(1, 0, 0, 32)
+
+	local lbl = makeLabel(row, label, 12, COLOR_GRAY)
+	lbl.Size = UDim2.new(1, -50, 1, 0)
+	lbl.Position = UDim2.new(0, 0, 0, 0)
+	lbl.TextYAlignment = Enum.TextYAlignment.Center
+
+	local track = Instance.new("Frame", row)
+	track.Size = UDim2.new(0, 40, 0, 20)
+	track.Position = UDim2.new(1, -44, 0.5, -10)
+	track.BackgroundColor3 = initState and COLOR_ON or COLOR_OFF
+	addCorner(track, 10)
+
+	local knob = Instance.new("Frame", track)
+	knob.Size = UDim2.new(0, 14, 0, 14)
+	knob.Position = initState and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+	knob.BackgroundColor3 = COLOR_WHITE
+	addCorner(knob, 7)
+
+	local state = initState
+	local btn = Instance.new("TextButton", row)
+	btn.Size = UDim2.new(1, 0, 1, 0)
+	btn.BackgroundTransparency = 1
+	btn.Text = ""
+	btn.MouseButton1Click:Connect(function()
+		state = not state
+		TweenService:Create(track, TweenInfo.new(0.2), { BackgroundColor3 = state and COLOR_ON or COLOR_OFF }):Play()
+		TweenService:Create(knob, TweenInfo.new(0.2), {
+			Position = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+		}):Play()
+		onChange(state)
+	end)
+
+	return row, function() return state end
+end
+
+local function makeInputRow(parent, label, defaultVal, onChanged)
+	local row = Instance.new("Frame", parent)
+	row.BackgroundTransparency = 1
+	row.Size = UDim2.new(1, 0, 0, 32)
+
+	local lbl = makeLabel(row, label, 12, COLOR_GRAY)
+	lbl.Size = UDim2.new(1, -70, 1, 0)
+	lbl.Position = UDim2.new(0, 0, 0, 0)
+	lbl.TextYAlignment = Enum.TextYAlignment.Center
+
+	local box = makeInput(row, defaultVal, "")
+	box.Size = UDim2.new(0, 60, 0, 22)
+	box.Position = UDim2.new(1, -62, 0.5, -11)
+	box.TextXAlignment = Enum.TextXAlignment.Center
+
+	box.FocusLost:Connect(function()
+		local v = tonumber(box.Text)
+		if v then onChanged(v) end
+	end)
+	return row
+end
+
+local function makeSeparator(parent)
+	local f = Instance.new("Frame", parent)
+	f.BackgroundColor3 = COLOR_BORDER
+	f.Size = UDim2.new(1, 0, 0, 1)
+	f.BorderSizePixel = 0
+	return f
+end
+
+--// ==================== MAIN WINDOW ====================
+
+local function buildScaleSize(scale)
+	local base = scale * 14
+	return UDim2.new(0, math.max(base * 12, 150), 0, 0)
+end
+
+local mainWin = Instance.new("Frame", gui)
+mainWin.BackgroundColor3 = COLOR_BG
+mainWin.Position = UDim2.new(0, 20, 0, 80)
+mainWin.Size = UDim2.new(0, 180, 0, 0)
+mainWin.AutomaticSize = Enum.AutomaticSize.Y
+mainWin.ClipsDescendants = true
+addCorner(mainWin, 8)
+addStroke(mainWin, COLOR_BORDER, 1)
+
+-- Shadow
+local shadow = Instance.new("Frame", mainWin)
+shadow.Size = UDim2.new(1, 12, 1, 12)
+shadow.Position = UDim2.new(0, -6, 0, -6)
+shadow.BackgroundColor3 = Color3.fromRGB(0,0,0)
+shadow.BackgroundTransparency = 0.6
+shadow.ZIndex = mainWin.ZIndex - 1
+addCorner(shadow, 10)
+shadow.ZIndex = 0
+
+local mainLayout = Instance.new("UIListLayout", mainWin)
+mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+mainLayout.Padding = UDim.new(0, 0)
+
+local mainPad = Instance.new("UIPadding", mainWin)
+mainPad.PaddingLeft = UDim.new(0, 0)
+mainPad.PaddingRight = UDim.new(0, 0)
+
+-- TITLE BAR
+local titleBar = Instance.new("Frame", mainWin)
+titleBar.BackgroundColor3 = COLOR_PANEL
+titleBar.Size = UDim2.new(1, 0, 0, 32)
+titleBar.LayoutOrder = 0
+
+local titleLabel = makeLabel(titleBar, "  ◈  LOCK", 13, COLOR_WHITE, FONT)
+titleLabel.Size = UDim2.new(1, -80, 1, 0)
+titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+-- Scale input
+local scaleBox = makeInput(titleBar, tostring(mainScale), "10")
+scaleBox.Size = UDim2.new(0, 28, 0, 20)
+scaleBox.Position = UDim2.new(1, -62, 0.5, -10)
+scaleBox.TextXAlignment = Enum.TextXAlignment.Center
+scaleBox.FocusLost:Connect(function()
+	local v = tonumber(scaleBox.Text)
+	if v then
+		mainScale = v
+		local w = math.max(v * 18, 150)
+		mainWin.Size = UDim2.new(0, w, 0, 0)
+	end
+end)
+
+local collapseBtn = Instance.new("TextButton", titleBar)
+collapseBtn.Size = UDim2.new(0, 20, 0, 20)
+collapseBtn.Position = UDim2.new(1, -32, 0.5, -10)
+collapseBtn.BackgroundTransparency = 1
+collapseBtn.Text = "─"
+collapseBtn.TextColor3 = COLOR_GRAY
+collapseBtn.Font = FONT
+collapseBtn.TextSize = 14
+
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.new(0, 20, 0, 20)
+closeBtn.Position = UDim2.new(1, -10, 0.5, -10)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = COLOR_GRAY
+closeBtn.Font = FONT
+closeBtn.TextSize = 13
+
+makeDraggable(mainWin, titleBar)
+
+-- BODY
+local body = Instance.new("Frame", mainWin)
+body.BackgroundTransparency = 1
+body.Size = UDim2.new(1, 0, 0, 0)
+body.AutomaticSize = Enum.AutomaticSize.Y
+body.LayoutOrder = 1
+
+local bodyLayout = Instance.new("UIListLayout", body)
+bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+bodyLayout.Padding = UDim.new(0, 2)
+
+local bodyPad = Instance.new("UIPadding", body)
+bodyPad.PaddingLeft = UDim.new(0, 10)
+bodyPad.PaddingRight = UDim.new(0, 10)
+bodyPad.PaddingTop = UDim.new(0, 8)
+bodyPad.PaddingBottom = UDim.new(0, 8)
+
+-- COLLAPSE
+local collapsed = false
+collapseBtn.MouseButton1Click:Connect(function()
+	collapsed = not collapsed
+	body.Visible = not collapsed
+	collapseBtn.Text = collapsed and "□" or "─"
+end)
+closeBtn.MouseButton1Click:Connect(function()
+	mainWin:Destroy()
+end)
+
+-- MODE ROW
+local modeRow = Instance.new("Frame", body)
+modeRow.BackgroundTransparency = 1
+modeRow.Size = UDim2.new(1, 0, 0, 30)
+modeRow.LayoutOrder = 1
+
+local modeLbl = makeLabel(modeRow, "Mode", 12, COLOR_GRAY)
+modeLbl.Size = UDim2.new(0.5, -2, 1, 0)
+modeLbl.TextYAlignment = Enum.TextYAlignment.Center
+
+local playerModeBtn = makeButton(modeRow, "Player", function() end)
+playerModeBtn.Size = UDim2.new(0.25, -2, 1, -4)
+playerModeBtn.Position = UDim2.new(0.5, 0, 0, 2)
+
+local npcModeBtn = makeButton(modeRow, "NPC", function() end)
+npcModeBtn.Size = UDim2.new(0.25, -2, 1, -4)
+npcModeBtn.Position = UDim2.new(0.75, 2, 0, 2)
+
+local function updateModeButtons()
+	playerModeBtn.BackgroundColor3 = lockMode == "Player" and Color3.fromRGB(50,50,50) or COLOR_BTN
+	npcModeBtn.BackgroundColor3 = lockMode == "NPC" and Color3.fromRGB(50,50,50) or COLOR_BTN
+end
+updateModeButtons()
+
+playerModeBtn.MouseButton1Click:Connect(function()
+	lockMode = "Player"
+	updateModeButtons()
+end)
+npcModeBtn.MouseButton1Click:Connect(function()
+	lockMode = "NPC"
+	updateModeButtons()
+end)
+
+makeSeparator(body).LayoutOrder = 2
+
+-- LOCK TOGGLE
+local lockRow, getLockState = makeToggleBtn(body, "Lock Target", false, function(s)
+	lockEnabled = s
+	if s then
 		startLock()
 	else
-		lockBtn.Text = "LOCK  OFF"
-		player.CameraMode = Enum.CameraMode.Classic
 		stopLock()
 	end
 end)
+lockRow.LayoutOrder = 3
 
---// NEAREST BUTTON
-nearBtn.MouseButton1Click:Connect(function()
-	nearestEnabled = not nearestEnabled
-	nearBtn.Text = "NEAREST  " .. (nearestEnabled and "ON" or "OFF")
+-- NEAREST TOGGLE
+local nearestRow, getNearestState = makeToggleBtn(body, "Lock Nearest", false, function(s)
+	lockNearest = s
 end)
+nearestRow.LayoutOrder = 4
 
---// MODE BUTTON
-modeBtn.MouseButton1Click:Connect(function()
-	lockMode = (lockMode == "Player") and "NPC" or "Player"
-	modeBtn.Text = "MODE  " .. lockMode
-	lockedTarget = nil
+makeSeparator(body).LayoutOrder = 5
+
+-- STRENGTH
+local strengthRow = makeInputRow(body, "Lock Strength", lockStrength, function(v)
+	lockStrength = v
 end)
+strengthRow.LayoutOrder = 6
 
---// RESPAWN HANDLER
-player.CharacterAdded:Connect(function(char)
-	char:WaitForChild("HumanoidRootPart")
-	if lockEnabled then
-		startLock()
+-- RANGE
+local rangeRow = makeInputRow(body, "Detect Range", detectionRange, function(v)
+	detectionRange = v
+end)
+rangeRow.LayoutOrder = 7
+
+makeSeparator(body).LayoutOrder = 8
+
+-- SCAN TOGGLE
+local scanRow, getScanState = makeToggleBtn(body, "Scan Menu", false, function(s)
+	scanEnabled = s
+	if scanWin then
+		scanWin.Visible = s
 	end
 end)
+scanRow.LayoutOrder = 9
+
+--// ==================== SCAN WINDOW ====================
+
+local scanWin = Instance.new("Frame", gui)
+scanWin.BackgroundColor3 = COLOR_BG
+scanWin.Position = UDim2.new(0, 210, 0, 80)
+scanWin.Size = UDim2.new(0, 200, 0, 0)
+scanWin.AutomaticSize = Enum.AutomaticSize.Y
+scanWin.ClipsDescendants = true
+scanWin.Visible = false
+addCorner(scanWin, 8)
+addStroke(scanWin, COLOR_BORDER, 1)
+
+local scanLayout = Instance.new("UIListLayout", scanWin)
+scanLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- SCAN TITLE
+local scanTitle = Instance.new("Frame", scanWin)
+scanTitle.BackgroundColor3 = COLOR_PANEL
+scanTitle.Size = UDim2.new(1, 0, 0, 32)
+scanTitle.LayoutOrder = 0
+
+local scanTitleLbl = makeLabel(scanTitle, "  ◈  SCAN", 13, COLOR_WHITE, FONT)
+scanTitleLbl.Size = UDim2.new(1, -90, 1, 0)
+scanTitleLbl.TextYAlignment = Enum.TextYAlignment.Center
+
+local scanScaleBox = makeInput(scanTitle, tostring(scanScale), "10")
+scanScaleBox.Size = UDim2.new(0, 28, 0, 20)
+scanScaleBox.Position = UDim2.new(1, -88, 0.5, -10)
+scanScaleBox.TextXAlignment = Enum.TextXAlignment.Center
+scanScaleBox.FocusLost:Connect(function()
+	local v = tonumber(scanScaleBox.Text)
+	if v then
+		scanScale = v
+		local w = math.max(v * 20, 160)
+		scanWin.Size = UDim2.new(0, w, 0, 0)
+	end
+end)
+
+-- Color filter btn
+local colorBtn = Instance.new("TextButton", scanTitle)
+colorBtn.Size = UDim2.new(0, 20, 0, 20)
+colorBtn.Position = UDim2.new(1, -52, 0.5, -10)
+colorBtn.BackgroundTransparency = 1
+colorBtn.Text = "🎨"
+colorBtn.TextColor3 = COLOR_GRAY
+colorBtn.Font = FONT
+colorBtn.TextSize = 13
+
+local scanCollapseBtn = Instance.new("TextButton", scanTitle)
+scanCollapseBtn.Size = UDim2.new(0, 20, 0, 20)
+scanCollapseBtn.Position = UDim2.new(1, -32, 0.5, -10)
+scanCollapseBtn.BackgroundTransparency = 1
+scanCollapseBtn.Text = "─"
+scanCollapseBtn.TextColor3 = COLOR_GRAY
+scanCollapseBtn.Font = FONT
+scanCollapseBtn.TextSize = 14
+
+local scanCloseBtn = Instance.new("TextButton", scanTitle)
+scanCloseBtn.Size = UDim2.new(0, 20, 0, 20)
+scanCloseBtn.Position = UDim2.new(1, -10, 0.5, -10)
+scanCloseBtn.BackgroundTransparency = 1
+scanCloseBtn.Text = "✕"
+scanCloseBtn.TextColor3 = COLOR_GRAY
+scanCloseBtn.Font = FONT
+scanCloseBtn.TextSize = 13
+
+makeDraggable(scanWin, scanTitle)
+
+local scanCollapsed = false
+scanCollapseBtn.MouseButton1Click:Connect(function()
+	scanCollapsed = not scanCollapsed
+	scanCollapseBtn.Text = scanCollapsed and "□" or "─"
+end)
+scanCloseBtn.MouseButton1Click:Connect(function()
+	scanWin:Destroy()
+end)
+
+-- SCAN BODY
+local scanBody = Instance.new("Frame", scanWin)
+scanBody.BackgroundTransparency = 1
+scanBody.Size = UDim2.new(1, 0, 0, 0)
+scanBody.AutomaticSize = Enum.AutomaticSize.Y
+scanBody.LayoutOrder = 1
+
+local scanBodyLayout = Instance.new("UIListLayout", scanBody)
+scanBodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+scanBodyLayout.Padding = UDim.new(0, 2)
+
+local scanBodyPad = Instance.new("UIPadding", scanBody)
+scanBodyPad.PaddingLeft = UDim.new(0, 8)
+scanBodyPad.PaddingRight = UDim.new(0, 8)
+scanBodyPad.PaddingTop = UDim.new(0, 8)
+scanBodyPad.PaddingBottom = UDim.new(0, 8)
+
+scanCollapseBtn.MouseButton1Click:Connect(function()
+	scanBody.Visible = not scanCollapsed
+end)
+
+-- SCAN BTN
+local scanBtn = makeButton(scanBody, "▶  SCAN", function() end)
+scanBtn.Size = UDim2.new(1, 0, 0, 28)
+scanBtn.LayoutOrder = 0
+
+-- RESULT LIST
+local resultScroll = Instance.new("ScrollingFrame", scanBody)
+resultScroll.BackgroundTransparency = 1
+resultScroll.Size = UDim2.new(1, 0, 0, 180)
+resultScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+resultScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+resultScroll.ScrollBarThickness = 3
+resultScroll.ScrollBarImageColor3 = COLOR_BORDER
+resultScroll.LayoutOrder = 1
+
+local resultLayout = Instance.new("UIListLayout", resultScroll)
+resultLayout.SortOrder = Enum.SortOrder.LayoutOrder
+resultLayout.Padding = UDim.new(0, 2)
+
+-- COLOR PICKER PANEL
+local colorPanel = Instance.new("Frame", scanBody)
+colorPanel.BackgroundColor3 = COLOR_PANEL
+colorPanel.Size = UDim2.new(1, 0, 0, 0)
+colorPanel.AutomaticSize = Enum.AutomaticSize.Y
+colorPanel.Visible = false
+colorPanel.LayoutOrder = 2
+addCorner(colorPanel, 6)
+addStroke(colorPanel, COLOR_BORDER)
+
+local colorPanelPad = Instance.new("UIPadding", colorPanel)
+colorPanelPad.PaddingAll = UDim.new(0, 6)
+
+local colorPanelLayout = Instance.new("UIListLayout", colorPanel)
+colorPanelLayout.FillDirection = Enum.FillDirection.Horizontal
+colorPanelLayout.Padding = UDim.new(0, 4)
+colorPanelLayout.Wraps = true
+
+colorBtn.MouseButton1Click:Connect(function()
+	colorPanel.Visible = not colorPanel.Visible
+end)
+
+-- TEAM COLOR UTILS
+local function getTeamColor(entry)
+	if entry.isPlayer and entry.team then
+		return entry.team.TeamColor.Color
+	elseif not entry.isPlayer then
+		return Color3.fromRGB(255, 80, 80) -- NPC = red
+	else
+		return Color3.fromRGB(150, 150, 150)
+	end
+end
+
+local function shouldShow(entry)
+	if #selectedColors == 0 then return true end
+	local c = getTeamColor(entry)
+	for _, sc in ipairs(selectedColors) do
+		if math.abs(c.R - sc.R) < 0.05
+			and math.abs(c.G - sc.G) < 0.05
+			and math.abs(c.B - sc.B) < 0.05 then
+			return true
+		end
+	end
+	return false
+end
+
+-- SCAN ACTION
+local foundColors = {}
+
+local function doScan()
+	-- Clear
+	for _, c in ipairs(resultScroll:GetChildren()) do
+		if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
+	end
+
+	local list = buildTargetList()
+	foundColors = {}
+
+	-- Group by team/type
+	local groups = {}
+	for _, entry in ipairs(list) do
+		local key
+		if entry.isPlayer and entry.team then
+			key = "Team: " .. entry.team.Name
+		elseif entry.isPlayer then
+			key = "No Team"
+		else
+			key = "NPC / Monster"
+		end
+		if not groups[key] then groups[key] = { entries = {}, color = getTeamColor(entry) } end
+		table.insert(groups[key].entries, entry)
+
+		local c = getTeamColor(entry)
+		local found = false
+		for _, fc in ipairs(foundColors) do
+			if math.abs(fc.R - c.R) < 0.05 and math.abs(fc.G - c.G) < 0.05 and math.abs(fc.B - c.B) < 0.05 then
+				found = true break
+			end
+		end
+		if not found then table.insert(foundColors, c) end
+	end
+
+	-- Rebuild color picker
+	for _, c in ipairs(colorPanel:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
+	end
+	for _, fc in ipairs(foundColors) do
+		local cb = Instance.new("TextButton", colorPanel)
+		cb.Size = UDim2.new(0, 18, 0, 18)
+		cb.BackgroundColor3 = fc
+		cb.Text = ""
+		cb.AutoButtonColor = false
+		addCorner(cb, 4)
+
+		local isSelected = false
+		cb.MouseButton1Click:Connect(function()
+			isSelected = not isSelected
+			addStroke(cb, isSelected and COLOR_WHITE or fc, isSelected and 2 or 1)
+			if isSelected then
+				table.insert(selectedColors, fc)
+			else
+				for i, sc in ipairs(selectedColors) do
+					if math.abs(sc.R - fc.R) < 0.05 then
+						table.remove(selectedColors, i) break
+					end
+				end
+			end
+		end)
+	end
+
+	-- Render groups
+	local order = 0
+	for groupName, groupData in pairs(groups) do
+		if not shouldShow(groupData.entries[1]) then continue end
+
+		local header = Instance.new("Frame", resultScroll)
+		header.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+		header.Size = UDim2.new(1, 0, 0, 22)
+		header.LayoutOrder = order
+		order += 1
+		addCorner(header, 4)
+
+		local dot = Instance.new("Frame", header)
+		dot.Size = UDim2.new(0, 6, 0, 6)
+		dot.Position = UDim2.new(0, 6, 0.5, -3)
+		dot.BackgroundColor3 = groupData.color
+		addCorner(dot, 3)
+
+		local hl = makeLabel(header, "  " .. groupName, 11, COLOR_GRAY, FONT)
+		hl.Size = UDim2.new(1, -14, 1, 0)
+		hl.Position = UDim2.new(0, 14, 0, 0)
+		hl.TextYAlignment = Enum.TextYAlignment.Center
+
+		for _, entry in ipairs(groupData.entries) do
+			local eb = Instance.new("TextButton", resultScroll)
+			eb.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+			eb.Size = UDim2.new(1, 0, 0, 26)
+			eb.LayoutOrder = order
+			eb.Text = ""
+			eb.AutoButtonColor = false
+			order += 1
+			addCorner(eb, 4)
+
+			local colorDot = Instance.new("Frame", eb)
+			colorDot.Size = UDim2.new(0, 4, 0.6, 0)
+			colorDot.Position = UDim2.new(0, 0, 0.2, 0)
+			colorDot.BackgroundColor3 = groupData.color
+			addCorner(colorDot, 2)
+
+			local nameLbl = makeLabel(eb, "  " .. entry.name, 12, COLOR_ACCENT)
+			nameLbl.Size = UDim2.new(0.7, 0, 1, 0)
+			nameLbl.Position = UDim2.new(0, 6, 0, 0)
+			nameLbl.TextYAlignment = Enum.TextYAlignment.Center
+
+			local dist = math.floor(getDistance(entry.model))
+			local distLbl = makeLabel(eb, tostring(dist) .. "m", 11, COLOR_GRAY)
+			distLbl.Size = UDim2.new(0.3, -6, 1, 0)
+			distLbl.Position = UDim2.new(0.7, 0, 0, 0)
+			distLbl.TextXAlignment = Enum.TextXAlignment.Right
+			distLbl.TextYAlignment = Enum.TextYAlignment.Center
+
+			eb.MouseEnter:Connect(function()
+				TweenService:Create(eb, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(30,30,30) }):Play()
+			end)
+			eb.MouseLeave:Connect(function()
+				TweenService:Create(eb, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(18,18,18) }):Play()
+			end)
+			eb.MouseButton1Click:Connect(function()
+				lockedTarget = entry
+				lockEnabled = true
+				startLock()
+			end)
+		end
+	end
+
+	if order == 0 then
+		local empty = makeLabel(resultScroll, "  No targets found", 12, COLOR_GRAY)
+		empty.Size = UDim2.new(1, 0, 0, 30)
+		empty.TextYAlignment = Enum.TextYAlignment.Center
+	end
+end
+
+scanBtn.MouseButton1Click:Connect(doScan)
