@@ -1,187 +1,514 @@
---// SERVICES  
-local Players = game:GetService("Players")  
-local RunService = game:GetService("RunService")  
-local TweenService = game:GetService("TweenService")  
-local UserInputService = game:GetService("UserInputService")  
+--[[
+    AimLock v5
+    Run via executor (LocalScript)
+--]]
 
-local player = Players.LocalPlayer  
-local camera = workspace.CurrentCamera  
+local Players    = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS        = game:GetService("UserInputService")
+local TS         = game:GetService("TweenService")
 
---// GUI ROOT  
-local gui = Instance.new("ScreenGui")  
-gui.Name = "AimLockGUI"  
-gui.ResetOnSpawn = false  
-gui.IgnoreGuiInset = true  
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling  
-gui.Parent = game.CoreGui  
+local plr    = Players.LocalPlayer
+local cam    = workspace.CurrentCamera
 
---// STATE  
-local lockEnabled = false  
-local nearestEnabled = false  
-local scanWindowOpen = false  
-local lockMode = "Player"  
-local lockedTarget = nil  
-local lockConn = nil  
-local lockStrength = 1  
-local detectionRange = 500  
+-----------------------------------------------------------------
+-- STATE
+-----------------------------------------------------------------
+local lockOn   = false
+local nearOn   = false
+local mode     = "Player"
+local target   = nil
+local lockConn = nil
+local strength = 1
+local range    = 500
+local selCols  = {}
 
---// HELPERS  
-local function getChar()  
-	local char = player.Character or player.CharacterAdded:Wait()  
-	return char, char:WaitForChild("HumanoidRootPart"), char:WaitForChild("Head")  
-end  
+-----------------------------------------------------------------
+-- GAME LOGIC
+-----------------------------------------------------------------
+local function getHRP(m)
+    return m and m:FindFirstChild("HumanoidRootPart")
+end
 
-local function getRoot(model)  
-	return model and model:FindFirstChild("HumanoidRootPart")  
-end  
+local function alive(m)
+    if not m then return false end
+    local h = m:FindFirstChildOfClass("Humanoid")
+    return h ~= nil and h.Health > 0
+end
 
-local function getHumanoid(model)  
-	return model and model:FindFirstChildOfClass("Humanoid")  
-end  
+local function dist(m)
+    local c = plr.Character
+    if not c then return math.huge end
+    local a = c:FindFirstChild("HumanoidRootPart")
+    local b = getHRP(m)
+    if not a or not b then return math.huge end
+    return (a.Position - b.Position).Magnitude
+end
 
-local function isAlive(model)  
-	local h = getHumanoid(model)  
-	return h and h.Health > 0  
-end  
+local function buildList()
+    local out = {}
+    if mode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= plr and p.Character and alive(p.Character) and dist(p.Character) <= range then
+                table.insert(out, { model=p.Character, name=p.Name, team=p.Team, isPlayer=true })
+            end
+        end
+    else
+        local pc = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then pc[p.Character] = true end
+        end
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if  obj:IsA("Model") and not pc[obj]
+            and obj:FindFirstChildOfClass("Humanoid")
+            and obj:FindFirstChild("HumanoidRootPart")
+            and alive(obj) and dist(obj) <= range then
+                table.insert(out, { model=obj, name=obj.Name, team=nil, isPlayer=false })
+            end
+        end
+    end
+    return out
+end
 
---// BUILD TARGET LIST  
-local function buildTargetList()  
-	local list = {}  
-	local char = player.Character  
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")  
-	if not hrp then return list end  
+local function getFront(list)
+    local best, bd = nil, -math.huge
+    local cf = cam.CFrame
+    for _, t in ipairs(list) do
+        local r = getHRP(t.model)
+        if r then
+            local dot = cf.LookVector:Dot((r.Position - cf.Position).Unit)
+            if dot > bd then bd=dot; best=t end
+        end
+    end
+    return best
+end
 
-	if lockMode == "Player" then  
-		for _, p in ipairs(Players:GetPlayers()) do  
-			if p ~= player and p.Character and isAlive(p.Character) then  
-				local root = getRoot(p.Character)  
-				if root then  
-					local dist = (root.Position - hrp.Position).Magnitude  
-					if dist <= detectionRange then  
-						table.insert(list, p.Character)  
-					end  
-				end  
-			end  
-		end  
-	else  
-		local playerChars = {}  
-		for _, p in ipairs(Players:GetPlayers()) do  
-			if p.Character then playerChars[p.Character] = true end  
-		end  
+local function getNearest(list)
+    local best, bd = nil, math.huge
+    for _, t in ipairs(list) do
+        local d = dist(t.model)
+        if d < bd then bd=d; best=t end
+    end
+    return best
+end
 
-		for _, obj in ipairs(workspace:GetDescendants()) do  
-			if obj:IsA("Model") and not playerChars[obj]  
-				and obj:FindFirstChildOfClass("Humanoid")  
-				and obj:FindFirstChild("HumanoidRootPart")  
-				and isAlive(obj) then  
+local function startLock()
+    if lockConn then lockConn:Disconnect() end
+    local list = buildList()
+    target = nearOn and getNearest(list) or getFront(list)
 
-				local root = getRoot(obj)  
-				if root then  
-					local dist = (root.Position - hrp.Position).Magnitude  
-					if dist <= detectionRange then  
-						table.insert(list, obj)  
-					end  
-				end  
-			end  
-		end  
-	end  
+    lockConn = RunService.RenderStepped:Connect(function()
+        if not lockOn then return end
+        local char = plr.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
 
-	return list  
-end  
+        if not target or not alive(target.model) then
+            target = getNearest(buildList())
+            if not target then return end
+        end
 
---// GET NEAREST  
-local function getNearestTarget(list)  
-	local char = player.Character  
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")  
-	if not hrp then return nil end  
+        local tr = getHRP(target.model)
+        if not tr then target=nil; return end
 
-	local best, bestDist = nil, math.huge  
-	for _, t in ipairs(list) do  
-		local root = getRoot(t)  
-		if root then  
-			local d = (root.Position - hrp.Position).Magnitude  
-			if d < bestDist then  
-				bestDist = d  
-				best = t  
-			end  
-		end  
-	end  
-	return best  
-end  
+        local flat = (tr.Position - root.Position) * Vector3.new(1,0,1)
+        if flat.Magnitude > 0.1 then
+            local alpha = math.clamp(strength * 0.1, 0.01, 1)
+            root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, root.Position+flat), alpha)
+        end
+    end)
+end
 
---// 🔥 FIXED LOCK SYSTEM
-local function startLock()  
-	if lockConn then lockConn:Disconnect() end  
+local function stopLock()
+    if lockConn then lockConn:Disconnect(); lockConn=nil end
+    target = nil
+end
 
-	camera.CameraType = Enum.CameraType.Custom  
-	player.CameraMode = Enum.CameraMode.Classic  
+-----------------------------------------------------------------
+-- THEME
+-----------------------------------------------------------------
+local FB = Enum.Font.GothamBold
+local FL = Enum.Font.Gotham
+local C = {
+    bg     = Color3.fromRGB(12,12,12),
+    panel  = Color3.fromRGB(20,20,20),
+    border = Color3.fromRGB(44,44,44),
+    white  = Color3.fromRGB(228,228,228),
+    gray   = Color3.fromRGB(112,112,112),
+    btn    = Color3.fromRGB(27,27,27),
+    hover  = Color3.fromRGB(43,43,43),
+    on     = Color3.fromRGB(196,196,196),
+    off    = Color3.fromRGB(48,48,48),
+    red    = Color3.fromRGB(205,50,50),
+    hi     = Color3.fromRGB(48,48,48),
+}
 
-	lockConn = RunService.RenderStepped:Connect(function()  
-		if not lockEnabled then return end  
+-----------------------------------------------------------------
+-- GUI ROOT
+-----------------------------------------------------------------
+local gui = Instance.new("ScreenGui")
+gui.Name="AimLock_v5"; gui.ResetOnSpawn=false; gui.IgnoreGuiInset=true
+gui.Parent = game.CoreGui
 
-		local ok, char, hrp, head = pcall(getChar)  
-		if not ok then return end  
+-----------------------------------------------------------------
+-- UI HELPERS
+-----------------------------------------------------------------
+local function co(p,r)  local c=Instance.new("UICorner",p); c.CornerRadius=UDim.new(0,r or 6) end
+local function sk(p,cl,t) local s=Instance.new("UIStroke",p); s.Color=cl or C.border; s.Thickness=t or 1 end
+local function clearSK(p) for _,c in ipairs(p:GetChildren()) do if c:IsA("UIStroke") then c:Destroy() end end end
 
-		-- auto target  
-		if not lockedTarget and nearestEnabled then  
-			local list = buildTargetList()  
-			lockedTarget = getNearestTarget(list)  
-			return  
-		end  
+local function drag(win, handle)
+    local on,ds,sp=false,nil,nil
+    handle.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            on=true; ds=i.Position; sp=win.Position
+            i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then on=false end end)
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if on and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+            local d=i.Position-ds
+            win.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y)
+        end
+    end)
+end
 
-		if not lockedTarget then return end  
+local function lbl(p,txt,sz,cl,font,xa)
+    local l=Instance.new("TextLabel",p)
+    l.BackgroundTransparency=1; l.Text=txt; l.TextSize=sz or 12
+    l.TextColor3=cl or C.white; l.Font=font or FL
+    l.TextXAlignment=xa or Enum.TextXAlignment.Left
+    l.TextYAlignment=Enum.TextYAlignment.Center
+    return l
+end
 
-		local root = getRoot(lockedTarget)  
-		if not root or not isAlive(lockedTarget) then  
-			lockedTarget = nil  
-			return  
-		end  
+local function btn(p,txt,cb)
+    local b=Instance.new("TextButton",p)
+    b.BackgroundColor3=C.btn; b.TextColor3=C.white; b.Text=txt
+    b.Font=FB; b.TextSize=12; b.AutoButtonColor=false
+    co(b,5); sk(b,C.border)
+    b.MouseEnter:Connect(function() TS:Create(b,TweenInfo.new(0.12),{BackgroundColor3=C.hover}):Play() end)
+    b.MouseLeave:Connect(function() TS:Create(b,TweenInfo.new(0.12),{BackgroundColor3=C.btn}):Play() end)
+    if cb then b.MouseButton1Click:Connect(cb) end
+    return b
+end
 
-		-- 🔥 strength fix (แรงขึ้น)
-		local s = math.clamp(lockStrength, 0.05, 1)  
+local function icon(p,txt,cb)
+    local b=Instance.new("TextButton",p)
+    b.BackgroundTransparency=1; b.Text=txt; b.TextColor3=C.gray
+    b.Font=FB; b.TextSize=13; b.AutoButtonColor=false
+    if cb then b.MouseButton1Click:Connect(cb) end
+    return b
+end
 
-		-- ตัวละครหัน
-		local flat = (root.Position - hrp.Position) * Vector3.new(1,0,1)  
-		if flat.Magnitude > 0.1 then  
-			local targetCF = CFrame.lookAt(hrp.Position, hrp.Position + flat)  
-			hrp.CFrame = hrp.CFrame:Lerp(targetCF, s)  
-		end  
+local function input(p,val)
+    local b=Instance.new("TextBox",p)
+    b.BackgroundColor3=Color3.fromRGB(7,7,7); b.TextColor3=C.white
+    b.Text=tostring(val); b.Font=FL; b.TextSize=12
+    b.ClearTextOnFocus=false; b.TextXAlignment=Enum.TextXAlignment.Center
+    co(b,4); sk(b,C.border)
+    return b
+end
 
-		-- กล้องหัน (แต่ยัง zoom ได้)
-		local camPos = camera.CFrame.Position  
-		local targetLook = CFrame.lookAt(camPos, root.Position)  
+local function toggle(p,init,cb)
+    local track=Instance.new("Frame",p)
+    track.Size=UDim2.new(0,36,0,18); track.BackgroundColor3=init and C.on or C.off; co(track,9)
+    local knob=Instance.new("Frame",track)
+    knob.Size=UDim2.new(0,12,0,12); knob.BackgroundColor3=C.white; co(knob,6)
+    knob.Position=init and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6)
+    local state=init
+    local hit=Instance.new("TextButton",track)
+    hit.Size=UDim2.new(1,0,1,0); hit.BackgroundTransparency=1; hit.Text=""
+    hit.MouseButton1Click:Connect(function()
+        state=not state
+        TS:Create(track,TweenInfo.new(0.15),{BackgroundColor3=state and C.on or C.off}):Play()
+        TS:Create(knob,TweenInfo.new(0.15),{Position=state and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6)}):Play()
+        cb(state)
+    end)
+    return track
+end
 
-		camera.CFrame = camera.CFrame:Lerp(targetLook, s * 0.7)  
-	end)  
-end  
+local function sep(p,ord)
+    local f=Instance.new("Frame",p); f.BackgroundColor3=C.border; f.BorderSizePixel=0
+    f.Size=UDim2.new(1,-16,0,1); f.Position=UDim2.new(0,8,0,0); f.LayoutOrder=ord or 0
+end
 
-local function stopLock()  
-	if lockConn then  
-		lockConn:Disconnect()  
-		lockConn = nil  
-	end  
+local function row(scroll,h,ord)
+    local f=Instance.new("Frame",scroll); f.BackgroundTransparency=1
+    f.Size=UDim2.new(1,0,0,h or 32); f.LayoutOrder=ord or 0
+    return f
+end
 
-	lockedTarget = nil  
+-----------------------------------------------------------------
+-- WINDOW BUILDER  (returns win, bar, scroll)
+-----------------------------------------------------------------
+local function newWin(title,x,y,w,h)
+    local win=Instance.new("Frame",gui)
+    win.BackgroundColor3=C.bg; win.Position=UDim2.new(0,x,0,y); win.Size=UDim2.new(0,w,0,h)
+    co(win,8); sk(win,C.border)
 
-	camera.CameraType = Enum.CameraType.Custom  
-	player.CameraMode = Enum.CameraMode.Classic  
-end  
+    local bar=Instance.new("Frame",win)
+    bar.BackgroundColor3=C.panel; bar.Size=UDim2.new(1,0,0,30); co(bar,8)
 
---// BUTTON SIMULATION (ใช้กับ UI เดิมคุณได้เลย)
-local function toggleLock()  
-	lockEnabled = not lockEnabled  
+    local patch=Instance.new("Frame",win)
+    patch.BackgroundColor3=C.panel; patch.BorderSizePixel=0
+    patch.Size=UDim2.new(1,0,0,8); patch.Position=UDim2.new(0,0,0,22)
 
-	if lockEnabled then  
-		startLock()  
-	else  
-		stopLock()  
-	end  
-end  
+    lbl(bar,"  ◈  "..title,12,C.white,FB).Size=UDim2.new(1,-115,1,0)
+    drag(win,bar)
 
---// RESPAWN FIX
-player.CharacterAdded:Connect(function()  
-	task.wait(1)  
-	if lockEnabled then  
-		startLock()  
-	end  
-end)
+    local scroll=Instance.new("ScrollingFrame",win)
+    scroll.BackgroundTransparency=1; scroll.Position=UDim2.new(0,0,0,30)
+    scroll.Size=UDim2.new(1,0,1,-30); scroll.CanvasSize=UDim2.new(0,0,0,0)
+    scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y; scroll.ScrollBarThickness=3
+    scroll.ScrollBarImageColor3=C.border; scroll.BorderSizePixel=0
+    scroll.ScrollingDirection=Enum.ScrollingDirection.Y
+
+    local lyt=Instance.new("UIListLayout",scroll)
+    lyt.SortOrder=Enum.SortOrder.LayoutOrder; lyt.Padding=UDim.new(0,0)
+
+    local pad=Instance.new("UIPadding",scroll)
+    pad.PaddingLeft=UDim.new(0,10); pad.PaddingRight=UDim.new(0,10)
+    pad.PaddingTop=UDim.new(0,8); pad.PaddingBottom=UDim.new(0,8)
+
+    return win,bar,scroll
+end
+
+-- add standard titlebar controls (scale / collapse / close)
+local function addControls(win,bar,defH,scaleMul)
+    local scBox=input(bar,"10")
+    scBox.Size=UDim2.new(0,26,0,18); scBox.Position=UDim2.new(1,-92,0.5,-9)
+    scBox.FocusLost:Connect(function()
+        local v=tonumber(scBox.Text)
+        if v then win.Size=UDim2.new(0,math.max(v*(scaleMul or 18),140),0,win.Size.Y.Offset) end
+    end)
+
+    local coll=false
+    local cBtn=icon(bar,"─"); cBtn.Size=UDim2.new(0,20,0,20); cBtn.Position=UDim2.new(1,-56,0.5,-10)
+    local scroll=win:FindFirstChildOfClass("ScrollingFrame")
+    cBtn.MouseButton1Click:Connect(function()
+        coll=not coll; if scroll then scroll.Visible=not coll end
+        cBtn.Text=coll and "□" or "─"
+        win.Size=UDim2.new(0,win.Size.X.Offset,0,coll and 30 or defH)
+    end)
+
+    local xBtn=icon(bar,"✕",function() win:Destroy() end)
+    xBtn.Size=UDim2.new(0,20,0,20); xBtn.Position=UDim2.new(1,-30,0.5,-10)
+end
+
+-----------------------------------------------------------------
+-- MAIN WINDOW
+-----------------------------------------------------------------
+local mWin,mBar,mScroll = newWin("LOCK",20,80,192,306)
+addControls(mWin,mBar,306,18)
+
+-- Mode
+do
+    local r=row(mScroll,32,1)
+    lbl(r,"Mode",12,C.gray).Size=UDim2.new(0.36,0,1,0)
+    local pb=btn(r,"Player"); pb.Size=UDim2.new(0.30,-2,0,22); pb.Position=UDim2.new(0.36,0,0.5,-11)
+    local nb=btn(r,"NPC");    nb.Size=UDim2.new(0.30,-2,0,22); nb.Position=UDim2.new(0.68,2,0.5,-11)
+    local function ref()
+        pb.BackgroundColor3=mode=="Player" and C.hi or C.btn
+        nb.BackgroundColor3=mode=="NPC"    and C.hi or C.btn
+    end; ref()
+    pb.MouseButton1Click:Connect(function() mode="Player"; ref() end)
+    nb.MouseButton1Click:Connect(function() mode="NPC"; ref() end)
+end
+
+sep(mScroll,2)
+
+-- Lock Target
+do
+    local r=row(mScroll,32,3)
+    lbl(r,"Lock Target",12,C.gray).Size=UDim2.new(0.65,0,1,0)
+    local sw=toggle(r,false,function(s) lockOn=s; if s then startLock() else stopLock() end end)
+    sw.Position=UDim2.new(1,-38,0.5,-9)
+end
+
+-- Lock Nearest
+do
+    local r=row(mScroll,32,4)
+    lbl(r,"Lock Nearest",12,C.gray).Size=UDim2.new(0.65,0,1,0)
+    local sw=toggle(r,false,function(s) nearOn=s end)
+    sw.Position=UDim2.new(1,-38,0.5,-9)
+end
+
+sep(mScroll,5)
+
+-- Lock Strength
+do
+    local r=row(mScroll,32,6)
+    lbl(r,"Lock Strength",12,C.gray).Size=UDim2.new(0.62,0,1,0)
+    local b=input(r,strength); b.Size=UDim2.new(0,54,0,22); b.Position=UDim2.new(1,-56,0.5,-11)
+    b.FocusLost:Connect(function() local v=tonumber(b.Text); if v then strength=v end end)
+end
+
+-- Detect Range
+do
+    local r=row(mScroll,32,7)
+    lbl(r,"Detect Range",12,C.gray).Size=UDim2.new(0.62,0,1,0)
+    local b=input(r,range); b.Size=UDim2.new(0,54,0,22); b.Position=UDim2.new(1,-56,0.5,-11)
+    b.FocusLost:Connect(function() local v=tonumber(b.Text); if v then range=v end end)
+end
+
+sep(mScroll,8)
+
+-- Scan Menu toggle — forward ref scanWin resolved below
+local scanWinRef = nil
+do
+    local r=row(mScroll,32,9)
+    lbl(r,"Scan Menu",12,C.gray).Size=UDim2.new(0.65,0,1,0)
+    local sw=toggle(r,false,function(s)
+        if scanWinRef then scanWinRef.Visible=s end
+    end)
+    sw.Position=UDim2.new(1,-38,0.5,-9)
+end
+
+-----------------------------------------------------------------
+-- SCAN WINDOW
+-----------------------------------------------------------------
+do
+    local sWin,sBar,sScroll = newWin("SCAN",222,80,215,326)
+    sWin.Visible=false
+    scanWinRef = sWin  -- resolve forward ref
+
+    -- extra icon: color filter (before addControls so positions don't clash)
+    local clrOpen=false
+    local clrIcon=icon(sBar,"◐"); clrIcon.Size=UDim2.new(0,20,0,20); clrIcon.Position=UDim2.new(1,-88,0.5,-10)
+
+    -- push scale/collapse/close further right; we need custom positions
+    local scBox=input(sBar,"10")
+    scBox.Size=UDim2.new(0,26,0,18); scBox.Position=UDim2.new(1,-122,0.5,-9)
+    scBox.FocusLost:Connect(function()
+        local v=tonumber(scBox.Text)
+        if v then sWin.Size=UDim2.new(0,math.max(v*20,160),0,sWin.Size.Y.Offset) end
+    end)
+
+    local coll=false
+    local cBtn=icon(sBar,"─"); cBtn.Size=UDim2.new(0,20,0,20); cBtn.Position=UDim2.new(1,-56,0.5,-10)
+    cBtn.MouseButton1Click:Connect(function()
+        coll=not coll; sScroll.Visible=not coll
+        cBtn.Text=coll and "□" or "─"
+        sWin.Size=UDim2.new(0,sWin.Size.X.Offset,0,coll and 30 or 326)
+    end)
+    local xBtn=icon(sBar,"✕",function() sWin:Destroy() end)
+    xBtn.Size=UDim2.new(0,20,0,20); xBtn.Position=UDim2.new(1,-30,0.5,-10)
+
+    -- scan button row
+    local sr1=row(sScroll,32,1)
+    local scanBtn=btn(sr1,"▶  SCAN"); scanBtn.Size=UDim2.new(1,0,0,24); scanBtn.Position=UDim2.new(0,0,0.5,-12)
+
+    -- color filter row
+    local sr2=row(sScroll,28,2); sr2.Visible=false
+    local clrHolder=Instance.new("Frame",sr2)
+    clrHolder.BackgroundTransparency=1; clrHolder.Size=UDim2.new(1,0,1,0)
+    local cFL=Instance.new("UIListLayout",clrHolder)
+    cFL.FillDirection=Enum.FillDirection.Horizontal; cFL.Padding=UDim.new(0,4)
+    cFL.VerticalAlignment=Enum.VerticalAlignment.Center
+
+    clrIcon.MouseButton1Click:Connect(function()
+        clrOpen=not clrOpen; sr2.Visible=clrOpen
+    end)
+
+    -- result list
+    local sr3=row(sScroll,240,3)
+    local rScroll=Instance.new("ScrollingFrame",sr3)
+    rScroll.BackgroundTransparency=1; rScroll.Size=UDim2.new(1,0,1,0)
+    rScroll.CanvasSize=UDim2.new(0,0,0,0); rScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+    rScroll.ScrollBarThickness=3; rScroll.ScrollBarImageColor3=C.border
+    rScroll.BorderSizePixel=0; rScroll.ScrollingDirection=Enum.ScrollingDirection.Y
+    local rLyt=Instance.new("UIListLayout",rScroll)
+    rLyt.SortOrder=Enum.SortOrder.LayoutOrder; rLyt.Padding=UDim.new(0,2)
+
+    -- helpers
+    local function tCol(e)
+        if e.isPlayer and e.team then return e.team.TeamColor.Color
+        elseif not e.isPlayer    then return C.red
+        else                          return Color3.fromRGB(145,145,145) end
+    end
+    local function ceq(a,b)
+        return math.abs(a.R-b.R)<0.06 and math.abs(a.G-b.G)<0.06 and math.abs(a.B-b.B)<0.06
+    end
+
+    -- SCAN
+    local function doScan()
+        for _,c in ipairs(rScroll:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
+        for _,c in ipairs(clrHolder:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
+        selCols={}
+
+        local list=buildList()
+        local fCols,groups={},{}
+
+        for _,e in ipairs(list) do
+            local key=e.isPlayer and (e.team and "Team: "..e.team.Name or "Neutral") or "NPC / Monster"
+            if not groups[key] then groups[key]={entries={},color=tCol(e)} end
+            table.insert(groups[key].entries,e)
+            local c=tCol(e); local found=false
+            for _,fc in ipairs(fCols) do if ceq(fc,c) then found=true; break end end
+            if not found then table.insert(fCols,c) end
+        end
+
+        -- color dots
+        for _,fc in ipairs(fCols) do
+            local cb=Instance.new("TextButton",clrHolder)
+            cb.Size=UDim2.new(0,18,0,18); cb.BackgroundColor3=fc; cb.Text=""; cb.AutoButtonColor=false
+            co(cb,4); sk(cb,C.border)
+            local sel=false
+            cb.MouseButton1Click:Connect(function()
+                sel=not sel; clearSK(cb)
+                sk(cb,sel and C.white or C.border,sel and 2 or 1)
+                if sel then table.insert(selCols,fc)
+                else for i,sc in ipairs(selCols) do if ceq(sc,fc) then table.remove(selCols,i); break end end end
+            end)
+        end
+
+        -- groups
+        local ord=0
+        for gname,gd in pairs(groups) do
+            if #selCols>0 then
+                local show=false
+                for _,sc in ipairs(selCols) do if ceq(sc,gd.color) then show=true; break end end
+                if not show then continue end
+            end
+
+            -- header
+            local hf=Instance.new("Frame",rScroll)
+            hf.BackgroundColor3=Color3.fromRGB(20,20,20); hf.Size=UDim2.new(1,0,0,20); hf.LayoutOrder=ord; ord=ord+1; co(hf,4)
+            local dot=Instance.new("Frame",hf)
+            dot.Size=UDim2.new(0,5,0,5); dot.Position=UDim2.new(0,5,0.5,-2.5); dot.BackgroundColor3=gd.color; co(dot,3)
+            local hl=lbl(hf,"   "..gname,10,C.gray,FB)
+            hl.Size=UDim2.new(1,-12,1,0); hl.Position=UDim2.new(0,12,0,0)
+
+            -- entries
+            for _,e in ipairs(gd.entries) do
+                local eb=Instance.new("TextButton",rScroll)
+                eb.BackgroundColor3=Color3.fromRGB(16,16,16); eb.Size=UDim2.new(1,0,0,26); eb.LayoutOrder=ord; ord=ord+1
+                eb.Text=""; eb.AutoButtonColor=false; co(eb,4)
+
+                local side=Instance.new("Frame",eb)
+                side.Size=UDim2.new(0,3,0.6,0); side.Position=UDim2.new(0,0,0.2,0)
+                side.BackgroundColor3=gd.color; co(side,2)
+
+                local nl=lbl(eb,"  "..e.name,12,Color3.fromRGB(220,220,220))
+                nl.Size=UDim2.new(0.65,0,1,0); nl.Position=UDim2.new(0,5,0,0)
+
+                local dl=lbl(eb,math.floor(dist(e.model)).."m",11,C.gray,FL,Enum.TextXAlignment.Right)
+                dl.Size=UDim2.new(0.32,0,1,0); dl.Position=UDim2.new(0.66,0,0,0)
+
+                eb.MouseEnter:Connect(function() TS:Create(eb,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(26,26,26)}):Play() end)
+                eb.MouseLeave:Connect(function() TS:Create(eb,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(16,16,16)}):Play() end)
+                eb.MouseButton1Click:Connect(function()
+                    target=e; lockOn=true; startLock()
+                end)
+            end
+        end
+
+        if ord==0 then
+            local el=lbl(rScroll,"  No targets found",12,C.gray); el.Size=UDim2.new(1,0,0,30)
+        end
+    end
+
+    scanBtn.MouseButton1Click:Connect(doScan)
+end
