@@ -1,6 +1,8 @@
 --[[
-    AimLock v5
-    Run via executor (LocalScript)
+    AimLock v6
+    - กล้อง + ตัวละครหันหาเป้าหมาย
+    - Anti-Lock (กันตัวเองโดนสคริปต์อื่น force CFrame)
+    - Run via executor
 --]]
 
 local Players    = game:GetService("Players")
@@ -8,20 +10,23 @@ local RunService = game:GetService("RunService")
 local UIS        = game:GetService("UserInputService")
 local TS         = game:GetService("TweenService")
 
-local plr    = Players.LocalPlayer
-local cam    = workspace.CurrentCamera
+local plr = Players.LocalPlayer
+local cam = workspace.CurrentCamera
 
 -----------------------------------------------------------------
 -- STATE
 -----------------------------------------------------------------
-local lockOn   = false
-local nearOn   = false
-local mode     = "Player"
-local target   = nil
-local lockConn = nil
-local strength = 1
-local range    = 500
-local selCols  = {}
+local lockOn    = false
+local nearOn    = false
+local antiOn    = false
+local mode      = "Player"
+local target    = nil
+local lockConn  = nil
+local antiConn  = nil
+local strength  = 1
+local range     = 500
+local selCols   = {}
+local lastCF    = nil   -- สำหรับ anti-lock
 
 -----------------------------------------------------------------
 -- GAME LOGIC
@@ -92,6 +97,39 @@ local function getNearest(list)
     return best
 end
 
+-- ── ANTI-LOCK ──
+local function startAnti()
+    if antiConn then antiConn:Disconnect() end
+    local char = plr.Character or plr.CharacterAdded:Wait()
+    local hrp  = char:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return end
+
+    lastCF = hrp.CFrame
+
+    antiConn = RunService.RenderStepped:Connect(function()
+        if not antiOn then return end
+        local c2 = plr.Character
+        if not c2 then return end
+        local r2 = c2:FindFirstChild("HumanoidRootPart")
+        if not r2 then return end
+
+        -- ถ้ามีอะไร force CFrame เราไปมากกว่า 10 studs ใน 1 frame → คืนตำแหน่ง
+        if lastCF then
+            local moved = (r2.Position - lastCF.Position).Magnitude
+            if moved > 10 and not lockOn then
+                r2.CFrame = lastCF
+            end
+        end
+        lastCF = r2.CFrame
+    end)
+end
+
+local function stopAnti()
+    if antiConn then antiConn:Disconnect(); antiConn=nil end
+    lastCF = nil
+end
+
+-- ── LOCK ──
 local function startLock()
     if lockConn then lockConn:Disconnect() end
     local list = buildList()
@@ -104,6 +142,7 @@ local function startLock()
         local root = char:FindFirstChild("HumanoidRootPart")
         if not root then return end
 
+        -- ถ้าเป้าตาย → หาเป้าใกล้สุดใหม่
         if not target or not alive(target.model) then
             target = getNearest(buildList())
             if not target then return end
@@ -112,17 +151,28 @@ local function startLock()
         local tr = getHRP(target.model)
         if not tr then target=nil; return end
 
+        local alpha = math.clamp(strength * 0.1, 0.01, 1)
+
+        -- หมุนตัวละคร (แนวราบ)
         local flat = (tr.Position - root.Position) * Vector3.new(1,0,1)
         if flat.Magnitude > 0.1 then
-            local alpha = math.clamp(strength * 0.1, 0.01, 1)
-            root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, root.Position+flat), alpha)
+            local targetCF = CFrame.lookAt(root.Position, root.Position + flat)
+            root.CFrame = root.CFrame:Lerp(targetCF, alpha)
         end
+
+        -- หมุนกล้อง (มองตรงไปที่เป้า รวม Y)
+        local camPos   = cam.CFrame.Position
+        local lookPos  = tr.Position + Vector3.new(0, 1, 0)  -- เล็งกลาง body
+        local wantedCF = CFrame.lookAt(camPos, lookPos)
+        cam.CFrame     = cam.CFrame:Lerp(wantedCF, alpha)
     end)
 end
 
 local function stopLock()
     if lockConn then lockConn:Disconnect(); lockConn=nil end
     target = nil
+    -- คืน camera mode ปกติ
+    cam.CameraType = Enum.CameraType.Custom
 end
 
 -----------------------------------------------------------------
@@ -141,14 +191,14 @@ local C = {
     on     = Color3.fromRGB(196,196,196),
     off    = Color3.fromRGB(48,48,48),
     red    = Color3.fromRGB(205,50,50),
-    hi     = Color3.fromRGB(48,48,48),
+    hi     = Color3.fromRGB(50,50,50),
 }
 
 -----------------------------------------------------------------
 -- GUI ROOT
 -----------------------------------------------------------------
 local gui = Instance.new("ScreenGui")
-gui.Name="AimLock_v5"; gui.ResetOnSpawn=false; gui.IgnoreGuiInset=true
+gui.Name="AimLock_v6"; gui.ResetOnSpawn=false; gui.IgnoreGuiInset=true
 gui.Parent = game.CoreGui
 
 -----------------------------------------------------------------
@@ -241,7 +291,7 @@ local function row(scroll,h,ord)
 end
 
 -----------------------------------------------------------------
--- WINDOW BUILDER  (returns win, bar, scroll)
+-- WINDOW BUILDER
 -----------------------------------------------------------------
 local function newWin(title,x,y,w,h)
     local win=Instance.new("Frame",gui)
@@ -275,33 +325,29 @@ local function newWin(title,x,y,w,h)
     return win,bar,scroll
 end
 
--- add standard titlebar controls (scale / collapse / close)
-local function addControls(win,bar,defH,scaleMul)
-    local scBox=input(bar,"10")
-    scBox.Size=UDim2.new(0,26,0,18); scBox.Position=UDim2.new(1,-92,0.5,-9)
-    scBox.FocusLost:Connect(function()
-        local v=tonumber(scBox.Text)
-        if v then win.Size=UDim2.new(0,math.max(v*(scaleMul or 18),140),0,win.Size.Y.Offset) end
-    end)
-
-    local coll=false
-    local cBtn=icon(bar,"─"); cBtn.Size=UDim2.new(0,20,0,20); cBtn.Position=UDim2.new(1,-56,0.5,-10)
-    local scroll=win:FindFirstChildOfClass("ScrollingFrame")
-    cBtn.MouseButton1Click:Connect(function()
-        coll=not coll; if scroll then scroll.Visible=not coll end
-        cBtn.Text=coll and "□" or "─"
-        win.Size=UDim2.new(0,win.Size.X.Offset,0,coll and 30 or defH)
-    end)
-
-    local xBtn=icon(bar,"✕",function() win:Destroy() end)
-    xBtn.Size=UDim2.new(0,20,0,20); xBtn.Position=UDim2.new(1,-30,0.5,-10)
-end
-
 -----------------------------------------------------------------
 -- MAIN WINDOW
 -----------------------------------------------------------------
-local mWin,mBar,mScroll = newWin("LOCK",20,80,192,306)
-addControls(mWin,mBar,306,18)
+local mWin,mBar,mScroll = newWin("LOCK",20,80,192,338)
+
+-- titlebar controls
+do
+    local scBox=input(mBar,"10")
+    scBox.Size=UDim2.new(0,26,0,18); scBox.Position=UDim2.new(1,-92,0.5,-9)
+    scBox.FocusLost:Connect(function()
+        local v=tonumber(scBox.Text)
+        if v then mWin.Size=UDim2.new(0,math.max(v*18,140),0,mWin.Size.Y.Offset) end
+    end)
+    local coll=false
+    local cBtn=icon(mBar,"─"); cBtn.Size=UDim2.new(0,20,0,20); cBtn.Position=UDim2.new(1,-56,0.5,-10)
+    cBtn.MouseButton1Click:Connect(function()
+        coll=not coll; mScroll.Visible=not coll
+        cBtn.Text=coll and "□" or "─"
+        mWin.Size=UDim2.new(0,mWin.Size.X.Offset,0,coll and 30 or 338)
+    end)
+    local xBtn=icon(mBar,"✕",function() stopLock(); stopAnti(); mWin:Destroy() end)
+    xBtn.Size=UDim2.new(0,20,0,20); xBtn.Position=UDim2.new(1,-30,0.5,-10)
+end
 
 -- Mode
 do
@@ -323,7 +369,15 @@ sep(mScroll,2)
 do
     local r=row(mScroll,32,3)
     lbl(r,"Lock Target",12,C.gray).Size=UDim2.new(0.65,0,1,0)
-    local sw=toggle(r,false,function(s) lockOn=s; if s then startLock() else stopLock() end end)
+    local sw=toggle(r,false,function(s)
+        lockOn=s
+        if s then
+            cam.CameraType=Enum.CameraType.Scriptable
+            startLock()
+        else
+            stopLock()
+        end
+    end)
     sw.Position=UDim2.new(1,-38,0.5,-9)
 end
 
@@ -335,11 +389,22 @@ do
     sw.Position=UDim2.new(1,-38,0.5,-9)
 end
 
-sep(mScroll,5)
+-- Anti-Lock
+do
+    local r=row(mScroll,32,5)
+    lbl(r,"Anti-Lock",12,C.gray).Size=UDim2.new(0.65,0,1,0)
+    local sw=toggle(r,false,function(s)
+        antiOn=s
+        if s then startAnti() else stopAnti() end
+    end)
+    sw.Position=UDim2.new(1,-38,0.5,-9)
+end
+
+sep(mScroll,6)
 
 -- Lock Strength
 do
-    local r=row(mScroll,32,6)
+    local r=row(mScroll,32,7)
     lbl(r,"Lock Strength",12,C.gray).Size=UDim2.new(0.62,0,1,0)
     local b=input(r,strength); b.Size=UDim2.new(0,54,0,22); b.Position=UDim2.new(1,-56,0.5,-11)
     b.FocusLost:Connect(function() local v=tonumber(b.Text); if v then strength=v end end)
@@ -347,18 +412,18 @@ end
 
 -- Detect Range
 do
-    local r=row(mScroll,32,7)
+    local r=row(mScroll,32,8)
     lbl(r,"Detect Range",12,C.gray).Size=UDim2.new(0.62,0,1,0)
     local b=input(r,range); b.Size=UDim2.new(0,54,0,22); b.Position=UDim2.new(1,-56,0.5,-11)
     b.FocusLost:Connect(function() local v=tonumber(b.Text); if v then range=v end end)
 end
 
-sep(mScroll,8)
+sep(mScroll,9)
 
--- Scan Menu toggle — forward ref scanWin resolved below
-local scanWinRef = nil
+-- Scan Menu toggle
+local scanWinRef=nil
 do
-    local r=row(mScroll,32,9)
+    local r=row(mScroll,32,10)
     lbl(r,"Scan Menu",12,C.gray).Size=UDim2.new(0.65,0,1,0)
     local sw=toggle(r,false,function(s)
         if scanWinRef then scanWinRef.Visible=s end
@@ -370,21 +435,20 @@ end
 -- SCAN WINDOW
 -----------------------------------------------------------------
 do
-    local sWin,sBar,sScroll = newWin("SCAN",222,80,215,326)
+    local sWin,sBar,sScroll=newWin("SCAN",222,80,215,326)
     sWin.Visible=false
-    scanWinRef = sWin  -- resolve forward ref
+    scanWinRef=sWin
 
-    -- extra icon: color filter (before addControls so positions don't clash)
-    local clrOpen=false
-    local clrIcon=icon(sBar,"◐"); clrIcon.Size=UDim2.new(0,20,0,20); clrIcon.Position=UDim2.new(1,-88,0.5,-10)
-
-    -- push scale/collapse/close further right; we need custom positions
+    -- titlebar
     local scBox=input(sBar,"10")
     scBox.Size=UDim2.new(0,26,0,18); scBox.Position=UDim2.new(1,-122,0.5,-9)
     scBox.FocusLost:Connect(function()
         local v=tonumber(scBox.Text)
         if v then sWin.Size=UDim2.new(0,math.max(v*20,160),0,sWin.Size.Y.Offset) end
     end)
+
+    local clrOpen=false
+    local clrIcon=icon(sBar,"◐"); clrIcon.Size=UDim2.new(0,20,0,20); clrIcon.Position=UDim2.new(1,-88,0.5,-10)
 
     local coll=false
     local cBtn=icon(sBar,"─"); cBtn.Size=UDim2.new(0,20,0,20); cBtn.Position=UDim2.new(1,-56,0.5,-10)
@@ -396,7 +460,7 @@ do
     local xBtn=icon(sBar,"✕",function() sWin:Destroy() end)
     xBtn.Size=UDim2.new(0,20,0,20); xBtn.Position=UDim2.new(1,-30,0.5,-10)
 
-    -- scan button row
+    -- scan btn row
     local sr1=row(sScroll,32,1)
     local scanBtn=btn(sr1,"▶  SCAN"); scanBtn.Size=UDim2.new(1,0,0,24); scanBtn.Position=UDim2.new(0,0,0.5,-12)
 
@@ -407,12 +471,11 @@ do
     local cFL=Instance.new("UIListLayout",clrHolder)
     cFL.FillDirection=Enum.FillDirection.Horizontal; cFL.Padding=UDim.new(0,4)
     cFL.VerticalAlignment=Enum.VerticalAlignment.Center
-
     clrIcon.MouseButton1Click:Connect(function()
         clrOpen=not clrOpen; sr2.Visible=clrOpen
     end)
 
-    -- result list
+    -- result scroll
     local sr3=row(sScroll,240,3)
     local rScroll=Instance.new("ScrollingFrame",sr3)
     rScroll.BackgroundTransparency=1; rScroll.Size=UDim2.new(1,0,1,0)
@@ -432,9 +495,9 @@ do
         return math.abs(a.R-b.R)<0.06 and math.abs(a.G-b.G)<0.06 and math.abs(a.B-b.B)<0.06
     end
 
-    -- SCAN
+    -- SCAN action
     local function doScan()
-        for _,c in ipairs(rScroll:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
+        for _,c in ipairs(rScroll:GetChildren())   do if not c:IsA("UIListLayout") then c:Destroy() end end
         for _,c in ipairs(clrHolder:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
         selCols={}
 
@@ -473,19 +536,19 @@ do
                 if not show then continue end
             end
 
-            -- header
             local hf=Instance.new("Frame",rScroll)
-            hf.BackgroundColor3=Color3.fromRGB(20,20,20); hf.Size=UDim2.new(1,0,0,20); hf.LayoutOrder=ord; ord=ord+1; co(hf,4)
+            hf.BackgroundColor3=Color3.fromRGB(20,20,20); hf.Size=UDim2.new(1,0,0,20)
+            hf.LayoutOrder=ord; ord=ord+1; co(hf,4)
             local dot=Instance.new("Frame",hf)
-            dot.Size=UDim2.new(0,5,0,5); dot.Position=UDim2.new(0,5,0.5,-2.5); dot.BackgroundColor3=gd.color; co(dot,3)
+            dot.Size=UDim2.new(0,5,0,5); dot.Position=UDim2.new(0,5,0.5,-2.5)
+            dot.BackgroundColor3=gd.color; co(dot,3)
             local hl=lbl(hf,"   "..gname,10,C.gray,FB)
             hl.Size=UDim2.new(1,-12,1,0); hl.Position=UDim2.new(0,12,0,0)
 
-            -- entries
             for _,e in ipairs(gd.entries) do
                 local eb=Instance.new("TextButton",rScroll)
-                eb.BackgroundColor3=Color3.fromRGB(16,16,16); eb.Size=UDim2.new(1,0,0,26); eb.LayoutOrder=ord; ord=ord+1
-                eb.Text=""; eb.AutoButtonColor=false; co(eb,4)
+                eb.BackgroundColor3=Color3.fromRGB(16,16,16); eb.Size=UDim2.new(1,0,0,26)
+                eb.LayoutOrder=ord; ord=ord+1; eb.Text=""; eb.AutoButtonColor=false; co(eb,4)
 
                 local side=Instance.new("Frame",eb)
                 side.Size=UDim2.new(0,3,0.6,0); side.Position=UDim2.new(0,0,0.2,0)
@@ -500,7 +563,9 @@ do
                 eb.MouseEnter:Connect(function() TS:Create(eb,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(26,26,26)}):Play() end)
                 eb.MouseLeave:Connect(function() TS:Create(eb,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(16,16,16)}):Play() end)
                 eb.MouseButton1Click:Connect(function()
-                    target=e; lockOn=true; startLock()
+                    target=e; lockOn=true
+                    cam.CameraType=Enum.CameraType.Scriptable
+                    startLock()
                 end)
             end
         end
