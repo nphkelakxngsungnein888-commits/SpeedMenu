@@ -1,190 +1,187 @@
---// SERVICES
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local UIS = game:GetService("UserInputService")
+--// SERVICES  
+local Players = game:GetService("Players")  
+local RunService = game:GetService("RunService")  
+local TweenService = game:GetService("TweenService")  
+local UserInputService = game:GetService("UserInputService")  
 
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local player = Players.LocalPlayer  
+local camera = workspace.CurrentCamera  
 
---// GUI FIX (สำคัญมาก)
-local gui = Instance.new("ScreenGui")
-gui.Name = "AimLockGUI"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
+--// GUI ROOT  
+local gui = Instance.new("ScreenGui")  
+gui.Name = "AimLockGUI"  
+gui.ResetOnSpawn = false  
+gui.IgnoreGuiInset = true  
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling  
+gui.Parent = game.CoreGui  
 
--- รองรับ executor + มือถือ
-pcall(function()
-    if gethui then
-        gui.Parent = gethui()
-    elseif syn and syn.protect_gui then
-        syn.protect_gui(gui)
-        gui.Parent = game.CoreGui
-    else
-        gui.Parent = player:WaitForChild("PlayerGui")
-    end
-end)
+--// STATE  
+local lockEnabled = false  
+local nearestEnabled = false  
+local scanWindowOpen = false  
+local lockMode = "Player"  
+local lockedTarget = nil  
+local lockConn = nil  
+local lockStrength = 1  
+local detectionRange = 500  
 
-if not gui.Parent then
-    gui.Parent = player:WaitForChild("PlayerGui")
-end
+--// HELPERS  
+local function getChar()  
+	local char = player.Character or player.CharacterAdded:Wait()  
+	return char, char:WaitForChild("HumanoidRootPart"), char:WaitForChild("Head")  
+end  
 
---// STATE
-local lockEnabled = false
-local nearestEnabled = true
-local lockMode = "Player"
-local lockedTarget = nil
-local lockConn
+local function getRoot(model)  
+	return model and model:FindFirstChild("HumanoidRootPart")  
+end  
 
-local lockStrength = 1
-local detectionRange = 500
+local function getHumanoid(model)  
+	return model and model:FindFirstChildOfClass("Humanoid")  
+end  
 
---// HELPERS
-local function getChar()
-    local char = player.Character or player.CharacterAdded:Wait()
-    return char,
-        char:WaitForChild("HumanoidRootPart"),
-        char:WaitForChild("Head")
-end
+local function isAlive(model)  
+	local h = getHumanoid(model)  
+	return h and h.Health > 0  
+end  
 
-local function getRoot(m)
-    return m and m:FindFirstChild("HumanoidRootPart")
-end
+--// BUILD TARGET LIST  
+local function buildTargetList()  
+	local list = {}  
+	local char = player.Character  
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")  
+	if not hrp then return list end  
 
-local function isAlive(m)
-    local h = m and m:FindFirstChildOfClass("Humanoid")
-    return h and h.Health > 0
-end
+	if lockMode == "Player" then  
+		for _, p in ipairs(Players:GetPlayers()) do  
+			if p ~= player and p.Character and isAlive(p.Character) then  
+				local root = getRoot(p.Character)  
+				if root then  
+					local dist = (root.Position - hrp.Position).Magnitude  
+					if dist <= detectionRange then  
+						table.insert(list, p.Character)  
+					end  
+				end  
+			end  
+		end  
+	else  
+		local playerChars = {}  
+		for _, p in ipairs(Players:GetPlayers()) do  
+			if p.Character then playerChars[p.Character] = true end  
+		end  
 
---// UI SIMPLE (debug ให้ขึ้นก่อน)
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0,200,0,120)
-frame.Position = UDim2.new(0.05,0,0.2,0)
-frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+		for _, obj in ipairs(workspace:GetDescendants()) do  
+			if obj:IsA("Model") and not playerChars[obj]  
+				and obj:FindFirstChildOfClass("Humanoid")  
+				and obj:FindFirstChild("HumanoidRootPart")  
+				and isAlive(obj) then  
 
-local lockBtn = Instance.new("TextButton", frame)
-lockBtn.Size = UDim2.new(1,-10,0,30)
-lockBtn.Position = UDim2.new(0,5,0,5)
-lockBtn.Text = "LOCK OFF"
+				local root = getRoot(obj)  
+				if root then  
+					local dist = (root.Position - hrp.Position).Magnitude  
+					if dist <= detectionRange then  
+						table.insert(list, obj)  
+					end  
+				end  
+			end  
+		end  
+	end  
 
-local modeBtn = Instance.new("TextButton", frame)
-modeBtn.Size = UDim2.new(1,-10,0,30)
-modeBtn.Position = UDim2.new(0,5,0,40)
-modeBtn.Text = "MODE PLAYER"
+	return list  
+end  
 
-local nearestBtn = Instance.new("TextButton", frame)
-nearestBtn.Size = UDim2.new(1,-10,0,30)
-nearestBtn.Position = UDim2.new(0,5,0,75)
-nearestBtn.Text = "NEAREST ON"
+--// GET NEAREST  
+local function getNearestTarget(list)  
+	local char = player.Character  
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")  
+	if not hrp then return nil end  
 
---// TARGET LIST
-local function buildTargets()
-    local list = {}
-    local char, hrp = getChar()
+	local best, bestDist = nil, math.huge  
+	for _, t in ipairs(list) do  
+		local root = getRoot(t)  
+		if root then  
+			local d = (root.Position - hrp.Position).Magnitude  
+			if d < bestDist then  
+				bestDist = d  
+				best = t  
+			end  
+		end  
+	end  
+	return best  
+end  
 
-    if lockMode == "Player" then
-        for _,p in pairs(Players:GetPlayers()) do
-            if p ~= player and p.Character and isAlive(p.Character) then
-                local r = getRoot(p.Character)
-                if r and (r.Position-hrp.Position).Magnitude <= detectionRange then
-                    table.insert(list, p.Character)
-                end
-            end
-        end
-    else
-        for _,obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("Model")
-            and obj:FindFirstChildOfClass("Humanoid")
-            and not Players:GetPlayerFromCharacter(obj)
-            and isAlive(obj) then
+--// 🔥 FIXED LOCK SYSTEM
+local function startLock()  
+	if lockConn then lockConn:Disconnect() end  
 
-                local r = getRoot(obj)
-                if r and (r.Position-hrp.Position).Magnitude <= detectionRange then
-                    table.insert(list, obj)
-                end
-            end
-        end
-    end
+	camera.CameraType = Enum.CameraType.Custom  
+	player.CameraMode = Enum.CameraMode.Classic  
 
-    return list
-end
+	lockConn = RunService.RenderStepped:Connect(function()  
+		if not lockEnabled then return end  
 
-local function getNearest(list)
-    local _, hrp = getChar()
-    local best, dist = nil, math.huge
+		local ok, char, hrp, head = pcall(getChar)  
+		if not ok then return end  
 
-    for _,m in pairs(list) do
-        local r = getRoot(m)
-        if r then
-            local d = (r.Position-hrp.Position).Magnitude
-            if d < dist then
-                dist = d
-                best = m
-            end
-        end
-    end
+		-- auto target  
+		if not lockedTarget and nearestEnabled then  
+			local list = buildTargetList()  
+			lockedTarget = getNearestTarget(list)  
+			return  
+		end  
 
-    return best
-end
+		if not lockedTarget then return end  
 
---// LOCK SYSTEM (แก้กล้อง + ตัวละคร)
-local function startLock()
-    if lockConn then lockConn:Disconnect() end
+		local root = getRoot(lockedTarget)  
+		if not root or not isAlive(lockedTarget) then  
+			lockedTarget = nil  
+			return  
+		end  
 
-    lockConn = RunService.RenderStepped:Connect(function()
-        if not lockEnabled then return end
+		-- 🔥 strength fix (แรงขึ้น)
+		local s = math.clamp(lockStrength, 0.05, 1)  
 
-        local char, hrp, head = getChar()
+		-- ตัวละครหัน
+		local flat = (root.Position - hrp.Position) * Vector3.new(1,0,1)  
+		if flat.Magnitude > 0.1 then  
+			local targetCF = CFrame.lookAt(hrp.Position, hrp.Position + flat)  
+			hrp.CFrame = hrp.CFrame:Lerp(targetCF, s)  
+		end  
 
-        if not lockedTarget and nearestEnabled then
-            lockedTarget = getNearest(buildTargets())
-        end
+		-- กล้องหัน (แต่ยัง zoom ได้)
+		local camPos = camera.CFrame.Position  
+		local targetLook = CFrame.lookAt(camPos, root.Position)  
 
-        local root = getRoot(lockedTarget)
-        if not root then return end
+		camera.CFrame = camera.CFrame:Lerp(targetLook, s * 0.7)  
+	end)  
+end  
 
-        -- หมุนตัวละคร
-        local flat = (root.Position - hrp.Position) * Vector3.new(1,0,1)
-        if flat.Magnitude > 0.1 then
-            hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat)
-        end
+local function stopLock()  
+	if lockConn then  
+		lockConn:Disconnect()  
+		lockConn = nil  
+	end  
 
-        -- กล้องธรรมชาติ (ซูมได้)
-        camera.CameraType = Enum.CameraType.Custom
-        camera.CFrame = CFrame.new(camera.CFrame.Position, root.Position)
-    end)
-end
+	lockedTarget = nil  
 
-local function stopLock()
-    if lockConn then lockConn:Disconnect() end
-    lockedTarget = nil
-end
+	camera.CameraType = Enum.CameraType.Custom  
+	player.CameraMode = Enum.CameraMode.Classic  
+end  
 
---// BUTTONS
-lockBtn.MouseButton1Click:Connect(function()
-    lockEnabled = not lockEnabled
-    lockBtn.Text = "LOCK "..(lockEnabled and "ON" or "OFF")
+--// BUTTON SIMULATION (ใช้กับ UI เดิมคุณได้เลย)
+local function toggleLock()  
+	lockEnabled = not lockEnabled  
 
-    if lockEnabled then
-        startLock()
-    else
-        stopLock()
-    end
-end)
-
-modeBtn.MouseButton1Click:Connect(function()
-    lockMode = (lockMode=="Player") and "NPC" or "Player"
-    modeBtn.Text = "MODE "..lockMode
-    lockedTarget = nil
-end)
-
-nearestBtn.MouseButton1Click:Connect(function()
-    nearestEnabled = not nearestEnabled
-    nearestBtn.Text = "NEAREST "..(nearestEnabled and "ON" or "OFF")
-end)
+	if lockEnabled then  
+		startLock()  
+	else  
+		stopLock()  
+	end  
+end  
 
 --// RESPAWN FIX
-player.CharacterAdded:Connect(function()
-    task.wait(1)
-    if lockEnabled then startLock() end
+player.CharacterAdded:Connect(function()  
+	task.wait(1)  
+	if lockEnabled then  
+		startLock()  
+	end  
 end)
