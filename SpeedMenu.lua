@@ -1,813 +1,840 @@
---[[
-════════════════════════════════════════════════════════
-    AimLock v7 Pro  –  by kuy kuy
-    ─────────────────────────────────────────────────────
-    FIX:
-      • กล้องตามเป้าได้จริง (force Scriptable ทุก frame)
-      • Lerp alpha คำนวณถูกต้อง
-    NEW:
-      • Anti-Lock Pro  — velocity + CFrame-delta + jitter
-      • Anti-Aim Detect— detect ว่าใครกำลัง lock เรา
-      • Next Target button
-      • PlayerGui fallback (รองรับมือถือ)
-════════════════════════════════════════════════════════
---]]
+-- ╔══════════════════════════════════════╗
+-- ║   KUY LOCK MENU v1 - CLEAN SIMPLE   ║
+-- ║   Lock + Radar | Mobile + PC        ║
+-- ╚══════════════════════════════════════╝
 
-local Players    = game:GetService("Players")
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UIS        = game:GetService("UserInputService")
-local TS         = game:GetService("TweenService")
-local HTTP       = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
-local plr  = Players.LocalPlayer
-local cam  = workspace.CurrentCamera
+local LP = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
--- ─────────────────────────────────────────────────────
---  STATE
--- ─────────────────────────────────────────────────────
-local lockOn      = false
-local nearOn      = false
-local antiOn      = false
-local antiAimOn   = false
-local mode        = "Player"
-local target      = nil
-local lockConn    = nil
-local antiConn    = nil
-local selCols     = {}
+-- ══════════════════════
+-- STATE
+-- ══════════════════════
+local S = {
+    Size       = 10,
+    Mode       = "Monster", -- "Player" | "Monster"
+    AimPart    = "Body",    -- "Head" | "Body"
+    Strength   = 0.2,
+    Range      = 150,
+    Enabled    = false,
+    Nearest    = false,
+    RadarOpen  = false,
+    RadarSize  = 10,
+    ColorFilter = nil,      -- nil = all colors
+}
 
--- Anti-Lock Pro internals
-local lastHRP_CF  = nil
-local lastHRP_vel = Vector3.new(0,0,0)
-local jitterConn  = nil
-local jitterActive= false
+local currentTarget = nil
+local lockConn = nil
+local radarGui = nil
 
--- ─────────────────────────────────────────────────────
---  GAME LOGIC HELPERS
--- ─────────────────────────────────────────────────────
-local function getChar()   return plr.Character end
-local function getHRP(m)   return m and m:FindFirstChild("HumanoidRootPart") end
-local function getHum(m)   return m and m:FindFirstChildOfClass("Humanoid") end
-local function alive(m)
-    if not m then return false end
+-- ══════════════════════
+-- CHAR HELPERS
+-- ══════════════════════
+local Char, HRP, Hum
+
+local function refreshChar(c)
+    Char = c
+    HRP  = c:WaitForChild("HumanoidRootPart", 5)
+    Hum  = c:FindFirstChildOfClass("Humanoid")
+end
+
+if LP.Character then refreshChar(LP.Character) end
+LP.CharacterAdded:Connect(refreshChar)
+
+local function getRoot(m)
+    return m and m:FindFirstChild("HumanoidRootPart")
+end
+local function getHum(m)
+    return m and m:FindFirstChildOfClass("Humanoid")
+end
+local function isAlive(m)
     local h = getHum(m)
-    return h ~= nil and h.Health > 0
+    return h and h.Health > 0
+end
+local function getAimPos(m)
+    if S.AimPart == "Head" then
+        local head = m:FindFirstChild("Head")
+        if head then return head.Position end
+    end
+    local r = getRoot(m)
+    return r and r.Position
 end
 
-local function dist(m)
-    local c = getChar(); if not c then return math.huge end
-    local a = getHRP(c); local b = getHRP(m)
-    if not a or not b then return math.huge end
-    return (a.Position - b.Position).Magnitude
+-- ══════════════════════
+-- TARGET LIST
+-- ══════════════════════
+local function getTeamColor(model)
+    local p = Players:GetPlayerFromCharacter(model)
+    if p then
+        local myT = LP.Team
+        if myT and p.Team == myT then return Color3.fromRGB(60,200,100) end
+        if p.Team then return Color3.fromRGB(220,60,60) end
+        return Color3.fromRGB(150,150,255)
+    end
+    return Color3.fromRGB(220,140,50)
 end
 
-local function buildList()
-    local out = {}
-    if mode == "Player" then
+local function getTargets()
+    if not HRP then return {} end
+    local list = {}
+    if S.Mode == "Player" then
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= plr and p.Character and alive(p.Character) and dist(p.Character) <= range then
-                table.insert(out, { model=p.Character, name=p.Name, team=p.Team, isPlayer=true })
+            if p ~= LP and p.Character and isAlive(p.Character) then
+                local r = getRoot(p.Character)
+                if r then
+                    local d = (r.Position - HRP.Position).Magnitude
+                    if d <= S.Range then
+                        table.insert(list, {
+                            model = p.Character,
+                            name  = p.Name,
+                            dist  = d,
+                            color = getTeamColor(p.Character)
+                        })
+                    end
+                end
             end
         end
     else
-        local pc = {}
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Character then pc[p.Character] = true end
-        end
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if  obj:IsA("Model") and not pc[obj]
-            and obj:FindFirstChildOfClass("Humanoid")
-            and obj:FindFirstChild("HumanoidRootPart")
-            and alive(obj) and dist(obj) <= range then
-                table.insert(out, { model=obj, name=obj.Name, team=nil, isPlayer=false })
+            if obj:IsA("Model") and obj ~= Char then
+                local h = getHum(obj)
+                local r = getRoot(obj)
+                if h and h.Health > 0 and r and not Players:GetPlayerFromCharacter(obj) then
+                    local d = (r.Position - HRP.Position).Magnitude
+                    if d <= S.Range then
+                        table.insert(list, {
+                            model = obj,
+                            name  = obj.Name,
+                            dist  = d,
+                            color = getTeamColor(obj)
+                        })
+                    end
+                end
             end
         end
     end
-    return out
+    table.sort(list, function(a,b) return a.dist < b.dist end)
+    -- filter color
+    if S.ColorFilter then
+        local cf = S.ColorFilter
+        local filtered = {}
+        for _, e in ipairs(list) do
+            if math.abs(e.color.R-cf.R)<0.05 and math.abs(e.color.G-cf.G)<0.05 and math.abs(e.color.B-cf.B)<0.05 then
+                table.insert(filtered, e)
+            end
+        end
+        return filtered
+    end
+    return list
 end
 
-local function getFront(list)
-    local best, bd = nil, -math.huge
-    local cf = cam.CFrame
-    for _, t in ipairs(list) do
-        local r = getHRP(t.model)
+local function getNearestTarget()
+    local list = getTargets()
+    return list[1] and list[1].model or nil
+end
+
+local function getLookedTarget()
+    if not HRP then return nil end
+    local list = getTargets()
+    local best, bestDot = nil, -1
+    local camLook = Camera.CFrame.LookVector
+    local camPos  = Camera.CFrame.Position
+    for _, e in ipairs(list) do
+        local r = getRoot(e.model)
         if r then
-            local dot = cf.LookVector:Dot((r.Position - cf.Position).Unit)
-            if dot > bd then bd=dot; best=t end
+            local dir = (r.Position - camPos).Unit
+            local dot = camLook:Dot(dir)
+            if dot > bestDot then best = e.model bestDot = dot end
         end
     end
     return best
 end
 
-local function getNearest(list)
-    local best, bd = nil, math.huge
-    for _, t in ipairs(list) do
-        local d = dist(t.model)
-        if d < bd then bd=d; best=t end
-    end
-    return best
+-- ══════════════════════
+-- LOCK LOGIC
+-- ══════════════════════
+local function setTarget(m)
+    currentTarget = m
 end
 
-local function getNextTarget(current, list)
-    if #list == 0 then return nil end
-    if not current then return list[1] end
-    for i, t in ipairs(list) do
-        if t.model == current.model then
-            return list[(i % #list) + 1]
-        end
-    end
-    return list[1]
-end
-
--- ─────────────────────────────────────────────────────
---  SETTINGS (global so input boxes can write to them)
--- ─────────────────────────────────────────────────────
-local strength = 0.2   -- 0.01 – 1.0
-local range    = 500
-
--- ─────────────────────────────────────────────────────
---  TARGET LOCK  (FIXED)
--- ─────────────────────────────────────────────────────
-local function startLock(forceTarget)
+local function startLock()
     if lockConn then lockConn:Disconnect() end
-    if forceTarget then
-        target = forceTarget
-    else
-        local list = buildList()
-        target = nearOn and getNearest(list) or getFront(list)
-    end
+    local origType = Camera.CameraType
+    Camera.CameraType = Enum.CameraType.Scriptable
+    local scanTimer = 0
 
-    lockConn = RunService.RenderStepped:Connect(function()
-        if not lockOn then return end
+    lockConn = RunService.RenderStepped:Connect(function(dt)
+        if not HRP then return end
+        Camera.CameraType = Enum.CameraType.Scriptable
 
-        -- ★ FIX: force Scriptable ทุก frame ไม่ให้ Roblox reset กลับ
-        if cam.CameraType ~= Enum.CameraType.Scriptable then
-            cam.CameraType = Enum.CameraType.Scriptable
+        -- auto pick target
+        if not currentTarget or not isAlive(currentTarget) then
+            if S.Nearest then
+                setTarget(getNearestTarget())
+            else
+                setTarget(getLookedTarget())
+            end
         end
 
-        local char = getChar(); if not char then return end
-        local root = getHRP(char); if not root then return end
-
-        -- เป้าตาย → หาใหม่อัตโนมัติ
-        if not target or not alive(target.model) then
-            target = getNearest(buildList())
-            if not target then return end
+        if currentTarget then
+            if not isAlive(currentTarget) then
+                setTarget(getNearestTarget())
+                return
+            end
+            local aimPos = getAimPos(currentTarget)
+            if not aimPos then return end
+            -- rotate character
+            HRP.CFrame = CFrame.new(HRP.Position,
+                Vector3.new(aimPos.X, HRP.Position.Y, aimPos.Z))
+            -- lerp camera
+            local targetCF = CFrame.new(Camera.CFrame.Position, aimPos)
+            Camera.CFrame = Camera.CFrame:Lerp(targetCF, S.Strength)
         end
-
-        local tr = getHRP(target.model); if not tr then target=nil; return end
-
-        -- ★ FIX: alpha map ถูกต้อง  strength 1 = lerp 0.2 (smooth), 10 = instant
-        local alpha = math.clamp(strength * 0.2, 0.01, 1)
-
-        -- หมุนตัวละคร (แนวราบ Y เท่านั้น)
-        local flat = Vector3.new(tr.Position.X - root.Position.X, 0, tr.Position.Z - root.Position.Z)
-        if flat.Magnitude > 0.05 then
-            local wantChar = CFrame.lookAt(root.Position, root.Position + flat)
-            root.CFrame = root.CFrame:Lerp(wantChar, alpha)
-        end
-
-        -- หมุนกล้อง (เล็งกลาง body ของเป้า)
-        local camPos  = cam.CFrame.Position
-        local aimPos  = tr.Position + Vector3.new(0, 1.2, 0)
-        local wantCam = CFrame.lookAt(camPos, aimPos)
-        cam.CFrame    = cam.CFrame:Lerp(wantCam, alpha)
     end)
 end
 
 local function stopLock()
-    if lockConn then lockConn:Disconnect(); lockConn=nil end
-    target = nil
-    cam.CameraType = Enum.CameraType.Custom
+    if lockConn then lockConn:Disconnect() lockConn = nil end
+    pcall(function() Camera.CameraType = Enum.CameraType.Custom end)
+    setTarget(nil)
 end
 
--- ─────────────────────────────────────────────────────
---  ANTI-LOCK PRO
---  ป้องกัน 3 ชั้น:
---    1. Teleport Guard  – ระยะ > threshold ใน 1 frame
---    2. Velocity Guard  – ความเร็วผิดปกติ (เกิน max เดินปกติ)
---    3. Anti-Aim Jitter – สั่น position เล็กน้อยเพื่อรบกวน lock
--- ─────────────────────────────────────────────────────
-local ANTI_TP_THRESHOLD  = 8    -- studs/frame ถึงถือว่า teleport
-local ANTI_VEL_MAX       = 60   -- studs/sec ความเร็วสูงสุดปกติ
-local JITTER_AMP         = 0.18 -- amplitude jitter (studs)
-local JITTER_RATE        = 0.05 -- วินาทีต่อ jitter cycle
-
-local function startAnti()
-    if antiConn then antiConn:Disconnect() end
-    local char = getChar() or plr.CharacterAdded:Wait()
-    local hrp  = char:WaitForChild("HumanoidRootPart", 5)
-    if not hrp then return end
-    lastHRP_CF  = hrp.CFrame
-    lastHRP_vel = Vector3.new(0,0,0)
-
-    antiConn = RunService.RenderStepped:Connect(function(dt)
-        if not antiOn then return end
-        local c2  = getChar(); if not c2 then return end
-        local r2  = getHRP(c2); if not r2 then return end
-
-        if lastHRP_CF then
-            local delta   = r2.Position - lastHRP_CF.Position
-            local frameVel= delta.Magnitude / math.max(dt, 0.001)
-
-            -- Guard 1: Teleport (ระยะ > threshold ใน frame เดียว)
-            if delta.Magnitude > ANTI_TP_THRESHOLD and not lockOn then
-                r2.CFrame = lastHRP_CF
-                lastHRP_CF = r2.CFrame
-                return
-            end
-
-            -- Guard 2: Velocity spike (เร็วเกิน max โดยไม่ได้ lock เอง)
-            if frameVel > ANTI_VEL_MAX and not lockOn then
-                r2.CFrame = lastHRP_CF
-                lastHRP_CF = r2.CFrame
-                return
-            end
-        end
-
-        lastHRP_CF  = r2.CFrame
-        lastHRP_vel = r2.Velocity or Vector3.new(0,0,0)
-    end)
-end
-
-local function stopAnti()
-    if antiConn then antiConn:Disconnect(); antiConn=nil end
-    lastHRP_CF = nil
-end
-
--- ─────────────────────────────────────────────────────
---  ANTI-AIM JITTER
---  เมื่อเปิด: สั่นตัวละครเล็กน้อยทุก JITTER_RATE วิ
---  ทำให้ aim lock ของคนอื่นที่ lock มาหาเราไม่แม่น
--- ─────────────────────────────────────────────────────
-local function startJitter()
-    if jitterConn then jitterConn:Disconnect() end
-    local t = 0
-    jitterActive = true
-    jitterConn = RunService.RenderStepped:Connect(function(dt)
-        if not antiAimOn then return end
-        t = t + dt
-        if t < JITTER_RATE then return end
-        t = 0
-        local char = getChar(); if not char then return end
-        local hrp  = getHRP(char); if not hrp then return end
-        local rx   = (math.random() - 0.5) * 2 * JITTER_AMP
-        local rz   = (math.random() - 0.5) * 2 * JITTER_AMP
-        hrp.CFrame = hrp.CFrame + Vector3.new(rx, 0, rz)
-    end)
-end
-
-local function stopJitter()
-    jitterActive = false
-    if jitterConn then jitterConn:Disconnect(); jitterConn=nil end
-end
-
--- ─────────────────────────────────────────────────────
---  THEME
--- ─────────────────────────────────────────────────────
-local FB = Enum.Font.GothamBold
-local FL = Enum.Font.Gotham
-local C  = {
-    bg     = Color3.fromRGB(10,10,10),
-    panel  = Color3.fromRGB(18,18,18),
-    border = Color3.fromRGB(40,40,40),
-    white  = Color3.fromRGB(228,228,228),
-    gray   = Color3.fromRGB(100,100,100),
-    btn    = Color3.fromRGB(24,24,24),
-    hover  = Color3.fromRGB(38,38,38),
-    on     = Color3.fromRGB(210,210,210),
-    off    = Color3.fromRGB(44,44,44),
-    red    = Color3.fromRGB(200,50,50),
-    accent = Color3.fromRGB(80,80,80),
-    green  = Color3.fromRGB(60,180,80),
-}
-
--- ─────────────────────────────────────────────────────
---  GUI ROOT  (PlayerGui fallback สำหรับมือถือ)
--- ─────────────────────────────────────────────────────
-local gui = Instance.new("ScreenGui")
-gui.Name           = "AimLock_v7"
-gui.ResetOnSpawn   = false
-gui.IgnoreGuiInset = true
-pcall(function() gui.Parent = game:GetService("CoreGui") end)
-if not gui.Parent or gui.Parent == nil then
-    gui.Parent = plr:WaitForChild("PlayerGui")
-end
-
--- ─────────────────────────────────────────────────────
---  UI HELPERS
--- ─────────────────────────────────────────────────────
-local function co(p,r)
-    local c = Instance.new("UICorner", p)
-    c.CornerRadius = UDim.new(0, r or 6)
-end
-
-local function sk(p, cl, t)
-    local s = Instance.new("UIStroke", p)
-    s.Color = cl or C.border
-    s.Thickness = t or 1
-end
-
-local function clearSK(p)
-    for _, c in ipairs(p:GetChildren()) do
-        if c:IsA("UIStroke") then c:Destroy() end
-    end
-end
-
-local function drag(win, handle)
-    local on, ds, sp = false, nil, nil
+-- ══════════════════════════════════════
+-- DRAGGABLE HELPER
+-- ══════════════════════════════════════
+local function makeDraggable(frame, handle)
+    local drag, dStart, fStart = false, nil, nil
     handle.InputBegan:Connect(function(i)
-        if  i.UserInputType == Enum.UserInputType.MouseButton1
-        or  i.UserInputType == Enum.UserInputType.Touch then
-            on = true; ds = i.Position; sp = win.Position
-            i.Changed:Connect(function()
-                if i.UserInputState == Enum.UserInputState.End then on = false end
-            end)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true dStart = i.Position fStart = frame.Position
         end
     end)
-    UIS.InputChanged:Connect(function(i)
-        if on and (
-            i.UserInputType == Enum.UserInputType.MouseMovement or
-            i.UserInputType == Enum.UserInputType.Touch
-        ) then
-            local d = i.Position - ds
-            win.Position = UDim2.new(sp.X.Scale, sp.X.Offset+d.X, sp.Y.Scale, sp.Y.Offset+d.Y)
+    local function move(i)
+        if drag and (i.UserInputType == Enum.UserInputType.MouseMovement
+        or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = i.Position - dStart
+            frame.Position = UDim2.new(fStart.X.Scale, fStart.X.Offset+d.X,
+                fStart.Y.Scale, fStart.Y.Offset+d.Y)
         end
-    end)
+    end
+    handle.InputChanged:Connect(move)
+    UserInputService.InputChanged:Connect(move)
+    local function stop(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then drag = false end
+    end
+    handle.InputEnded:Connect(stop)
+    UserInputService.InputEnded:Connect(stop)
 end
 
-local function lbl(p, txt, sz, cl, font, xa)
-    local l = Instance.new("TextLabel", p)
+-- ══════════════════════════════════════
+-- UI FACTORY
+-- ══════════════════════════════════════
+local function corner(p, r) Instance.new("UICorner",p).CornerRadius=UDim.new(0,r or 6) end
+local function stroke(p, c, t)
+    local s=Instance.new("UIStroke",p) s.Color=c or Color3.fromRGB(60,60,60) s.Thickness=t or 1
+end
+
+local function makeLabel(parent, text, size, color, xalign)
+    local l = Instance.new("TextLabel", parent)
     l.BackgroundTransparency = 1
-    l.Text = txt; l.TextSize = sz or 12
-    l.TextColor3 = cl or C.white
-    l.Font = font or FL
-    l.TextXAlignment  = xa or Enum.TextXAlignment.Left
-    l.TextYAlignment  = Enum.TextYAlignment.Center
+    l.Text = text
+    l.TextColor3 = color or Color3.fromRGB(200,200,200)
+    l.TextSize = size or 11
+    l.Font = Enum.Font.GothamBold
+    l.TextXAlignment = xalign or Enum.TextXAlignment.Left
+    l.TextScaled = false
     return l
 end
 
-local function btn(p, txt, cb)
-    local b = Instance.new("TextButton", p)
-    b.BackgroundColor3 = C.btn
-    b.TextColor3       = C.white
-    b.Text             = txt
-    b.Font             = FB
-    b.TextSize         = 12
-    b.AutoButtonColor  = false
-    co(b, 5); sk(b, C.border)
-    b.MouseEnter:Connect(function()  TS:Create(b, TweenInfo.new(0.12), {BackgroundColor3=C.hover}):Play() end)
-    b.MouseLeave:Connect(function()  TS:Create(b, TweenInfo.new(0.12), {BackgroundColor3=C.btn}):Play()   end)
-    if cb then b.MouseButton1Click:Connect(cb) end
+local function makeBtn(parent, text, size, bg, tc)
+    local b = Instance.new("TextButton", parent)
+    b.BackgroundColor3 = bg or Color3.fromRGB(35,35,35)
+    b.BorderSizePixel = 0
+    b.Text = text
+    b.TextColor3 = tc or Color3.fromRGB(220,220,220)
+    b.TextSize = size or 11
+    b.Font = Enum.Font.GothamBold
+    b.AutoButtonColor = false
+    corner(b, 6)
     return b
 end
 
-local function icon(p, txt, cb)
-    local b = Instance.new("TextButton", p)
-    b.BackgroundTransparency = 1
-    b.Text = txt; b.TextColor3 = C.gray
-    b.Font = FB; b.TextSize = 13; b.AutoButtonColor = false
-    if cb then b.MouseButton1Click:Connect(cb) end
+local function makeInput(parent, default, tsize)
+    local b = Instance.new("TextBox", parent)
+    b.BackgroundColor3 = Color3.fromRGB(28,28,28)
+    b.BorderSizePixel = 0
+    b.Text = tostring(default)
+    b.TextColor3 = Color3.fromRGB(220,220,220)
+    b.TextSize = tsize or 11
+    b.Font = Enum.Font.Gotham
+    b.ClearTextOnFocus = false
+    corner(b, 5)
+    stroke(b, Color3.fromRGB(55,55,55))
     return b
 end
 
-local function input(p, val)
-    local b = Instance.new("TextBox", p)
-    b.BackgroundColor3   = Color3.fromRGB(6, 6, 6)
-    b.TextColor3         = C.white
-    b.Text               = tostring(val)
-    b.Font               = FL; b.TextSize = 12
-    b.ClearTextOnFocus   = false
-    b.TextXAlignment     = Enum.TextXAlignment.Center
-    co(b, 4); sk(b, C.border)
-    return b
-end
+-- ══════════════════════════════════════
+-- BUILD MAIN GUI
+-- ══════════════════════════════════════
+pcall(function() CoreGui:FindFirstChild("KuyLock_v1"):Destroy() end)
 
-local function toggle(p, init, cb)
-    local track = Instance.new("Frame", p)
-    track.Size             = UDim2.new(0, 36, 0, 18)
-    track.BackgroundColor3 = init and C.on or C.off
-    co(track, 9)
-    local knob = Instance.new("Frame", track)
-    knob.Size             = UDim2.new(0, 12, 0, 12)
-    knob.BackgroundColor3 = C.white
-    co(knob, 6)
-    knob.Position = init and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6)
-    local state = init
-    local hit   = Instance.new("TextButton", track)
-    hit.Size = UDim2.new(1,0,1,0); hit.BackgroundTransparency=1; hit.Text=""
-    hit.MouseButton1Click:Connect(function()
-        state = not state
-        TS:Create(track, TweenInfo.new(0.15), {BackgroundColor3 = state and C.on or C.off}):Play()
-        TS:Create(knob,  TweenInfo.new(0.15), {
-            Position = state and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6)
-        }):Play()
-        cb(state)
-    end)
-    return track
-end
+local sg = Instance.new("ScreenGui", CoreGui)
+sg.Name = "KuyLock_v1"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-local function sep(p, ord)
-    local f = Instance.new("Frame", p)
-    f.BackgroundColor3 = C.border; f.BorderSizePixel = 0
-    f.Size = UDim2.new(1,-16,0,1); f.Position = UDim2.new(0,8,0,0)
-    f.LayoutOrder = ord or 0
-end
+local sc = S.Size / 10  -- scale
+local W, H = 210*sc, 370*sc
 
-local function row(scroll, h, ord)
-    local f = Instance.new("Frame", scroll)
+local main = Instance.new("Frame", sg)
+main.Size = UDim2.new(0, W, 0, H)
+main.Position = UDim2.new(0.5, -W/2, 0.5, -H/2)
+main.BackgroundColor3 = Color3.fromRGB(13,13,13)
+main.BorderSizePixel = 0
+corner(main, 9)
+stroke(main, Color3.fromRGB(55,55,55))
+
+-- title bar
+local tbar = Instance.new("Frame", main)
+tbar.Size = UDim2.new(1,0,0,28*sc)
+tbar.BackgroundColor3 = Color3.fromRGB(22,22,22)
+tbar.BorderSizePixel = 0
+corner(tbar, 9)
+makeDraggable(main, tbar)
+
+local titleLbl = makeLabel(tbar, "⚔  KuyLock", 11*sc, Color3.fromRGB(255,255,255))
+titleLbl.Size = UDim2.new(1,-100*sc,1,0)
+titleLbl.Position = UDim2.new(0,8*sc,0,0)
+
+-- size input
+local sizeInput = makeInput(tbar, "10", 10*sc)
+sizeInput.Size = UDim2.new(0,26*sc,0,20*sc)
+sizeInput.Position = UDim2.new(1,-96*sc,0.5,-10*sc)
+
+-- minimize btn
+local minBtn = makeBtn(tbar, "–", 13*sc, Color3.fromRGB(50,50,50))
+minBtn.Size = UDim2.new(0,22*sc,0,20*sc)
+minBtn.Position = UDim2.new(1,-68*sc,0.5,-10*sc)
+
+-- close btn
+local closeBtn = makeBtn(tbar, "✕", 11*sc, Color3.fromRGB(190,45,45), Color3.fromRGB(255,255,255))
+closeBtn.Size = UDim2.new(0,22*sc,0,20*sc)
+closeBtn.Position = UDim2.new(1,-42*sc,0.5,-10*sc)
+
+-- delete btn
+local delBtn = makeBtn(tbar, "🗑", 11*sc, Color3.fromRGB(80,30,30), Color3.fromRGB(255,150,150))
+delBtn.Size = UDim2.new(0,22*sc,0,20*sc)
+delBtn.Position = UDim2.new(1,-16*sc,0.5,-10*sc)
+
+-- content scroll
+local content = Instance.new("ScrollingFrame", main)
+content.Size = UDim2.new(1,-4*sc,1,-30*sc)
+content.Position = UDim2.new(0,2*sc,0,29*sc)
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.ScrollBarThickness = 2
+content.ScrollBarImageColor3 = Color3.fromRGB(70,70,70)
+content.CanvasSize = UDim2.new(0,0,0,0)
+
+local layout = Instance.new("UIListLayout", content)
+layout.Padding = UDim.new(0,4*sc)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+local pad = Instance.new("UIPadding", content)
+pad.PaddingLeft = UDim.new(0,6*sc)
+pad.PaddingRight = UDim.new(0,6*sc)
+pad.PaddingTop = UDim.new(0,5*sc)
+
+layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    content.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+10*sc)
+end)
+
+-- ──────────────────────────────
+-- ROW BUILDER HELPERS
+-- ──────────────────────────────
+local function secLabel(text)
+    local f = Instance.new("Frame", content)
+    f.Size = UDim2.new(1,0,0,14*sc)
     f.BackgroundTransparency = 1
-    f.Size = UDim2.new(1,0,0, h or 32)
-    f.LayoutOrder = ord or 0
+    local l = makeLabel(f, text, 9*sc, Color3.fromRGB(120,120,120))
+    l.Size = UDim2.new(1,0,1,0)
     return f
 end
 
--- ─────────────────────────────────────────────────────
---  WINDOW BUILDER
--- ─────────────────────────────────────────────────────
-local function newWin(title, x, y, w, h)
-    local win = Instance.new("Frame", gui)
-    win.BackgroundColor3 = C.bg
-    win.Position         = UDim2.new(0, x, 0, y)
-    win.Size             = UDim2.new(0, w, 0, h)
-    co(win, 8); sk(win, C.border)
-
-    local bar = Instance.new("Frame", win)
-    bar.BackgroundColor3 = C.panel
-    bar.Size             = UDim2.new(1, 0, 0, 30)
-    co(bar, 8)
-
-    local patch = Instance.new("Frame", win)
-    patch.BackgroundColor3 = C.panel; patch.BorderSizePixel = 0
-    patch.Size     = UDim2.new(1, 0, 0, 8)
-    patch.Position = UDim2.new(0, 0, 0, 22)
-
-    lbl(bar, "  ◈  " .. title, 12, C.white, FB).Size = UDim2.new(1, -120, 1, 0)
-    drag(win, bar)
-
-    local scroll = Instance.new("ScrollingFrame", win)
-    scroll.BackgroundTransparency = 1
-    scroll.Position               = UDim2.new(0, 0, 0, 30)
-    scroll.Size                   = UDim2.new(1, 0, 1, -30)
-    scroll.CanvasSize             = UDim2.new(0, 0, 0, 0)
-    scroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
-    scroll.ScrollBarThickness     = 3
-    scroll.ScrollBarImageColor3   = C.border
-    scroll.BorderSizePixel        = 0
-    scroll.ScrollingDirection     = Enum.ScrollingDirection.Y
-
-    local lyt = Instance.new("UIListLayout", scroll)
-    lyt.SortOrder  = Enum.SortOrder.LayoutOrder
-    lyt.Padding    = UDim.new(0, 0)
-
-    local pad = Instance.new("UIPadding", scroll)
-    pad.PaddingLeft   = UDim.new(0, 10); pad.PaddingRight  = UDim.new(0, 10)
-    pad.PaddingTop    = UDim.new(0, 8);  pad.PaddingBottom = UDim.new(0, 8)
-
-    return win, bar, scroll
+local function divider()
+    local f = Instance.new("Frame", content)
+    f.Size = UDim2.new(1,0,0,1)
+    f.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    f.BorderSizePixel = 0
 end
 
--- ─────────────────────────────────────────────────────
---  MAIN WINDOW
--- ─────────────────────────────────────────────────────
-local mWin, mBar, mScroll = newWin("LOCK v7", 20, 80, 200, 400)
+local function toggleRow(label, onToggle)
+    local f = Instance.new("Frame", content)
+    f.Size = UDim2.new(1,0,0,26*sc)
+    f.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    f.BorderSizePixel = 0
+    corner(f,6)
 
--- Titlebar controls
-do
-    local scBox = input(mBar, "10")
-    scBox.Size = UDim2.new(0, 26, 0, 18); scBox.Position = UDim2.new(1, -96, 0.5, -9)
-    scBox.FocusLost:Connect(function()
-        local v = tonumber(scBox.Text)
-        if v then mWin.Size = UDim2.new(0, math.max(v*18, 140), 0, mWin.Size.Y.Offset) end
-    end)
+    local l = makeLabel(f, label, 10*sc)
+    l.Size = UDim2.new(1,-50*sc,1,0)
+    l.Position = UDim2.new(0,8*sc,0,0)
 
-    local coll = false
-    local cBtn = icon(mBar, "─"); cBtn.Size = UDim2.new(0,20,0,20); cBtn.Position = UDim2.new(1,-60,0.5,-10)
-    cBtn.MouseButton1Click:Connect(function()
-        coll = not coll; mScroll.Visible = not coll
-        cBtn.Text = coll and "□" or "─"
-        mWin.Size = UDim2.new(0, mWin.Size.X.Offset, 0, coll and 30 or 400)
-    end)
+    local state = false
+    local btn = makeBtn(f, "OFF", 9*sc, Color3.fromRGB(45,45,45), Color3.fromRGB(130,130,130))
+    btn.Size = UDim2.new(0,40*sc,0,18*sc)
+    btn.Position = UDim2.new(1,-46*sc,0.5,-9*sc)
 
-    local xBtn = icon(mBar, "✕", function() stopLock(); stopAnti(); stopJitter(); mWin:Destroy() end)
-    xBtn.Size = UDim2.new(0,20,0,20); xBtn.Position = UDim2.new(1,-32,0.5,-10)
-end
-
--- ── Mode ──
-do
-    local r = row(mScroll, 32, 1)
-    lbl(r, "Mode", 12, C.gray).Size = UDim2.new(0.36, 0, 1, 0)
-    local pb = btn(r, "Player"); pb.Size = UDim2.new(0.30,-2,0,22); pb.Position = UDim2.new(0.36,0,0.5,-11)
-    local nb = btn(r, "NPC");    nb.Size = UDim2.new(0.30,-2,0,22); nb.Position = UDim2.new(0.68,2,0.5,-11)
-    local function ref()
-        pb.BackgroundColor3 = mode=="Player" and C.accent or C.btn
-        nb.BackgroundColor3 = mode=="NPC"    and C.accent or C.btn
-    end; ref()
-    pb.MouseButton1Click:Connect(function() mode="Player"; ref() end)
-    nb.MouseButton1Click:Connect(function() mode="NPC";    ref() end)
-end
-
-sep(mScroll, 2)
-
--- ── Lock Target ──
-do
-    local r  = row(mScroll, 32, 3)
-    lbl(r, "Lock Target", 12, C.gray).Size = UDim2.new(0.65, 0, 1, 0)
-    local sw = toggle(r, false, function(s)
-        lockOn = s
-        if s then
-            cam.CameraType = Enum.CameraType.Scriptable
-            startLock()
+    local function refresh()
+        if state then
+            btn.BackgroundColor3 = Color3.fromRGB(255,255,255)
+            btn.TextColor3 = Color3.fromRGB(0,0,0)
+            btn.Text = "ON"
         else
-            stopLock()
+            btn.BackgroundColor3 = Color3.fromRGB(45,45,45)
+            btn.TextColor3 = Color3.fromRGB(130,130,130)
+            btn.Text = "OFF"
         end
-    end)
-    sw.Position = UDim2.new(1, -38, 0.5, -9)
-end
-
--- ── Lock Nearest ──
-do
-    local r  = row(mScroll, 32, 4)
-    lbl(r, "Lock Nearest", 12, C.gray).Size = UDim2.new(0.65, 0, 1, 0)
-    local sw = toggle(r, false, function(s) nearOn = s end)
-    sw.Position = UDim2.new(1, -38, 0.5, -9)
-end
-
--- ── Next Target Button ──
-do
-    local r = row(mScroll, 32, 5)
-    local b = btn(r, "▶  Next Target", function()
-        if not lockOn then return end
-        local list = buildList()
-        local next = getNextTarget(target, list)
-        if next then
-            target = next
-            startLock(next)
-        end
-    end)
-    b.Size     = UDim2.new(1, 0, 0, 24)
-    b.Position = UDim2.new(0, 0, 0.5, -12)
-end
-
-sep(mScroll, 6)
-
--- ── Anti-Lock Pro ──
-do
-    local r  = row(mScroll, 32, 7)
-    lbl(r, "Anti-Lock Pro", 12, C.gray).Size = UDim2.new(0.65, 0, 1, 0)
-    local ind = Instance.new("Frame", r)
-    ind.Size             = UDim2.new(0, 6, 0, 6)
-    ind.Position         = UDim2.new(0.62, 0, 0.5, -3)
-    ind.BackgroundColor3 = C.off
-    ind.BorderSizePixel  = 0
-    co(ind, 3)
-    local sw = toggle(r, false, function(s)
-        antiOn = s
-        ind.BackgroundColor3 = s and C.green or C.off
-        if s then startAnti() else stopAnti() end
-    end)
-    sw.Position = UDim2.new(1, -38, 0.5, -9)
-end
-
--- ── Anti-Aim Jitter ──
-do
-    local r  = row(mScroll, 32, 8)
-    lbl(r, "Anti-Aim Jitter", 12, C.gray).Size = UDim2.new(0.65, 0, 1, 0)
-    local sw = toggle(r, false, function(s)
-        antiAimOn = s
-        if s then startJitter() else stopJitter() end
-    end)
-    sw.Position = UDim2.new(1, -38, 0.5, -9)
-end
-
-sep(mScroll, 9)
-
---── Lock Strength ──
-do
-    local r = row(mScroll, 32, 10)
-    lbl(r, "Strength (1-10)", 12, C.gray).Size = UDim2.new(0.62, 0, 1, 0)
-    local b = input(r, strength)
-    b.Size = UDim2.new(0, 54, 0, 22); b.Position = UDim2.new(1, -56, 0.5, -11)
-    b.FocusLost:Connect(function()
-        local v = tonumber(b.Text)
-        if v then strength = math.clamp(v, 0.01, 10) end
-    end)
-end
-
--- ── Detect Range ──
-do
-    local r = row(mScroll, 32, 11)
-    lbl(r, "Range (studs)", 12, C.gray).Size = UDim2.new(0.62, 0, 1, 0)
-    local b = input(r, range)
-    b.Size = UDim2.new(0, 54, 0, 22); b.Position = UDim2.new(1, -56, 0.5, -11)
-    b.FocusLost:Connect(function()
-        local v = tonumber(b.Text)
-        if v then range = v end
-    end)
-end
-
--- ── Jitter Amplitude ──
-do
-    local r = row(mScroll, 32, 12)
-    lbl(r, "Jitter Amp", 12, C.gray).Size = UDim2.new(0.62, 0, 1, 0)
-    local b = input(r, JITTER_AMP)
-    b.Size = UDim2.new(0, 54, 0, 22); b.Position = UDim2.new(1, -56, 0.5, -11)
-    b.FocusLost:Connect(function()
-        local v = tonumber(b.Text)
-        if v then JITTER_AMP = math.clamp(v, 0.05, 2) end
-    end)
-end
-
-sep(mScroll, 13)
-
--- ── Scan Menu toggle ──
-local scanWinRef = nil
-do
-    local r  = row(mScroll, 32, 14)
-    lbl(r, "Scan Menu", 12, C.gray).Size = UDim2.new(0.65, 0, 1, 0)
-    local sw = toggle(r, false, function(s)
-        if scanWinRef then scanWinRef.Visible = s end
-    end)
-    sw.Position = UDim2.new(1, -38, 0.5, -9)
-end
-
--- ─────────────────────────────────────────────────────
---  SCAN WINDOW
--- ─────────────────────────────────────────────────────
-do
-    local sWin, sBar, sScroll = newWin("SCAN", 230, 80, 222, 340)
-    sWin.Visible = false
-    scanWinRef   = sWin
-
-    -- scale box
-    local scBox = input(sBar, "10")
-    scBox.Size = UDim2.new(0, 26, 0, 18); scBox.Position = UDim2.new(1, -120, 0.5, -9)
-    scBox.FocusLost:Connect(function()
-        local v = tonumber(scBox.Text)
-        if v then sWin.Size = UDim2.new(0, math.max(v*20, 160), 0, sWin.Size.Y.Offset) end
-    end)
-
-    -- color filter toggle
-    local clrOpen = false
-    local clrIcon = icon(sBar, "◐"); clrIcon.Size = UDim2.new(0,20,0,20); clrIcon.Position = UDim2.new(1,-88,0.5,-10)
-
-    -- collapse
-    local coll  = false
-    local cBtn  = icon(sBar, "─"); cBtn.Size = UDim2.new(0,20,0,20); cBtn.Position = UDim2.new(1,-56,0.5,-10)
-    cBtn.MouseButton1Click:Connect(function()
-        coll = not coll; sScroll.Visible = not coll
-        cBtn.Text = coll and "□" or "─"
-        sWin.Size = UDim2.new(0, sWin.Size.X.Offset, 0, coll and 30 or 340)
-    end)
-
-    local xBtn = icon(sBar, "✕", function() sWin:Destroy() end)
-    xBtn.Size = UDim2.new(0,20,0,20); xBtn.Position = UDim2.new(1,-30,0.5,-10)
-
-    -- scan btn
-    local sr1    = row(sScroll, 32, 1)
-    local scanBtn= btn(sr1, "▶  SCAN")
-    scanBtn.Size = UDim2.new(1,0,0,24); scanBtn.Position = UDim2.new(0,0,0.5,-12)
-
-    -- color filter row
-    local sr2      = row(sScroll, 28, 2); sr2.Visible = false
-    local clrHolder= Instance.new("Frame", sr2)
-    clrHolder.BackgroundTransparency = 1; clrHolder.Size = UDim2.new(1,0,1,0)
-    local cFL = Instance.new("UIListLayout", clrHolder)
-    cFL.FillDirection       = Enum.FillDirection.Horizontal
-    cFL.Padding             = UDim.new(0, 4)
-    cFL.VerticalAlignment   = Enum.VerticalAlignment.Center
-    clrIcon.MouseButton1Click:Connect(function()
-        clrOpen = not clrOpen; sr2.Visible = clrOpen
-    end)
-
-    -- result scroll
-    local sr3    = row(sScroll, 260, 3)
-    local rScroll= Instance.new("ScrollingFrame", sr3)
-    rScroll.BackgroundTransparency = 1; rScroll.Size = UDim2.new(1,0,1,0)
-    rScroll.CanvasSize             = UDim2.new(0,0,0,0)
-    rScroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
-    rScroll.ScrollBarThickness     = 3
-    rScroll.ScrollBarImageColor3   = C.border
-    rScroll.BorderSizePixel        = 0
-    rScroll.ScrollingDirection     = Enum.ScrollingDirection.Y
-    local rLyt = Instance.new("UIListLayout", rScroll)
-    rLyt.SortOrder = Enum.SortOrder.LayoutOrder; rLyt.Padding = UDim.new(0, 2)
-
-    local function tCol(e)
-        if e.isPlayer and e.team then return e.team.TeamColor.Color
-        elseif not e.isPlayer    then return C.red
-        else                          return Color3.fromRGB(130,130,130) end
-    end
-    local function ceq(a, b)
-        return math.abs(a.R-b.R)<0.06 and math.abs(a.G-b.G)<0.06 and math.abs(a.B-b.B)<0.06
     end
 
-    local function doScan()
-        for _, c in ipairs(rScroll:GetChildren())   do if not c:IsA("UIListLayout") then c:Destroy() end end
-        for _, c in ipairs(clrHolder:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
-        selCols = {}
+    btn.MouseButton1Click:Connect(function()
+        state = not state refresh() onToggle(state)
+    end)
+    return f, function(v) state=v refresh() end
+end
 
-        local list   = buildList()
-        local fCols, groups = {}, {}
+local function inputRow(label, default, onChange)
+    local f = Instance.new("Frame", content)
+    f.Size = UDim2.new(1,0,0,26*sc)
+    f.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    f.BorderSizePixel = 0
+    corner(f,6)
 
-        for _, e in ipairs(list) do
-            local key = e.isPlayer and (e.team and "Team: "..e.team.Name or "Neutral") or "NPC / Monster"
-            if not groups[key] then groups[key] = {entries={}, color=tCol(e)} end
-            table.insert(groups[key].entries, e)
-            local c = tCol(e); local found = false
-            for _, fc in ipairs(fCols) do if ceq(fc, c) then found=true; break end end
-            if not found then table.insert(fCols, c) end
-        end
+    local l = makeLabel(f, label, 10*sc)
+    l.Size = UDim2.new(0.55,0,1,0)
+    l.Position = UDim2.new(0,8*sc,0,0)
 
-        -- color dots
-        for _, fc in ipairs(fCols) do
-            local cb = Instance.new("TextButton", clrHolder)
-            cb.Size = UDim2.new(0,18,0,18); cb.BackgroundColor3 = fc
-            cb.Text = ""; cb.AutoButtonColor = false; co(cb,4); sk(cb, C.border)
-            local sel = false
-            cb.MouseButton1Click:Connect(function()
-                sel = not sel; clearSK(cb)
-                sk(cb, sel and C.white or C.border, sel and 2 or 1)
-                if sel then table.insert(selCols, fc)
-                else
-                    for i, sc in ipairs(selCols) do
-                        if ceq(sc, fc) then table.remove(selCols, i); break end
+    local box = makeInput(f, default, 10*sc)
+    box.Size = UDim2.new(0.38,0,0,18*sc)
+    box.Position = UDim2.new(0.58,0,0.5,-9*sc)
+    box.FocusLost:Connect(function()
+        local v = tonumber(box.Text)
+        if v then onChange(v) else box.Text=tostring(default) end
+    end)
+    return f
+end
+
+local function modeRow(opts, default, onChange)
+    local f = Instance.new("Frame", content)
+    f.Size = UDim2.new(1,0,0,26*sc)
+    f.BackgroundTransparency = 1
+
+    local cur = default
+    local btns = {}
+    local w = (1/#opts)
+    for i, opt in ipairs(opts) do
+        local b = makeBtn(f, opt, 9*sc)
+        b.Size = UDim2.new(w,-3*sc,1,0)
+        b.Position = UDim2.new((i-1)*w,2*sc,0,0)
+        table.insert(btns, {b=b, v=opt})
+        b.MouseButton1Click:Connect(function()
+            cur = opt
+            for _, d in ipairs(btns) do
+                d.b.BackgroundColor3 = d.v==cur
+                    and Color3.fromRGB(230,230,230) or Color3.fromRGB(35,35,35)
+                d.b.TextColor3 = d.v==cur
+                    and Color3.fromRGB(15,15,15) or Color3.fromRGB(180,180,180)
+            end
+            onChange(opt)
+        end)
+    end
+    -- init style
+    for _, d in ipairs(btns) do
+        d.b.BackgroundColor3 = d.v==cur
+            and Color3.fromRGB(230,230,230) or Color3.fromRGB(35,35,35)
+        d.b.TextColor3 = d.v==cur
+            and Color3.fromRGB(15,15,15) or Color3.fromRGB(180,180,180)
+    end
+    return f
+end
+
+-- ──────────────────────────────
+-- TARGET DISPLAY LABEL
+-- ──────────────────────────────
+local statusRow = Instance.new("Frame", content)
+statusRow.Size = UDim2.new(1,0,0,22*sc)
+statusRow.BackgroundColor3 = Color3.fromRGB(18,18,18)
+statusRow.BorderSizePixel = 0
+corner(statusRow,6)
+
+local statusLbl = makeLabel(statusRow, "● No Target", 9*sc, Color3.fromRGB(100,100,100))
+statusLbl.Size = UDim2.new(1,-10*sc,1,0)
+statusLbl.Position = UDim2.new(0,8*sc,0,0)
+
+local function updateStatus()
+    if currentTarget then
+        statusLbl.Text = "🔒 " .. currentTarget.Name
+        statusLbl.TextColor3 = Color3.fromRGB(120,255,120)
+    else
+        statusLbl.Text = "● No Target"
+        statusLbl.TextColor3 = Color3.fromRGB(100,100,100)
+    end
+end
+
+-- ══════════════════════
+-- BUILD MENU ITEMS
+-- ══════════════════════
+
+secLabel("▸ TARGET MODE")
+modeRow({"Player","Monster"}, S.Mode, function(v)
+    S.Mode = v currentTarget = nil
+end)
+
+divider()
+secLabel("▸ AIM PART")
+modeRow({"Body","Head"}, S.AimPart, function(v)
+    S.AimPart = v
+end)
+
+divider()
+secLabel("▸ TARGET LOCK")
+
+local lockRow, setLockUI = toggleRow("🔒 Lock Enable", function(v)
+    S.Enabled = v
+    if v then startLock() else stopLock() end
+end)
+
+local nearRow, setNearUI = toggleRow("📍 Auto Nearest", function(v)
+    S.Nearest = v
+    if v then setTarget(getNearestTarget()) end
+end)
+
+inputRow("⚡ Strength (0.01-1)", S.Strength, function(v)
+    S.Strength = math.clamp(v, 0.01, 1)
+end)
+
+inputRow("📏 Range (studs)", S.Range, function(v)
+    S.Range = math.max(1, v)
+end)
+
+divider()
+secLabel("▸ NAVIGATE TARGET")
+
+local navRow = Instance.new("Frame", content)
+navRow.Size = UDim2.new(1,0,0,26*sc)
+navRow.BackgroundTransparency = 1
+
+local prevBtn = makeBtn(navRow, "◀ Prev", 9*sc, Color3.fromRGB(35,35,35))
+prevBtn.Size = UDim2.new(0.48,0,1,0)
+prevBtn.Position = UDim2.new(0,0,0,0)
+
+local nextBtn = makeBtn(navRow, "Next ▶", 9*sc, Color3.fromRGB(35,35,35))
+nextBtn.Size = UDim2.new(0.48,0,1,0)
+nextBtn.Position = UDim2.new(0.52,0,0,0)
+
+prevBtn.MouseButton1Click:Connect(function()
+    local list = getTargets()
+    if #list == 0 then return end
+    local idx = 1
+    for i, e in ipairs(list) do
+        if e.model == currentTarget then idx = i break end
+    end
+    idx = idx - 1
+    if idx < 1 then idx = #list end
+    setTarget(list[idx].model)
+    updateStatus()
+end)
+
+nextBtn.MouseButton1Click:Connect(function()
+    local list = getTargets()
+    if #list == 0 then return end
+    local idx = 1
+    for i, e in ipairs(list) do
+        if e.model == currentTarget then idx = i break end
+    end
+    idx = idx + 1
+    if idx > #list then idx = 1 end
+    setTarget(list[idx].model)
+    updateStatus()
+end)
+
+divider()
+statusRow.Parent = nil -- re-add at bottom
+statusRow.Parent = content
+
+divider()
+secLabel("▸ RADAR")
+
+local radarToggleRow, setRadarUI = toggleRow("🔍 Open Radar", function(v)
+    S.RadarOpen = v
+    if v then
+        if radarGui then pcall(function() radarGui:Destroy() end) end
+        -- BUILD RADAR GUI
+        local rs = S.RadarSize / 10
+        local RW, RH = 200*rs, 320*rs
+
+        radarGui = Instance.new("ScreenGui", CoreGui)
+        radarGui.Name = "KuyRadar_v1"
+        radarGui.ResetOnSpawn = false
+        radarGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+        local rf = Instance.new("Frame", radarGui)
+        rf.Size = UDim2.new(0,RW,0,RH)
+        rf.Position = UDim2.new(0.5,20,0.5,-RH/2)
+        rf.BackgroundColor3 = Color3.fromRGB(11,11,11)
+        rf.BorderSizePixel = 0
+        corner(rf,9)
+        stroke(rf, Color3.fromRGB(55,55,55))
+
+        local rtbar = Instance.new("Frame", rf)
+        rtbar.Size = UDim2.new(1,0,0,26*rs)
+        rtbar.BackgroundColor3 = Color3.fromRGB(20,20,20)
+        rtbar.BorderSizePixel = 0
+        corner(rtbar,9)
+        makeDraggable(rf, rtbar)
+
+        local rtitle = makeLabel(rtbar, "🔍 Radar", 10*rs, Color3.fromRGB(255,255,255))
+        rtitle.Size = UDim2.new(1,-80*rs,1,0)
+        rtitle.Position = UDim2.new(0,7*rs,0,0)
+
+        local rSizeInput = makeInput(rtbar, "10", 9*rs)
+        rSizeInput.Size = UDim2.new(0,24*rs,0,18*rs)
+        rSizeInput.Position = UDim2.new(1,-76*rs,0.5,-9*rs)
+
+        local rMinBtn = makeBtn(rtbar, "–", 11*rs, Color3.fromRGB(50,50,50))
+        rMinBtn.Size = UDim2.new(0,20*rs,0,18*rs)
+        rMinBtn.Position = UDim2.new(1,-50*rs,0.5,-9*rs)
+
+        local rCloseBtn = makeBtn(rtbar, "✕", 10*rs, Color3.fromRGB(190,45,45))
+        rCloseBtn.Size = UDim2.new(0,20*rs,0,18*rs)
+        rCloseBtn.Position = UDim2.new(1,-27*rs,0.5,-9*rs)
+
+        local rDelBtn = makeBtn(rtbar, "🗑", 10*rs, Color3.fromRGB(80,30,30))
+        rDelBtn.Size = UDim2.new(0,20*rs,0,18*rs)
+        rDelBtn.Position = UDim2.new(1,-5*rs,0.5,-9*rs)
+
+        -- radar body
+        local rbody = Instance.new("Frame", rf)
+        rbody.Size = UDim2.new(1,-4*rs,1,-28*rs)
+        rbody.Position = UDim2.new(0,2*rs,0,27*rs)
+        rbody.BackgroundTransparency = 1
+
+        -- scan btn
+        local scanBtn = makeBtn(rbody, "▶ SCAN", 10*rs, Color3.fromRGB(35,70,35))
+        scanBtn.Size = UDim2.new(1,-8*rs,0,24*rs)
+        scanBtn.Position = UDim2.new(0,4*rs,0,2*rs)
+
+        -- found label
+        local foundLbl = makeLabel(rbody, "0 found", 8*rs, Color3.fromRGB(90,90,90))
+        foundLbl.Size = UDim2.new(1,0,0,12*rs)
+        foundLbl.Position = UDim2.new(0,4*rs,0,28*rs)
+
+        -- color filter btns area
+        local colorBar = Instance.new("Frame", rbody)
+        colorBar.Size = UDim2.new(1,-8*rs,0,20*rs)
+        colorBar.Position = UDim2.new(0,4*rs,0,42*rs)
+        colorBar.BackgroundTransparency = 1
+
+        local colorLayout = Instance.new("UIListLayout", colorBar)
+        colorLayout.FillDirection = Enum.FillDirection.Horizontal
+        colorLayout.Padding = UDim.new(0,3*rs)
+
+        -- all btn
+        local allColorBtn = makeBtn(colorBar, "ALL", 8*rs, Color3.fromRGB(230,230,230), Color3.fromRGB(15,15,15))
+        allColorBtn.Size = UDim2.new(0,30*rs,1,0)
+
+        -- scroll list
+        local scroll = Instance.new("ScrollingFrame", rbody)
+        scroll.Size = UDim2.new(1,-4*rs,1,-68*rs)
+        scroll.Position = UDim2.new(0,2*rs,0,66*rs)
+        scroll.BackgroundTransparency = 1
+        scroll.BorderSizePixel = 0
+        scroll.ScrollBarThickness = 2
+        scroll.ScrollBarImageColor3 = Color3.fromRGB(70,70,70)
+        scroll.CanvasSize = UDim2.new(0,0,0,0)
+
+        local sLayout = Instance.new("UIListLayout", scroll)
+        sLayout.Padding = UDim.new(0,3*rs)
+        sLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            scroll.CanvasSize = UDim2.new(0,0,0,sLayout.AbsoluteContentSize.Y+6)
+        end)
+
+        local knownColors = {}
+        local colorBtns = {}
+
+        local function buildColorBtns()
+            for _, b in ipairs(colorBtns) do pcall(function() b:Destroy() end) end
+            colorBtns = {}
+            for hex, col in pairs(knownColors) do
+                local b = makeBtn(colorBar, "", 8*rs, col)
+                b.Size = UDim2.new(0,18*rs,1,0)
+                -- tooltip via text
+                b.Text = ""
+                table.insert(colorBtns, b)
+                b.MouseButton1Click:Connect(function()
+                    S.ColorFilter = col
+                    allColorBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+                    allColorBtn.TextColor3 = Color3.fromRGB(180,180,180)
+                    for _, cb in ipairs(colorBtns) do
+                        if cb == b then
+                            local s2 = Instance.new("UIStroke",cb)
+                            s2.Color = Color3.fromRGB(255,255,255) s2.Thickness=1.5
+                        else
+                            for _, ch in ipairs(cb:GetChildren()) do
+                                if ch:IsA("UIStroke") then ch:Destroy() end
+                            end
+                        end
                     end
+                end)
+            end
+        end
+
+        allColorBtn.MouseButton1Click:Connect(function()
+            S.ColorFilter = nil
+            allColorBtn.BackgroundColor3 = Color3.fromRGB(230,230,230)
+            allColorBtn.TextColor3 = Color3.fromRGB(15,15,15)
+            for _, cb in ipairs(colorBtns) do
+                for _, ch in ipairs(cb:GetChildren()) do
+                    if ch:IsA("UIStroke") then ch:Destroy() end
                 end
-            end)
-        end
-
-        -- groups
-        local ord = 0
-        for gname, gd in pairs(groups) do
-            if #selCols > 0 then
-                local show = false
-                for _, sc in ipairs(selCols) do if ceq(sc, gd.color) then show=true; break end end
-                if not show then continue end
             end
+        end)
 
-            local hf = Instance.new("Frame", rScroll)
-            hf.BackgroundColor3 = Color3.fromRGB(18,18,18)
-            hf.Size = UDim2.new(1,0,0,20); hf.LayoutOrder = ord; ord=ord+1; co(hf,4)
-            local dot = Instance.new("Frame", hf)
-            dot.Size = UDim2.new(0,5,0,5); dot.Position = UDim2.new(0,5,0.5,-2.5)
-            dot.BackgroundColor3 = gd.color; co(dot,3)
-            local hl = lbl(hf, "   "..gname, 10, C.gray, FB)
-            hl.Size = UDim2.new(1,-12,1,0); hl.Position = UDim2.new(0,12,0,0)
+        local function doScan()
+            for _, c in ipairs(scroll:GetChildren()) do
+                if not c:IsA("UIListLayout") then c:Destroy() end
+            end
+            knownColors = {}
+            local list = getTargets()
+            foundLbl.Text = #list .. " found"
+            for _, e in ipairs(list) do
+                -- collect colors
+                local hex = string.format("%02X%02X%02X",
+                    math.floor(e.color.R*255),
+                    math.floor(e.color.G*255),
+                    math.floor(e.color.B*255))
+                if not knownColors[hex] then knownColors[hex] = e.color end
 
-            for _, e in ipairs(gd.entries) do
-                local eb = Instance.new("TextButton", rScroll)
-                eb.BackgroundColor3 = Color3.fromRGB(14,14,14)
-                eb.Size = UDim2.new(1,0,0,28); eb.LayoutOrder = ord; ord=ord+1
-                eb.Text = ""; eb.AutoButtonColor = false; co(eb,4)
+                local row = Instance.new("TextButton", scroll)
+                row.Size = UDim2.new(1,0,0,24*rs)
+                row.BackgroundColor3 = Color3.fromRGB(20,20,20)
+                row.BorderSizePixel = 0
+                row.Text = ""
+                row.AutoButtonColor = false
+                corner(row, 5)
 
-                local side = Instance.new("Frame", eb)
-                side.Size = UDim2.new(0,3,0.6,0); side.Position = UDim2.new(0,0,0.2,0)
-                side.BackgroundColor3 = gd.color; co(side,2)
+                local dot = Instance.new("Frame", row)
+                dot.Size = UDim2.new(0,7*rs,0,7*rs)
+                dot.Position = UDim2.new(0,5*rs,0.5,-3.5*rs)
+                dot.BackgroundColor3 = e.color
+                dot.BorderSizePixel = 0
+                corner(dot, 10)
 
-                local nl = lbl(eb, "  "..e.name, 12, Color3.fromRGB(215,215,215))
-                nl.Size = UDim2.new(0.62,0,1,0); nl.Position = UDim2.new(0,5,0,0)
+                local nameLbl = makeLabel(row, e.name, 9*rs, e.color)
+                nameLbl.Size = UDim2.new(0.6,0,1,0)
+                nameLbl.Position = UDim2.new(0,16*rs,0,0)
 
-                local dl = lbl(eb, math.floor(dist(e.model)).."m", 11, C.gray, FL, Enum.TextXAlignment.Right)
-                dl.Size = UDim2.new(0.34,0,1,0); dl.Position = UDim2.new(0.64,0,0,0)
+                local distLbl = makeLabel(row, math.floor(e.dist).."m", 8*rs,
+                    Color3.fromRGB(110,110,110), Enum.TextXAlignment.Right)
+                distLbl.Size = UDim2.new(0.35,0,1,0)
+                distLbl.Position = UDim2.new(0.62,0,0,0)
 
-                eb.MouseEnter:Connect(function()
-                    TS:Create(eb, TweenInfo.new(0.1), {BackgroundColor3=Color3.fromRGB(24,24,24)}):Play()
-                end)
-                eb.MouseLeave:Connect(function()
-                    TS:Create(eb, TweenInfo.new(0.1), {BackgroundColor3=Color3.fromRGB(14,14,14)}):Play()
-                end)
-
-                -- คลิก = lock ทันที
-                eb.MouseButton1Click:Connect(function()
-                    target = e; lockOn = true
-                    cam.CameraType = Enum.CameraType.Scriptable
-                    startLock(e)
+                local cap = e
+                row.MouseButton1Click:Connect(function()
+                    setTarget(cap.model)
+                    updateStatus()
                 end)
             end
+            buildColorBtns()
         end
 
-        if ord == 0 then
-            lbl(rScroll, "  No targets found", 12, C.gray).Size = UDim2.new(1,0,0,30)
+        scanBtn.MouseButton1Click:Connect(doScan)
+
+        -- minimize
+        local rMinimized = false
+        rMinBtn.MouseButton1Click:Connect(function()
+            rMinimized = not rMinimized
+            rbody.Visible = not rMinimized
+            rf.Size = rMinimized
+                and UDim2.new(0,RW,0,26*rs)
+                or UDim2.new(0,RW,0,RH)
+        end)
+
+        rCloseBtn.MouseButton1Click:Connect(function()
+            S.RadarOpen = false
+            setRadarUI(false)
+            radarGui:Destroy()
+            radarGui = nil
+        end)
+
+        rDelBtn.MouseButton1Click:Connect(function()
+            S.RadarOpen = false
+            setRadarUI(false)
+            radarGui:Destroy()
+            radarGui = nil
+        end)
+
+        rSizeInput.FocusLost:Connect(function()
+            local v = tonumber(rSizeInput.Text)
+            if v then
+                v = math.max(1, v)
+                S.RadarSize = v
+                local ns = v/10
+                rf.Size = UDim2.new(0,200*ns,0,320*ns)
+            end
+        end)
+
+    else
+        if radarGui then
+            pcall(function() radarGui:Destroy() end)
+            radarGui = nil
         end
-    end
-
-    scanBtn.MouseButton1Click:Connect(doScan)
-end
-
--- ─────────────────────────────────────────────────────
---  CHARACTER RESPAWN HANDLER
--- ─────────────────────────────────────────────────────
-plr.CharacterAdded:Connect(function(char)
-    char:WaitForChild("HumanoidRootPart", 10)
-    task.wait(0.5)
-    if antiOn  then startAnti()   end
-    if antiAimOn then startJitter() end
-    if lockOn  then
-        cam.CameraType = Enum.CameraType.Scriptable
-        startLock()
     end
 end)
 
-print("✅ AimLock v7 Pro loaded")
-print("   Lock: RenderStepped + force Scriptable every frame")
-print("   Anti-Lock Pro: TP guard + velocity guard active")
-print("   Anti-Aim Jitter: anti-lock counter active")
+-- ══════════════════════
+-- TITLE BAR BUTTONS
+-- ══════════════════════
+sizeInput.FocusLost:Connect(function()
+    local v = tonumber(sizeInput.Text)
+    if v then
+        v = math.max(1, v)
+        S.Size = v
+        local ns = v/10
+        main.Size = UDim2.new(0,210*ns,0,370*ns)
+    end
+end)
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    content.Visible = not minimized
+    main.Size = minimized
+        and UDim2.new(0,main.Size.X.Offset,0,28*sc)
+        or UDim2.new(0,210*sc,0,370*sc)
+    minBtn.Text = minimized and "▲" or "–"
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    content.Visible = not content.Visible
+    closeBtn.Text = content.Visible and "–" or "▲"
+end)
+
+delBtn.MouseButton1Click:Connect(function()
+    stopLock()
+    if radarGui then pcall(function() radarGui:Destroy() end) end
+    sg:Destroy()
+end)
+
+-- ══════════════════════
+-- HEARTBEAT STATUS UPDATE
+-- ══════════════════════
+RunService.Heartbeat:Connect(function()
+    if S.Enabled then updateStatus() end
+end)
+
+print("[KuyLock v1] Loaded ✓")
