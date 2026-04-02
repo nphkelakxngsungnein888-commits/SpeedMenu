@@ -18,7 +18,7 @@ local isLarge = true
 local currentTarget = nil  
 
 -- MODE
-local targetMode = "Monster" -- "Player" / "Monster"
+local targetMode = "Monster"
 
 -- ================= AIMBOT =================  
 
@@ -76,24 +76,27 @@ local function startLock()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		-- ✅ ล็อคตัวเดิมจนตาย
-		if currentTarget and isAlive(currentTarget) then
-		else
+		-- 🔥 ถ้ายังไม่มี → หาใหม่
+		if not currentTarget or not isAlive(currentTarget) then
 			currentTarget = getClosestTarget(root)
 		end
 
 		if not currentTarget then return end
 
 		local part = getTargetPart(currentTarget)
-		if not part then
-			currentTarget = nil
-			return
-		end
+		if not part then return end
 
-		local aimPos = part.Position
+		local targetPos = part.Position
 
-		root.CFrame = CFrame.new(root.Position, aimPos)
-		camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
+		-- 🔥 หมุนตัวละครไปหาเป้า
+		root.CFrame = CFrame.new(root.Position, targetPos)
+
+		-- 🔥 กล้องตามหลังตัวละคร
+		local offset = Vector3.new(0, 5, -10)
+		local camPos = root.Position + (root.CFrame:VectorToWorldSpace(offset))
+
+		-- 🔥 กล้องมองไปที่เป้า
+		camera.CFrame = CFrame.new(camPos, targetPos)
 	end)
 end
 
@@ -103,7 +106,7 @@ local function stopLock()
 		connection = nil
 	end
 
-	camera.CameraType = Enum.CameraType.Custom -- 🔥 คืนกล้อง
+	camera.CameraType = Enum.CameraType.Custom -- 🔥 คืนค่ากล้อง
 	currentTarget = nil
 end
 
@@ -160,12 +163,11 @@ closeBtn.Parent = frame
 toggleBtn.MouseButton1Click:Connect(function()  
 	lockEnabled = not lockEnabled  
 	if lockEnabled then  
+		currentTarget = nil
 		toggleBtn.Text = "Lock: ON"  
-		toggleBtn.BackgroundColor3 = Color3.fromRGB(50,200,50)
 		startLock()  
 	else  
 		toggleBtn.Text = "Lock: OFF"  
-		toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 		stopLock()  
 	end  
 end)  
@@ -174,6 +176,7 @@ end)
 modeBtn.MouseButton1Click:Connect(function()
 	targetMode = (targetMode == "Monster") and "Player" or "Monster"
 	modeBtn.Text = "Mode: " .. targetMode
+	currentTarget = nil -- 🔥 รีเซ็ตเป้า
 end)
 
 -- Resize  
@@ -188,8 +191,7 @@ closeBtn.MouseButton1Click:Connect(function()
 	gui:Destroy()  
 end)  
 
--- ================= DRAG (มือถือ + PC) =================  
-
+-- DRAG  
 local dragging = false  
 local dragInput  
 local dragStart  
