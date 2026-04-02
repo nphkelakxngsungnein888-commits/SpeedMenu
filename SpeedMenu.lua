@@ -20,6 +20,9 @@ local currentTarget = nil
 -- MODE
 local targetMode = "Monster"
 
+-- 🔧 SETTINGS
+local aimHeight = 1.5 -- 🔥 ปรับได้ (0=ตัว / 1.5=อก / 2.5=หัว)
+
 -- ================= AIMBOT =================  
 
 local function isAlive(model)
@@ -69,14 +72,15 @@ local function getClosestTarget(root)
 end
 
 local function startLock()
-	camera.CameraType = Enum.CameraType.Scriptable -- 🔥 ล็อคกล้อง
+	camera.CameraType = Enum.CameraType.Scriptable
 
 	connection = RunService.RenderStepped:Connect(function()
 		local character = getCharacter()
 		local root = character:FindFirstChild("HumanoidRootPart")
-		if not root then return end
+		local head = character:FindFirstChild("Head")
+		if not root or not head then return end
 
-		-- 🔥 ถ้ายังไม่มี → หาใหม่
+		-- 🔥 ล็อคตัวเดิมจนตาย
 		if not currentTarget or not isAlive(currentTarget) then
 			currentTarget = getClosestTarget(root)
 		end
@@ -86,17 +90,14 @@ local function startLock()
 		local part = getTargetPart(currentTarget)
 		if not part then return end
 
-		local targetPos = part.Position
+		-- 🎯 จุดเล็ง
+		local targetPos = part.Position + Vector3.new(0, aimHeight, 0)
 
-		-- 🔥 หมุนตัวละครไปหาเป้า
+		-- 🔄 หมุนตัวละคร
 		root.CFrame = CFrame.new(root.Position, targetPos)
 
-		-- 🔥 กล้องตามหลังตัวละคร
-		local offset = Vector3.new(0, 5, -10)
-		local camPos = root.Position + (root.CFrame:VectorToWorldSpace(offset))
-
-		-- 🔥 กล้องมองไปที่เป้า
-		camera.CFrame = CFrame.new(camPos, targetPos)
+		-- 🎥 FIRST PERSON (ติดหัว)
+		camera.CFrame = CFrame.new(head.Position, targetPos)
 	end)
 end
 
@@ -106,7 +107,7 @@ local function stopLock()
 		connection = nil
 	end
 
-	camera.CameraType = Enum.CameraType.Custom -- 🔥 คืนค่ากล้อง
+	camera.CameraType = Enum.CameraType.Custom
 	currentTarget = nil
 end
 
@@ -176,7 +177,7 @@ end)
 modeBtn.MouseButton1Click:Connect(function()
 	targetMode = (targetMode == "Monster") and "Player" or "Monster"
 	modeBtn.Text = "Mode: " .. targetMode
-	currentTarget = nil -- 🔥 รีเซ็ตเป้า
+	currentTarget = nil
 end)
 
 -- Resize  
