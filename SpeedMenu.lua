@@ -68,16 +68,16 @@ local function getClosestTarget(root)
 	return closest
 end
 
--- 🔥 FIX HERE
 local function startLock()
+	camera.CameraType = Enum.CameraType.Scriptable -- 🔥 ล็อคกล้อง
+
 	connection = RunService.RenderStepped:Connect(function()
 		local character = getCharacter()
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		-- ✅ ใช้ตัวเดิมจนกว่าจะตาย
+		-- ✅ ล็อคตัวเดิมจนตาย
 		if currentTarget and isAlive(currentTarget) then
-			-- keep target
 		else
 			currentTarget = getClosestTarget(root)
 		end
@@ -102,6 +102,8 @@ local function stopLock()
 		connection:Disconnect()
 		connection = nil
 	end
+
+	camera.CameraType = Enum.CameraType.Custom -- 🔥 คืนกล้อง
 	currentTarget = nil
 end
 
@@ -125,6 +127,7 @@ title.TextColor3 = Color3.new(1,1,1)
 title.Parent = frame  
 title.Active = true  
 
+-- Lock
 local toggleBtn = Instance.new("TextButton")  
 toggleBtn.Size = UDim2.new(0.8,0,0,40)  
 toggleBtn.Position = UDim2.new(0.1,0,0.2,0)  
@@ -132,51 +135,61 @@ toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)  
 toggleBtn.Parent = frame  
 
+-- Mode
 local modeBtn = Instance.new("TextButton")
 modeBtn.Size = UDim2.new(0.8,0,0,40)
 modeBtn.Position = UDim2.new(0.1,0,0.4,0)
 modeBtn.Text = "Mode: Monster"
 modeBtn.Parent = frame
 
+-- Resize
 local resizeBtn = Instance.new("TextButton")  
 resizeBtn.Size = UDim2.new(0.8,0,0,40)  
-resizeBtn.Position = UDim2.new(0.1,0,0.8,0)  
+resizeBtn.Position = UDim2.new(0.1,0,0.6,0)  
 resizeBtn.Text = "Resize"  
 resizeBtn.Parent = frame  
 
+-- Close
 local closeBtn = Instance.new("TextButton")  
 closeBtn.Size = UDim2.new(0,30,0,30)  
 closeBtn.Position = UDim2.new(1,-35,0,5)  
 closeBtn.Text = "X"  
 closeBtn.Parent = frame  
 
+-- Toggle Lock  
 toggleBtn.MouseButton1Click:Connect(function()  
 	lockEnabled = not lockEnabled  
 	if lockEnabled then  
 		toggleBtn.Text = "Lock: ON"  
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(50,200,50)
 		startLock()  
 	else  
 		toggleBtn.Text = "Lock: OFF"  
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
 		stopLock()  
 	end  
 end)  
 
+-- Toggle Mode
 modeBtn.MouseButton1Click:Connect(function()
 	targetMode = (targetMode == "Monster") and "Player" or "Monster"
 	modeBtn.Text = "Mode: " .. targetMode
 end)
 
+-- Resize  
 resizeBtn.MouseButton1Click:Connect(function()  
 	isLarge = not isLarge  
 	frame.Size = isLarge and UDim2.new(0,300,0,280) or UDim2.new(0,200,0,180)  
 end)  
 
+-- Close  
 closeBtn.MouseButton1Click:Connect(function()  
 	stopLock()  
 	gui:Destroy()  
 end)  
 
--- DRAG  
+-- ================= DRAG (มือถือ + PC) =================  
+
 local dragging = false  
 local dragInput  
 local dragStart  
@@ -194,7 +207,12 @@ end)
 UserInputService.InputChanged:Connect(function(input)  
 	if dragging and input == dragInput then  
 		local delta = input.Position - dragStart  
-		frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)  
+		frame.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)  
 	end  
 end)  
 
