@@ -168,37 +168,36 @@ local function setTarget(m)
     end
 end
 
-local origCamType = Enum.CameraType.Custom
-
 local function startLock()
     if lockConn then lockConn:Disconnect() end
-    origCamType = Camera.CameraType
-    Camera.CameraType = Enum.CameraType.Scriptable
-    local t = 0
-    lockConn = RunService.RenderStepped:Connect(function(dt)
+
+    lockConn = RunService.Heartbeat:Connect(function()
         if not HRP then return end
-        Camera.CameraType = Enum.CameraType.Scriptable
-        -- pick target
+
+        -- pick target ถ้ายังไม่มีหรือตายแล้ว
         if not currentTarget or not isAlive(currentTarget) then
             setTarget(CFG.nearest and getNearest() or getLooked())
         end
+
         if currentTarget then
-            if not isAlive(currentTarget) then setTarget(getNearest()) return end
+            if not isAlive(currentTarget) then
+                setTarget(getNearest())
+                return
+            end
             local aim = getAimPos(currentTarget)
             if not aim then return end
-            -- character face
-            HRP.CFrame = CFrame.new(HRP.Position,
-                Vector3.new(aim.X, HRP.Position.Y, aim.Z))
-            -- smooth camera
-            Camera.CFrame = Camera.CFrame:Lerp(
-                CFrame.new(Camera.CFrame.Position, aim), CFG.strength)
+
+            -- หมุนเฉพาะ HumanoidRootPart หาเป้า (กล้องจะตามอัตโนมัติ)
+            -- ไม่แตะ CameraType เลย → กล้อง Roblox ทำงานปกติ
+            local targetDir = Vector3.new(aim.X, HRP.Position.Y, aim.Z)
+            local newCFrame = CFrame.new(HRP.Position, targetDir)
+            HRP.CFrame = HRP.CFrame:Lerp(newCFrame, CFG.strength)
         end
     end)
 end
 
 local function stopLock()
     if lockConn then lockConn:Disconnect() lockConn=nil end
-    pcall(function() Camera.CameraType = origCamType end)
     setTarget(nil)
 end
 
