@@ -22,6 +22,8 @@ end
 local lockEnabled = false
 local currentTarget = nil
 local selectedTarget = nil
+local isCollapsed = false
+local mainVisible = true
 
 local targetMode = _G.AIM_SETTINGS.mode
 local offsets = _G.AIM_SETTINGS.offset
@@ -48,42 +50,33 @@ end
 
 local function getClosest(root)
 	local best, dist = nil, math.huge
-
 	if targetMode == "Player" then
-		for _,plr in pairs(Players:GetPlayers()) do
+		for _, plr in pairs(Players:GetPlayers()) do
 			if plr ~= player and plr.Character and isAlive(plr.Character) then
 				local part = getRoot(plr.Character)
 				if part then
-					local d = (part.Position-root.Position).Magnitude
-					if d < dist then
-						dist = d
-						best = plr.Character
-					end
+					local d = (part.Position - root.Position).Magnitude
+					if d < dist then dist = d; best = plr.Character end
 				end
 			end
 		end
 	else
-		for _,m in pairs(workspace:GetDescendants()) do
+		for _, m in pairs(workspace:GetDescendants()) do
 			if m:IsA("Model") and isValid(m) then
 				local part = getRoot(m)
 				if part then
-					local d = (part.Position-root.Position).Magnitude
-					if d < dist then
-						dist = d
-						best = m
-					end
+					local d = (part.Position - root.Position).Magnitude
+					if d < dist then dist = d; best = m end
 				end
 			end
 		end
 	end
-
 	return best
 end
 
---// ===== LOCK =====
+--// ===== LOCK LOOP =====
 RunService.RenderStepped:Connect(function()
 	if not lockEnabled then return end
-
 	local char = getChar()
 	local root = getRoot(char)
 	if not root then return end
@@ -95,7 +88,6 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if not currentTarget then return end
-
 	local part = getRoot(currentTarget)
 	if not part then return end
 
@@ -106,644 +98,483 @@ RunService.RenderStepped:Connect(function()
 	camera.CFrame = CFrame.new(camPos, aim)
 end)
 
---// ===== UI =====
+--// ===== GUI ROOT =====
 local gui = Instance.new("ScreenGui")
-gui.Name = "AimControlGui"
+gui.Name = "AimUI"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = player.PlayerGui
 
-local success = pcall(function()
-	gui.Parent = game:GetService("CoreGui")
-end)
-if not success then
-	gui.Parent = player.PlayerGui
+--// ===== HELPER FUNCTIONS =====
+local function makeCorner(parent, radius)
+	local c = Instance.new("UICorner", parent)
+	c.CornerRadius = UDim.new(0, radius or 8)
 end
 
--- ===== COLORS =====
+local function makeStroke(parent, color, thickness)
+	local s = Instance.new("UIStroke", parent)
+	s.Color = color or Color3.fromRGB(255,255,255)
+	s.Thickness = thickness or 1
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+end
+
+local function makePadding(parent, px)
+	local p = Instance.new("UIPadding", parent)
+	p.PaddingLeft = UDim.new(0, px)
+	p.PaddingRight = UDim.new(0, px)
+	p.PaddingTop = UDim.new(0, px)
+	p.PaddingBottom = UDim.new(0, px)
+end
+
+--// ===== COLOR THEME =====
 local C = {
-	BLACK      = Color3.fromRGB(8, 8, 8),
-	DARK       = Color3.fromRGB(18, 18, 18),
-	PANEL      = Color3.fromRGB(24, 24, 24),
-	BORDER     = Color3.fromRGB(55, 55, 55),
-	WHITE      = Color3.fromRGB(255, 255, 255),
-	LIGHTGRAY  = Color3.fromRGB(180, 180, 180),
-	MIDGRAY    = Color3.fromRGB(100, 100, 100),
-	ACCENT     = Color3.fromRGB(220, 220, 220),
-	ON         = Color3.fromRGB(255, 255, 255),
-	OFF        = Color3.fromRGB(50, 50, 50),
+	bg        = Color3.fromRGB(10, 10, 10),
+	panel     = Color3.fromRGB(20, 20, 20),
+	border    = Color3.fromRGB(255, 255, 255),
+	dimBorder = Color3.fromRGB(60, 60, 60),
+	btnBg     = Color3.fromRGB(255, 255, 255),
+	btnText   = Color3.fromRGB(0, 0, 0),
+	activeBg  = Color3.fromRGB(230, 230, 230),
+	onColor   = Color3.fromRGB(255, 255, 255),
+	offColor  = Color3.fromRGB(120, 120, 120),
+	text      = Color3.fromRGB(255, 255, 255),
+	subText   = Color3.fromRGB(160, 160, 160),
+	inputBg   = Color3.fromRGB(30, 30, 30),
+	titleBg   = Color3.fromRGB(255, 255, 255),
+	titleText = Color3.fromRGB(0, 0, 0),
 }
 
--- ===== HELPERS =====
-local function corner(r, p)
-	local c = Instance.new("UICorner", p)
-	c.CornerRadius = UDim.new(0, r)
-	return c
-end
+--// ===== DRAG HELPER =====
+local function makeDraggable(dragTarget, moveTarget)
+	local dragging = false
+	local dragStart, startPos
 
-local function stroke(p, thick, col, trans)
-	local s = Instance.new("UIStroke", p)
-	s.Thickness = thick or 1
-	s.Color = col or C.BORDER
-	s.Transparency = trans or 0
-	return s
-end
+	local function inputBegan(i)
+		local t = i.UserInputType
+		if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = i.Position
+			startPos = moveTarget.Position
+			i.Changed:Connect(function()
+				if i.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end
 
-local function tween(obj, t, props)
-	TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
-end
+	dragTarget.InputBegan:Connect(inputBegan)
 
-local function hoverEffect(btn, normalCol, hoverCol)
-	btn.MouseEnter:Connect(function()
-		tween(btn, 0.15, {BackgroundColor3 = hoverCol})
+	UIS.InputChanged:Connect(function(i)
+		if not dragging then return end
+		if i.UserInputType == Enum.UserInputType.MouseMovement
+			or i.UserInputType == Enum.UserInputType.Touch then
+			local delta = i.Position - dragStart
+			moveTarget.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y
+			)
+		end
 	end)
-	btn.MouseLeave:Connect(function()
-		tween(btn, 0.15, {BackgroundColor3 = normalCol})
+
+	UIS.InputEnded:Connect(function(i)
+		local t = i.UserInputType
+		if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
 	end)
 end
 
--- ===== MAIN FRAME =====
+--// ===== MAIN WINDOW =====
+local MAIN_W = 230
+local TITLE_H = 36
+local BODY_H  = 320
+
 local mainFrame = Instance.new("Frame", gui)
-mainFrame.Size = UDim2.new(0, 250, 0, 320)
-mainFrame.Position = UDim2.new(0.5, -125, 0.5, -160)
-mainFrame.BackgroundColor3 = C.DARK
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, MAIN_W, 0, TITLE_H + BODY_H)
+mainFrame.Position = UDim2.new(0, 20, 0.5, -(TITLE_H + BODY_H) / 2)
+mainFrame.BackgroundColor3 = C.bg
 mainFrame.BorderSizePixel = 0
-mainFrame.ClipsDescendants = true
-corner(10, mainFrame)
-stroke(mainFrame, 1, C.BORDER)
+makeCorner(mainFrame, 10)
+makeStroke(mainFrame, C.border, 1)
 
--- ===== TITLE BAR =====
+-- Title Bar
 local titleBar = Instance.new("Frame", mainFrame)
-titleBar.Size = UDim2.new(1, 0, 0, 38)
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, TITLE_H)
 titleBar.Position = UDim2.new(0, 0, 0, 0)
-titleBar.BackgroundColor3 = C.BLACK
+titleBar.BackgroundColor3 = C.titleBg
 titleBar.BorderSizePixel = 0
-corner(10, titleBar)
+makeCorner(titleBar, 10)
 
--- Fix bottom corners of titleBar
+-- Fix corner: cover bottom corners of titlebar
 local titleFix = Instance.new("Frame", titleBar)
 titleFix.Size = UDim2.new(1, 0, 0.5, 0)
 titleFix.Position = UDim2.new(0, 0, 0.5, 0)
-titleFix.BackgroundColor3 = C.BLACK
+titleFix.BackgroundColor3 = C.titleBg
 titleFix.BorderSizePixel = 0
 
 local titleLabel = Instance.new("TextLabel", titleBar)
-titleLabel.Size = UDim2.new(1, -80, 1, 0)
-titleLabel.Position = UDim2.new(0, 14, 0, 0)
+titleLabel.Size = UDim2.new(1, -90, 1, 0)
+titleLabel.Position = UDim2.new(0, 12, 0, 0)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "◈  AIM CONTROL"
-titleLabel.TextColor3 = C.WHITE
+titleLabel.Text = "⚔ AIM TOOL"
+titleLabel.TextColor3 = C.titleText
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 13
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
--- Close Button
-local closeBtn = Instance.new("TextButton", titleBar)
-closeBtn.Size = UDim2.new(0, 26, 0, 26)
-closeBtn.Position = UDim2.new(1, -34, 0.5, -13)
-closeBtn.Text = "✕"
-closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-closeBtn.TextColor3 = C.LIGHTGRAY
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 11
-corner(6, closeBtn)
-
-closeBtn.MouseButton1Click:Connect(function()
-	tween(mainFrame, 0.2, {Size = UDim2.new(0, 250, 0, 0)})
-	task.delay(0.25, function() mainFrame.Visible = false end)
-end)
-hoverEffect(closeBtn, Color3.fromRGB(40,40,40), Color3.fromRGB(200,50,50))
-
 -- Collapse Button
 local collapseBtn = Instance.new("TextButton", titleBar)
-collapseBtn.Size = UDim2.new(0, 26, 0, 26)
-collapseBtn.Position = UDim2.new(1, -64, 0.5, -13)
-collapseBtn.Text = "—"
-collapseBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-collapseBtn.TextColor3 = C.LIGHTGRAY
+collapseBtn.Size = UDim2.new(0, 28, 0, 22)
+collapseBtn.Position = UDim2.new(1, -62, 0.5, -11)
+collapseBtn.BackgroundColor3 = C.bg
+collapseBtn.Text = "▾"
+collapseBtn.TextColor3 = C.titleBg
 collapseBtn.Font = Enum.Font.GothamBold
-collapseBtn.TextSize = 11
-corner(6, collapseBtn)
+collapseBtn.TextSize = 14
+collapseBtn.BorderSizePixel = 0
+makeCorner(collapseBtn, 5)
 
-local collapsed = false
-local fullHeight = 320
+-- Close Button
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.new(0, 28, 0, 22)
+closeBtn.Position = UDim2.new(1, -30, 0.5, -11)
+closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 13
+closeBtn.BorderSizePixel = 0
+makeCorner(closeBtn, 5)
 
-collapseBtn.MouseButton1Click:Connect(function()
-	collapsed = not collapsed
-	if collapsed then
-		tween(mainFrame, 0.25, {Size = UDim2.new(0, 250, 0, 38)})
-		collapseBtn.Text = "+"
-	else
-		tween(mainFrame, 0.25, {Size = UDim2.new(0, 250, 0, fullHeight)})
-		collapseBtn.Text = "—"
-	end
-end)
-hoverEffect(collapseBtn, Color3.fromRGB(40,40,40), Color3.fromRGB(60,60,60))
+-- Body Frame
+local bodyFrame = Instance.new("Frame", mainFrame)
+bodyFrame.Name = "Body"
+bodyFrame.Size = UDim2.new(1, 0, 0, BODY_H)
+bodyFrame.Position = UDim2.new(0, 0, 0, TITLE_H)
+bodyFrame.BackgroundTransparency = 1
+bodyFrame.ClipsDescendants = true
 
--- ===== SCROLL CONTENT =====
-local scroll = Instance.new("ScrollingFrame", mainFrame)
-scroll.Size = UDim2.new(1, 0, 1, -38)
-scroll.Position = UDim2.new(0, 0, 0, 38)
-scroll.CanvasSize = UDim2.new(0, 0, 0, 500)
-scroll.BackgroundTransparency = 1
+-- Scroll inside body
+local scroll = Instance.new("ScrollingFrame", bodyFrame)
+scroll.Size = UDim2.new(1, 0, 1, 0)
+scroll.Position = UDim2.new(0,0,0,0)
+scroll.CanvasSize = UDim2.new(0, 0, 0, 440)
 scroll.ScrollBarThickness = 3
-scroll.ScrollBarImageColor3 = C.BORDER
+scroll.ScrollBarImageColor3 = C.dimBorder
+scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 
-local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0, 6)
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+local listLayout = Instance.new("UIListLayout", scroll)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Padding = UDim.new(0, 6)
+makePadding(scroll, 10)
 
-local padding = Instance.new("UIPadding", scroll)
-padding.PaddingTop = UDim.new(0, 10)
-padding.PaddingBottom = UDim.new(0, 10)
-padding.PaddingLeft = UDim.new(0, 12)
-padding.PaddingRight = UDim.new(0, 12)
-
--- Auto resize canvas
-layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
-end)
-
--- ===== SECTION LABEL =====
-local function sectionLabel(text)
+-- Helper: section label
+local function sectionLabel(txt, order)
 	local lbl = Instance.new("TextLabel", scroll)
 	lbl.Size = UDim2.new(1, 0, 0, 18)
 	lbl.BackgroundTransparency = 1
-	lbl.Text = text
-	lbl.TextColor3 = C.MIDGRAY
+	lbl.Text = txt
+	lbl.TextColor3 = C.subText
 	lbl.Font = Enum.Font.GothamBold
 	lbl.TextSize = 10
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.LayoutOrder = 0
+	lbl.LayoutOrder = order
 	return lbl
 end
 
--- ===== TOGGLE BUTTON =====
-local function toggleBtn(text, order)
-	local container = Instance.new("Frame", scroll)
-	container.Size = UDim2.new(1, 0, 0, 38)
-	container.BackgroundColor3 = C.PANEL
-	container.BorderSizePixel = 0
-	container.LayoutOrder = order
-	corner(8, container)
-	stroke(container, 1, C.BORDER)
-
-	local btn = Instance.new("TextButton", container)
-	btn.Size = UDim2.new(1, 0, 1, 0)
-	btn.BackgroundTransparency = 1
-	btn.Text = ""
-	btn.BorderSizePixel = 0
-
-	local lbl = Instance.new("TextLabel", container)
-	lbl.Size = UDim2.new(1, -60, 1, 0)
-	lbl.Position = UDim2.new(0, 12, 0, 0)
-	lbl.BackgroundTransparency = 1
-	lbl.Text = text
-	lbl.TextColor3 = C.ACCENT
-	lbl.Font = Enum.Font.Gotham
-	lbl.TextSize = 13
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-
-	-- Toggle pill
-	local pill = Instance.new("Frame", container)
-	pill.Size = UDim2.new(0, 36, 0, 20)
-	pill.Position = UDim2.new(1, -48, 0.5, -10)
-	pill.BackgroundColor3 = C.OFF
-	pill.BorderSizePixel = 0
-	corner(10, pill)
-	stroke(pill, 1, C.BORDER)
-
-	local knob = Instance.new("Frame", pill)
-	knob.Size = UDim2.new(0, 14, 0, 14)
-	knob.Position = UDim2.new(0, 3, 0.5, -7)
-	knob.BackgroundColor3 = C.MIDGRAY
-	knob.BorderSizePixel = 0
-	corner(7, knob)
-
-	local isOn = false
-
-	local function setState(v)
-		isOn = v
-		if isOn then
-			tween(pill, 0.2, {BackgroundColor3 = C.WHITE})
-			tween(knob, 0.2, {Position = UDim2.new(0, 19, 0.5, -7), BackgroundColor3 = C.BLACK})
-			tween(lbl, 0.15, {TextColor3 = C.WHITE})
-		else
-			tween(pill, 0.2, {BackgroundColor3 = C.OFF})
-			tween(knob, 0.2, {Position = UDim2.new(0, 3, 0.5, -7), BackgroundColor3 = C.MIDGRAY})
-			tween(lbl, 0.15, {TextColor3 = C.ACCENT})
-		end
-	end
-
-	btn.MouseButton1Click:Connect(function()
-		setState(not isOn)
-	end)
-
-	hoverEffect(container, C.PANEL, Color3.fromRGB(32,32,32))
-
-	return btn, setState, isOn
-end
-
--- ===== ACTION BUTTON =====
-local function actionBtn(text, order)
+-- Helper: styled toggle button
+local function makeToggleBtn(txt, order)
 	local btn = Instance.new("TextButton", scroll)
-	btn.Size = UDim2.new(1, 0, 0, 38)
-	btn.BackgroundColor3 = C.PANEL
-	btn.Text = text
-	btn.TextColor3 = C.ACCENT
+	btn.Size = UDim2.new(1, 0, 0, 34)
+	btn.BackgroundColor3 = C.btnBg
+	btn.Text = txt
+	btn.TextColor3 = C.btnText
 	btn.Font = Enum.Font.GothamBold
-	btn.TextSize = 13
+	btn.TextSize = 12
 	btn.BorderSizePixel = 0
 	btn.LayoutOrder = order
-	corner(8, btn)
-	stroke(btn, 1, C.BORDER)
-	hoverEffect(btn, C.PANEL, Color3.fromRGB(38,38,38))
+	makeCorner(btn, 7)
 	return btn
 end
 
--- ===== INPUT BOX =====
-local function inputBox(labelText, defaultVal, order)
-	local container = Instance.new("Frame", scroll)
-	container.Size = UDim2.new(1, 0, 0, 48)
-	container.BackgroundColor3 = C.PANEL
-	container.BorderSizePixel = 0
-	container.LayoutOrder = order
-	corner(8, container)
-	stroke(container, 1, C.BORDER)
-
-	local lbl = Instance.new("TextLabel", container)
-	lbl.Size = UDim2.new(1, -12, 0, 18)
-	lbl.Position = UDim2.new(0, 12, 0, 4)
-	lbl.BackgroundTransparency = 1
-	lbl.Text = labelText
-	lbl.TextColor3 = C.MIDGRAY
-	lbl.Font = Enum.Font.Gotham
-	lbl.TextSize = 10
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-
-	local box = Instance.new("TextBox", container)
-	box.Size = UDim2.new(1, -24, 0, 22)
-	box.Position = UDim2.new(0, 12, 0, 22)
-	box.BackgroundTransparency = 1
-	box.Text = tostring(defaultVal)
-	box.TextColor3 = C.WHITE
-	box.PlaceholderText = "Enter value..."
-	box.PlaceholderColor3 = C.BORDER
-	box.Font = Enum.Font.GothamBold
-	box.TextSize = 13
-	box.TextXAlignment = Enum.TextXAlignment.Left
+-- Helper: styled textbox
+local function makeInputBox(placeholder, order)
+	local box = Instance.new("TextBox", scroll)
+	box.Size = UDim2.new(1, 0, 0, 32)
+	box.BackgroundColor3 = C.inputBg
+	box.Text = placeholder
+	box.TextColor3 = C.text
+	box.PlaceholderColor3 = C.subText
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 12
 	box.ClearTextOnFocus = false
 	box.BorderSizePixel = 0
-
-	box.Focused:Connect(function()
-		tween(container, 0.15, {BackgroundColor3 = Color3.fromRGB(30,30,30)})
-		stroke(container, 1, C.WHITE)
-	end)
-	box.FocusLost:Connect(function()
-		tween(container, 0.15, {BackgroundColor3 = C.PANEL})
-		stroke(container, 1, C.BORDER)
-	end)
-
+	box.LayoutOrder = order
+	makeCorner(box, 7)
+	makeStroke(box, C.dimBorder, 1)
+	makePadding(box, 8)
 	return box
 end
 
--- ===== DIVIDER =====
-local function divider(order)
-	local d = Instance.new("Frame", scroll)
-	d.Size = UDim2.new(1, 0, 0, 1)
-	d.BackgroundColor3 = C.BORDER
-	d.BorderSizePixel = 0
-	d.LayoutOrder = order
-	return d
-end
+--// ===== SECTION: LOCK =====
+sectionLabel("TARGETING", 1)
 
--- ===== BUILD UI =====
+local lockBtn = makeToggleBtn("🔴  LOCK OFF", 2)
+lockBtn.BackgroundColor3 = C.btnBg
 
--- Lock Toggle
-sectionLabel("LOCK"):LayoutOrder = 1
-local lockClickBtn, setLockState = toggleBtn("Lock-On", 2)
-lockClickBtn.MouseButton1Click:Connect(function()
+lockBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
-	setLockState(lockEnabled)
-end)
-
-divider(3)
-
--- Mode
-sectionLabel("TARGET MODE"):LayoutOrder = 4
-local modeBtn = actionBtn("◎  Mode: " .. targetMode, 5)
-modeBtn.MouseButton1Click:Connect(function()
-	targetMode = targetMode == "Monster" and "Player" or "Monster"
-	modeBtn.Text = "◎  Mode: " .. targetMode
-	_G.AIM_SETTINGS.mode = targetMode
-end)
-
-divider(6)
-
--- Distance
-sectionLabel("SCAN DISTANCE"):LayoutOrder = 7
-local distBox = inputBox("Distance", scanDistance, 8)
-distBox.FocusLost:Connect(function()
-	local v = tonumber(distBox.Text:match("-?%d+%.?%d*"))
-	if v then
-		scanDistance = v
-		_G.AIM_SETTINGS.distance = v
+	if lockEnabled then
+		lockBtn.Text = "🟢  LOCK ON"
+		lockBtn.BackgroundColor3 = Color3.fromRGB(255,255,255)
+	else
+		lockBtn.Text = "🔴  LOCK OFF"
+		lockBtn.BackgroundColor3 = C.btnBg
+		camera.CameraType = Enum.CameraType.Custom
 	end
 end)
 
-divider(9)
+local modeBtn = makeToggleBtn("Mode: " .. targetMode, 3)
+modeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+modeBtn.TextColor3 = C.text
+makeStroke(modeBtn, C.dimBorder, 1)
 
--- Offsets
-sectionLabel("AIM OFFSETS"):LayoutOrder = 10
-local names = {"Aim X", "Aim Y", "Aim Z", "Cam X", "Cam Y", "Cam Z"}
+modeBtn.MouseButton1Click:Connect(function()
+	targetMode = targetMode == "Monster" and "Player" or "Monster"
+	modeBtn.Text = "Mode: " .. targetMode
+	_G.AIM_SETTINGS.mode = targetMode
+end)
+
+--// ===== SECTION: DISTANCE =====
+sectionLabel("SCAN DISTANCE", 4)
+
+local distBox = makeInputBox("Distance: " .. scanDistance, 5)
+distBox.FocusLost:Connect(function()
+	local v = tonumber(distBox.Text:match("%d+"))
+	if v then
+		scanDistance = v
+		_G.AIM_SETTINGS.distance = v
+		distBox.Text = "Distance: " .. v
+	end
+end)
+
+--// ===== SECTION: OFFSETS =====
+sectionLabel("AIM OFFSETS", 6)
+
+local offsetNames = {"Aim X", "Aim Y", "Aim Z", "Cam X", "Cam Y", "Cam Z"}
 for i = 1, 6 do
-	local box = inputBox(names[i], offsets[i], 10 + i)
+	local box = makeInputBox(offsetNames[i] .. ": " .. offsets[i], 6 + i)
 	box.FocusLost:Connect(function()
-		local v = tonumber(box.Text:match("-?%d+%.?%d*"))
+		local v = tonumber(box.Text:match("-?%d+"))
 		if v then
 			offsets[i] = v
 			_G.AIM_SETTINGS.offset = offsets
+			box.Text = offsetNames[i] .. ": " .. v
 		end
 	end)
 end
 
-divider(17)
+--// ===== SECTION: SCAN =====
+sectionLabel("TARGET SCAN", 14)
 
--- Open Scan
-sectionLabel("SCANNER"):LayoutOrder = 18
-local scanToggleBtn = actionBtn("◈  Open Scanner", 19)
+local scanOpenBtn = makeToggleBtn("🔍  OPEN SCAN MENU", 15)
+scanOpenBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+scanOpenBtn.TextColor3 = C.text
+makeStroke(scanOpenBtn, C.dimBorder, 1)
 
--- ===== SCAN GUI =====
-local scanGui = Instance.new("Frame", gui)
-scanGui.Size = UDim2.new(0, 220, 0, 280)
-scanGui.Position = UDim2.new(0, 280, 0.5, -140)
-scanGui.BackgroundColor3 = C.DARK
-scanGui.BorderSizePixel = 0
-scanGui.Visible = false
-corner(10, scanGui)
-stroke(scanGui, 1, C.BORDER)
+--// ===== SCAN WINDOW =====
+local scanFrame = Instance.new("Frame", gui)
+scanFrame.Name = "ScanFrame"
+scanFrame.Size = UDim2.new(0, 200, 0, 240)
+scanFrame.Position = UDim2.new(0, 270, 0.5, -120)
+scanFrame.BackgroundColor3 = C.bg
+scanFrame.BorderSizePixel = 0
+scanFrame.Visible = false
+makeCorner(scanFrame, 10)
+makeStroke(scanFrame, C.border, 1)
 
--- Scan Title Bar
-local scanTitle = Instance.new("Frame", scanGui)
-scanTitle.Size = UDim2.new(1, 0, 0, 38)
-scanTitle.BackgroundColor3 = C.BLACK
+-- Scan Title
+local scanTitle = Instance.new("Frame", scanFrame)
+scanTitle.Size = UDim2.new(1, 0, 0, 36)
+scanTitle.BackgroundColor3 = C.titleBg
 scanTitle.BorderSizePixel = 0
-corner(10, scanTitle)
+makeCorner(scanTitle, 10)
 
 local scanTitleFix = Instance.new("Frame", scanTitle)
 scanTitleFix.Size = UDim2.new(1, 0, 0.5, 0)
 scanTitleFix.Position = UDim2.new(0, 0, 0.5, 0)
-scanTitleFix.BackgroundColor3 = C.BLACK
+scanTitleFix.BackgroundColor3 = C.titleBg
 scanTitleFix.BorderSizePixel = 0
 
 local scanTitleLbl = Instance.new("TextLabel", scanTitle)
-scanTitleLbl.Size = UDim2.new(1, -50, 1, 0)
-scanTitleLbl.Position = UDim2.new(0, 14, 0, 0)
+scanTitleLbl.Size = UDim2.new(1, -36, 1, 0)
+scanTitleLbl.Position = UDim2.new(0, 10, 0, 0)
 scanTitleLbl.BackgroundTransparency = 1
-scanTitleLbl.Text = "◈  SCANNER"
-scanTitleLbl.TextColor3 = C.WHITE
+scanTitleLbl.Text = "TARGET LIST"
+scanTitleLbl.TextColor3 = C.titleText
 scanTitleLbl.Font = Enum.Font.GothamBold
 scanTitleLbl.TextSize = 12
 scanTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 local scanCloseBtn = Instance.new("TextButton", scanTitle)
-scanCloseBtn.Size = UDim2.new(0, 26, 0, 26)
-scanCloseBtn.Position = UDim2.new(1, -34, 0.5, -13)
+scanCloseBtn.Size = UDim2.new(0, 26, 0, 20)
+scanCloseBtn.Position = UDim2.new(1, -30, 0.5, -10)
+scanCloseBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
 scanCloseBtn.Text = "✕"
-scanCloseBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-scanCloseBtn.TextColor3 = C.LIGHTGRAY
+scanCloseBtn.TextColor3 = C.text
 scanCloseBtn.Font = Enum.Font.GothamBold
-scanCloseBtn.TextSize = 11
-corner(6, scanCloseBtn)
-scanCloseBtn.MouseButton1Click:Connect(function()
-	scanGui.Visible = false
-end)
-hoverEffect(scanCloseBtn, Color3.fromRGB(40,40,40), Color3.fromRGB(200,50,50))
+scanCloseBtn.TextSize = 12
+scanCloseBtn.BorderSizePixel = 0
+makeCorner(scanCloseBtn, 5)
 
--- Scan Button
-local scanNow = Instance.new("TextButton", scanGui)
-scanNow.Size = UDim2.new(1, -24, 0, 34)
-scanNow.Position = UDim2.new(0, 12, 1, -46)
-scanNow.Text = "⟳  SCAN NOW"
-scanNow.BackgroundColor3 = C.WHITE
-scanNow.TextColor3 = C.BLACK
-scanNow.Font = Enum.Font.GothamBold
-scanNow.TextSize = 12
-scanNow.BorderSizePixel = 0
-corner(8, scanNow)
-hoverEffect(scanNow, C.WHITE, C.ACCENT)
+-- Scan List
+local scanList = Instance.new("ScrollingFrame", scanFrame)
+scanList.Size = UDim2.new(1, -10, 1, -80)
+scanList.Position = UDim2.new(0, 5, 0, 40)
+scanList.CanvasSize = UDim2.new(0, 0, 0, 0)
+scanList.ScrollBarThickness = 3
+scanList.ScrollBarImageColor3 = C.dimBorder
+scanList.BackgroundTransparency = 1
+scanList.BorderSizePixel = 0
 
--- List
-local list = Instance.new("ScrollingFrame", scanGui)
-list.Size = UDim2.new(1, -24, 1, -96)
-list.Position = UDim2.new(0, 12, 0, 48)
-list.BackgroundTransparency = 1
-list.ScrollBarThickness = 3
-list.ScrollBarImageColor3 = C.BORDER
-list.BorderSizePixel = 0
-list.CanvasSize = UDim2.new(0, 0, 0, 0)
+local scanListLayout = Instance.new("UIListLayout", scanList)
+scanListLayout.Padding = UDim.new(0, 4)
+scanListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-local listLayout = Instance.new("UIListLayout", list)
-listLayout.Padding = UDim.new(0, 4)
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+-- Scan Now Button
+local scanNowBtn = Instance.new("TextButton", scanFrame)
+scanNowBtn.Size = UDim2.new(1, -10, 0, 30)
+scanNowBtn.Position = UDim2.new(0, 5, 1, -36)
+scanNowBtn.BackgroundColor3 = C.btnBg
+scanNowBtn.Text = "SCAN"
+scanNowBtn.TextColor3 = C.btnText
+scanNowBtn.Font = Enum.Font.GothamBold
+scanNowBtn.TextSize = 12
+scanNowBtn.BorderSizePixel = 0
+makeCorner(scanNowBtn, 7)
 
-listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	list.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 10)
-end)
+-- Selected label
+local selectedLbl = Instance.new("TextLabel", scanFrame)
+selectedLbl.Size = UDim2.new(1, -10, 0, 16)
+selectedLbl.Position = UDim2.new(0, 5, 1, -68)
+selectedLbl.BackgroundTransparency = 1
+selectedLbl.Text = "Selected: none"
+selectedLbl.TextColor3 = C.subText
+selectedLbl.Font = Enum.Font.Gotham
+selectedLbl.TextSize = 10
+selectedLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-scanToggleBtn.MouseButton1Click:Connect(function()
-	scanGui.Visible = not scanGui.Visible
-end)
-
-scanNow.MouseButton1Click:Connect(function()
-	-- Animate button
-	tween(scanNow, 0.1, {BackgroundColor3 = C.MIDGRAY})
-	task.delay(0.15, function()
-		tween(scanNow, 0.1, {BackgroundColor3 = C.WHITE})
-	end)
-
-	list:ClearAllChildren()
-	listLayout = Instance.new("UIListLayout", list)
-	listLayout.Padding = UDim.new(0, 4)
-
-	listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-		list.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 10)
-	end)
+-- Scan logic
+scanNowBtn.MouseButton1Click:Connect(function()
+	for _, c in pairs(scanList:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
+	end
+	selectedTarget = nil
+	selectedLbl.Text = "Selected: none"
 
 	local char = getChar()
 	local root = getRoot(char)
 	if not root then return end
 
-	local count = 0
+	local idx = 0
 	for _, m in pairs(workspace:GetDescendants()) do
 		if m:IsA("Model") and isValid(m) then
 			local part = getRoot(m)
 			if part then
 				local dist = (part.Position - root.Position).Magnitude
 				if dist <= scanDistance then
-					count += 1
-					local item = Instance.new("TextButton", list)
-					item.Size = UDim2.new(1, 0, 0, 32)
-					item.BackgroundColor3 = C.PANEL
-					item.Text = ""
-					item.BorderSizePixel = 0
-					item.LayoutOrder = count
-					corner(6, item)
-					stroke(item, 1, C.BORDER)
+					local b = Instance.new("TextButton", scanList)
+					b.Size = UDim2.new(1, 0, 0, 28)
+					b.BackgroundColor3 = C.inputBg
+					b.Text = m.Name .. " (" .. math.floor(dist) .. ")"
+					b.TextColor3 = C.text
+					b.Font = Enum.Font.Gotham
+					b.TextSize = 11
+					b.BorderSizePixel = 0
+					b.LayoutOrder = idx
+					makeCorner(b, 6)
 
-					local nameLbl = Instance.new("TextLabel", item)
-					nameLbl.Size = UDim2.new(1, -60, 1, 0)
-					nameLbl.Position = UDim2.new(0, 10, 0, 0)
-					nameLbl.BackgroundTransparency = 1
-					nameLbl.Text = m.Name
-					nameLbl.TextColor3 = C.ACCENT
-					nameLbl.Font = Enum.Font.Gotham
-					nameLbl.TextSize = 11
-					nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-					nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
-
-					local distLbl = Instance.new("TextLabel", item)
-					distLbl.Size = UDim2.new(0, 50, 1, 0)
-					distLbl.Position = UDim2.new(1, -55, 0, 0)
-					distLbl.BackgroundTransparency = 1
-					distLbl.Text = math.floor(dist) .. "m"
-					distLbl.TextColor3 = C.MIDGRAY
-					distLbl.Font = Enum.Font.GothamBold
-					distLbl.TextSize = 10
-					distLbl.TextXAlignment = Enum.TextXAlignment.Right
-
-					hoverEffect(item, C.PANEL, Color3.fromRGB(35,35,35))
-
-					item.MouseButton1Click:Connect(function()
+					b.MouseButton1Click:Connect(function()
 						selectedTarget = m
-						-- Flash selected
-						tween(item, 0.1, {BackgroundColor3 = C.WHITE})
-						tween(nameLbl, 0.1, {TextColor3 = C.BLACK})
-						task.delay(0.2, function()
-							tween(item, 0.15, {BackgroundColor3 = C.PANEL})
-							tween(nameLbl, 0.15, {TextColor3 = C.ACCENT})
-						end)
+						selectedLbl.Text = "Selected: " .. m.Name
+						for _, child in pairs(scanList:GetChildren()) do
+							if child:IsA("TextButton") then
+								child.BackgroundColor3 = C.inputBg
+								child.TextColor3 = C.text
+							end
+						end
+						b.BackgroundColor3 = C.btnBg
+						b.TextColor3 = C.btnText
 					end)
+
+					idx += 1
 				end
 			end
 		end
 	end
+	scanList.CanvasSize = UDim2.new(0, 0, 0, idx * 32)
+end)
 
-	if count == 0 then
-		local empty = Instance.new("TextLabel", list)
-		empty.Size = UDim2.new(1, 0, 0, 40)
-		empty.BackgroundTransparency = 1
-		empty.Text = "No targets found"
-		empty.TextColor3 = C.MIDGRAY
-		empty.Font = Enum.Font.Gotham
-		empty.TextSize = 12
+--// ===== SCAN TOGGLE =====
+scanOpenBtn.MouseButton1Click:Connect(function()
+	scanFrame.Visible = not scanFrame.Visible
+	if scanFrame.Visible then
+		scanOpenBtn.Text = "🔍  CLOSE SCAN MENU"
+	else
+		scanOpenBtn.Text = "🔍  OPEN SCAN MENU"
 	end
 end)
 
--- ===== DRAG: MAIN FRAME =====
-local dragging, dragStart, startPos
-
-titleBar.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = i.Position
-		startPos = mainFrame.Position
-	end
+scanCloseBtn.MouseButton1Click:Connect(function()
+	scanFrame.Visible = false
+	scanOpenBtn.Text = "🔍  OPEN SCAN MENU"
 end)
 
-UIS.InputChanged:Connect(function(i)
-	if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-		local delta = i.Position - dragStart
-		mainFrame.Position = UDim2.new(
-			startPos.X.Scale, startPos.X.Offset + delta.X,
-			startPos.Y.Scale, startPos.Y.Offset + delta.Y
-		)
-	end
+--// ===== COLLAPSE =====
+collapseBtn.MouseButton1Click:Connect(function()
+	isCollapsed = not isCollapsed
+	local targetH = isCollapsed and TITLE_H or (TITLE_H + BODY_H)
+	local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(mainFrame, tweenInfo, {
+		Size = UDim2.new(0, MAIN_W, 0, targetH)
+	})
+	tween:Play()
+	bodyFrame.Visible = not isCollapsed
+	collapseBtn.Text = isCollapsed and "▸" or "▾"
 end)
 
-UIS.InputEnded:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-		dragging = false
-	end
+--// ===== CLOSE =====
+closeBtn.MouseButton1Click:Connect(function()
+	mainFrame.Visible = false
+	scanFrame.Visible = false
 end)
 
--- ===== DRAG: SCAN GUI =====
-local sDragging, sDragStart, sSPos
+--// ===== DRAGGABLE =====
+makeDraggable(titleBar, mainFrame)
+makeDraggable(scanTitle, scanFrame)
 
-scanTitle.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-		sDragging = true
-		sDragStart = i.Position
-		sSPos = scanGui.Position
-	end
-end)
-
-UIS.InputChanged:Connect(function(i)
-	if sDragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-		local delta = i.Position - sDragStart
-		scanGui.Position = UDim2.new(
-			sSPos.X.Scale, sSPos.X.Offset + delta.X,
-			sSPos.Y.Scale, sSPos.Y.Offset + delta.Y
-		)
-	end
-end)
-
-UIS.InputEnded:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-		sDragging = false
-	end
-end)
-
--- ===== DRAG: SCAN GUI =====
-local sDragging, sDragStart, sSPos
-
-scanTitle.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-		sDragging = true
-		sDragStart = i.Position
-		sSPos = scanGui.Position
-	end
-end)
-
-UIS.InputChanged:Connect(function(i)
-	if sDragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-		local delta = i.Position - sDragStart
-		scanGui.Position = UDim2.new(
-			sSPos.X.Scale, sSPos.X.Offset + delta.X,
-			sSPos.Y.Scale, sSPos.Y.Offset + delta.Y
-		)
-	end
-end)
-
-UIS.InputEnded:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-		sDragging = false
-	end
-end)
-
--- ===== REOPEN BUTTON (when closed) =====
+--// ===== REOPEN BUTTON (when closed) =====
 local reopenBtn = Instance.new("TextButton", gui)
-reopenBtn.Size = UDim2.new(0, 38, 0, 38)
-reopenBtn.Position = UDim2.new(0, 12, 0.5, -19)
-reopenBtn.Text = "◈"
-reopenBtn.BackgroundColor3 = C.BLACK
-reopenBtn.TextColor3 = C.WHITE
+reopenBtn.Size = UDim2.new(0, 80, 0, 30)
+reopenBtn.Position = UDim2.new(0, 20, 0, 20)
+reopenBtn.BackgroundColor3 = C.titleBg
+reopenBtn.Text = "⚔ AIM"
+reopenBtn.TextColor3 = C.titleText
 reopenBtn.Font = Enum.Font.GothamBold
-reopenBtn.TextSize = 18
+reopenBtn.TextSize = 13
 reopenBtn.BorderSizePixel = 0
 reopenBtn.Visible = false
-corner(8, reopenBtn)
-stroke(reopenBtn, 1, C.BORDER)
+makeCorner(reopenBtn, 8)
+
+closeBtn.MouseButton1Click:Connect(function()
+	reopenBtn.Visible = true
+end)
 
 reopenBtn.MouseButton1Click:Connect(function()
 	mainFrame.Visible = true
 	reopenBtn.Visible = false
-	tween(mainFrame, 0.25, {Size = UDim2.new(0, 250, 0, 320)})
 end)
-
-closeBtn.MouseButton1Click:Connect(function()
-	task.delay(0.3, function() reopenBtn.Visible = true end)
-end)
-
-print("✓ AIM CONTROL UI Loaded")
