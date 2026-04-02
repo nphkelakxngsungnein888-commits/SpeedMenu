@@ -1,72 +1,70 @@
--- Services
+--// Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local UIS = game:GetService("UserInputService")
 
--- Player
+--// Player
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-local function getCharacter()
+local function getChar()
 	return player.Character or player.CharacterAdded:Wait()
 end
 
--- ================= STATE =================
+--// State
 local lockEnabled = false
-local connection = nil
 local currentTarget = nil
 local targetMode = "Monster"
 
-local aimHeight = 0
-local scanEnabled = false
-local scanRange = 100
+local offsetY = 0 -- 🔥 ปรับสูงต่ำ
+local scanRange = 200
 
-local scanGui = nil
-local scanList = nil
-local lastScan = 0
-local SCAN_RATE = 0.5
-
-local CAMERA_OFFSET = Vector3.new(0,3,-8)
-
--- ================= TARGET =================
-
+--// Utils
 local function isAlive(model)
 	local hum = model and model:FindFirstChild("Humanoid")
 	return hum and hum.Health > 0
 end
 
-local function getTargetPart(model)
+local function getPart(model)
 	return model:FindFirstChild("HumanoidRootPart")
 end
 
-local function getClosestTarget(root)
-	local closest = nil
-	local shortest = math.huge
+local function isValid(model)
+	if not isAlive(model) then return false end
+	local plr = Players:GetPlayerFromCharacter(model)
+
+	if targetMode == "Monster" then
+		return plr == nil
+	else
+		return plr and plr ~= player
+	end
+end
+
+local function getClosest(root)
+	local closest, dist = nil, math.huge
 
 	if targetMode == "Player" then
-		for _, plr in pairs(Players:GetPlayers()) do
-			if plr ~= player and plr.Character and isAlive(plr.Character) then
-				local part = getTargetPart(plr.Character)
+		for _, p in pairs(Players:GetPlayers()) do
+			if p ~= player and p.Character and isValid(p.Character) then
+				local part = getPart(p.Character)
 				if part then
-					local dist = (part.Position - root.Position).Magnitude
-					if dist < shortest then
-						shortest = dist
-						closest = plr.Character
+					local d = (part.Position - root.Position).Magnitude
+					if d < dist and d <= scanRange then
+						dist = d
+						closest = p.Character
 					end
 				end
 			end
 		end
 	else
 		for _, obj in pairs(workspace:GetDescendants()) do
-			if obj:IsA("Model") and obj ~= root.Parent and isAlive(obj) then
-				if not Players:GetPlayerFromCharacter(obj) then
-					local part = getTargetPart(obj)
-					if part then
-						local dist = (part.Position - root.Position).Magnitude
-						if dist < shortest then
-							shortest = dist
-							closest = obj
-						end
+			if obj:IsA("Model") and obj ~= root.Parent and isValid(obj) then
+				local part = getPart(obj)
+				if part then
+					local d = (part.Position - root.Position).Magnitude
+					if d < dist and d <= scanRange then
+						dist = d
+						closest = obj
 					end
 				end
 			end
@@ -76,278 +74,140 @@ local function getClosestTarget(root)
 	return closest
 end
 
--- ================= LOCK =================
-
-local function startLock()
-	camera.CameraType = Enum.CameraType.Scriptable
-
-	connection = RunService.RenderStepped:Connect(function()
-		local char = getCharacter()
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if not root then return end
-
-		if not currentTarget or not isAlive(currentTarget) then
-			currentTarget = getClosestTarget(root)
-		end
-
-		if not currentTarget then return end
-
-		local part = getTargetPart(currentTarget)
-		if not part then return end
-
-		local aimPos = part.Position + Vector3.new(0, aimHeight, 0)
-
-		root.CFrame = CFrame.new(root.Position, aimPos)
-
-		local camPos = root.Position + root.CFrame:VectorToWorldSpace(CAMERA_OFFSET)
-		camera.CFrame = CFrame.new(camPos, aimPos)
-	end)
-end
-
-local function stopLock()
-	if connection then
-		connection:Disconnect()
-		connection = nil
-	end
-	camera.CameraType = Enum.CameraType.Custom
-	currentTarget = nil
-end
-
--- ================= SCAN =================
-
-local function getTargetsInRange(root)
-	local list = {}
-
-	if targetMode == "Player" then
-		for _, plr in pairs(Players:GetPlayers()) do
-			if plr ~= player and plr.Character and isAlive(plr.Character) then
-				local part = getTargetPart(plr.Character)
-				if part then
-					local dist = (part.Position - root.Position).Magnitude
-					if dist <= scanRange then
-						table.insert(list, plr.Character)
-					end
-				end
-			end
-		end
-	else
-		for _, obj in pairs(workspace:GetDescendants()) do
-			if obj:IsA("Model") and isAlive(obj) then
-				if not Players:GetPlayerFromCharacter(obj) then
-					local part = getTargetPart(obj)
-					if part then
-						local dist = (part.Position - root.Position).Magnitude
-						if dist <= scanRange then
-							table.insert(list, obj)
-						end
-					end
-				end
-			end
-		end
-	end
-
-	return list
-end
-
-local function getTeamColor(model)
-	local plr = Players:GetPlayerFromCharacter(model)
-	if plr and plr.Team then
-		return plr.TeamColor.Color
-	end
-	return Color3.fromRGB(255,255,255)
-end
-
-local function createScanUI()
-	if scanGui then scanGui:Destroy() end
-
-	scanGui = Instance.new("ScreenGui")
-	scanGui.Parent = player.PlayerGui
-
-	local frame = Instance.new("Frame")
-	frame.Size = UDim2.new(0,180,0,220)
-	frame.Position = UDim2.new(0.8,0,0.3,0)
-	frame.BackgroundColor3 = Color3.fromRGB(245,245,245)
-	frame.Parent = scanGui
-	Instance.new("UICorner", frame)
-
-	local scroll = Instance.new("ScrollingFrame")
-	scroll.Size = UDim2.new(1,0,1,0)
-	scroll.BackgroundTransparency = 1
-	scroll.Parent = frame
-
-	local layout = Instance.new("UIListLayout", scroll)
-	layout.Padding = UDim.new(0,4)
-
-	scanList = scroll
-
-	local dragging, dragStart, startPos
-	frame.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = frame.Position
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.Touch then
-			local delta = input.Position - dragStart
-			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function()
-		dragging = false
-	end)
-end
-
+--// LOCK SYSTEM
 RunService.RenderStepped:Connect(function()
-	if not scanEnabled then return end
-	if tick() - lastScan < SCAN_RATE then return end
-	lastScan = tick()
+	if not lockEnabled then return end
 
-	local char = getCharacter()
+	local char = getChar()
 	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root or not scanList then return end
+	if not root then return end
 
-	scanList:ClearAllChildren()
-	local layout = Instance.new("UIListLayout", scanList)
-	layout.Padding = UDim.new(0,4)
-
-	local targets = getTargetsInRange(root)
-
-	for _, t in pairs(targets) do
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1,0,0,28)
-		btn.Text = t.Name
-		btn.BackgroundColor3 = getTeamColor(t)
-		btn.TextColor3 = Color3.new(0,0,0)
-		btn.Parent = scanList
-
-		btn.MouseButton1Click:Connect(function()
-			currentTarget = t
-			if not lockEnabled then
-				lockEnabled = true
-				startLock()
-			end
-		end)
+	if not currentTarget or not isAlive(currentTarget) then
+		currentTarget = getClosest(root)
 	end
 
-	scanList.CanvasSize = UDim2.new(0,0,0,#targets * 30)
+	if not currentTarget then return end
+
+	local part = getPart(currentTarget)
+	if not part then return end
+
+	local aimPos = part.Position + Vector3.new(0, offsetY, 0)
+
+	-- 🎯 หมุนตัว
+	root.CFrame = CFrame.new(root.Position, aimPos)
+
+	-- 🎥 กล้อง 3rd person
+	local camOffset = root.CFrame.LookVector * -8 + Vector3.new(0, 3, 0)
+	camera.CFrame = CFrame.new(root.Position + camOffset, aimPos)
 end)
 
--- ================= MODERN UI =================
+--// ================= UI =================
 
-local gui = Instance.new("ScreenGui")
-gui.Parent = player.PlayerGui
+local gui = Instance.new("ScreenGui", player.PlayerGui)
 
-local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 220, 0, 260)
-main.Position = UDim2.new(0.5, -110, 0.5, -130)
-main.BackgroundColor3 = Color3.fromRGB(245,245,245)
-main.Parent = gui
-Instance.new("UICorner", main)
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 240, 0, 260)
+frame.Position = UDim2.new(0.5, -120, 0.5, -130)
+frame.BackgroundColor3 = Color3.fromRGB(240,240,240)
+Instance.new("UICorner", frame)
 
-local header = Instance.new("Frame")
-header.Size = UDim2.new(1,0,0,35)
-header.BackgroundColor3 = Color3.fromRGB(230,230,230)
-header.Parent = main
-Instance.new("UICorner", header)
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1,-60,1,0)
-title.Position = UDim2.new(0,10,0,0)
-title.Text = "PRO LOCK"
-title.BackgroundTransparency = 1
-title.TextColor3 = Color3.fromRGB(30,30,30)
-title.Parent = header
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0,20,0,20)
-closeBtn.Position = UDim2.new(1,-25,0.5,-10)
-closeBtn.Text = "✕"
-closeBtn.Parent = header
-
-local collapseBtn = Instance.new("TextButton")
-collapseBtn.Size = UDim2.new(0,20,0,20)
-collapseBtn.Position = UDim2.new(1,-50,0.5,-10)
-collapseBtn.Text = "-"
-collapseBtn.Parent = header
-
-local content = Instance.new("Frame")
-content.Size = UDim2.new(1,0,1,-40)
-content.Position = UDim2.new(0,0,0,40)
-content.BackgroundTransparency = 1
-content.Parent = main
-
-local layout = Instance.new("UIListLayout", content)
-layout.Padding = UDim.new(0,6)
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-local function btn(text)
-	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(0.9,0,0,32)
+local function makeBtn(text, y)
+	local b = Instance.new("TextButton", frame)
+	b.Size = UDim2.new(0.85,0,0,30)
+	b.Position = UDim2.new(0.075,0,y,0)
 	b.Text = text
-	b.BackgroundColor3 = Color3.fromRGB(40,40,40)
+	b.BackgroundColor3 = Color3.fromRGB(30,30,30)
 	b.TextColor3 = Color3.new(1,1,1)
-	b.Parent = content
 	Instance.new("UICorner", b)
 	return b
 end
 
-local lockBtn = btn("Lock: OFF")
-local modeBtn = btn("Mode: Monster")
-local scanBtn = btn("Scan: OFF")
+-- Title
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1,0,0,30)
+title.Text = "PRO LOCK"
+title.BackgroundTransparency = 1
+title.TextColor3 = Color3.new(0,0,0)
+title.Active = true
+
+-- Buttons
+local lockBtn = makeBtn("Lock: OFF",0.15)
+local modeBtn = makeBtn("Mode: Monster",0.3)
+local scanBtn = makeBtn("Scan Menu",0.45)
+
+-- Offset Input
+local offsetBox = Instance.new("TextBox", frame)
+offsetBox.Size = UDim2.new(0.85,0,0,30)
+offsetBox.Position = UDim2.new(0.075,0,0.6,0)
+offsetBox.PlaceholderText = "Y Offset (-1 / 0 / 1)"
+offsetBox.Text = "0"
+Instance.new("UICorner", offsetBox)
+
+-- Range Input
+local rangeBox = Instance.new("TextBox", frame)
+rangeBox.Size = UDim2.new(0.85,0,0,30)
+rangeBox.Position = UDim2.new(0.075,0,0.75,0)
+rangeBox.PlaceholderText = "Range (e.g. 200)"
+rangeBox.Text = "200"
+Instance.new("UICorner", rangeBox)
+
+-- Close
+local close = Instance.new("TextButton", frame)
+close.Size = UDim2.new(0,20,0,20)
+close.Position = UDim2.new(1,-25,0,5)
+close.Text = "X"
+close.BackgroundColor3 = Color3.fromRGB(200,50,50)
+
+--// BUTTON LOGIC
 
 lockBtn.MouseButton1Click:Connect(function()
 	lockEnabled = not lockEnabled
 	lockBtn.Text = "Lock: "..(lockEnabled and "ON" or "OFF")
-	if lockEnabled then startLock() else stopLock() end
 end)
 
 modeBtn.MouseButton1Click:Connect(function()
 	targetMode = (targetMode=="Monster") and "Player" or "Monster"
 	modeBtn.Text = "Mode: "..targetMode
-	currentTarget = nil
 end)
 
-scanBtn.MouseButton1Click:Connect(function()
-	scanEnabled = not scanEnabled
-	scanBtn.Text = "Scan: "..(scanEnabled and "ON" or "OFF")
-	if scanEnabled then createScanUI()
-	elseif scanGui then scanGui:Destroy() end
+offsetBox.FocusLost:Connect(function()
+	local val = tonumber(offsetBox.Text)
+	if val then offsetY = val end
 end)
 
-closeBtn.MouseButton1Click:Connect(function()
-	stopLock()
-	if scanGui then scanGui:Destroy() end
+rangeBox.FocusLost:Connect(function()
+	local val = tonumber(rangeBox.Text)
+	if val then scanRange = val end
+end)
+
+close.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
 
-local collapsed = false
-collapseBtn.MouseButton1Click:Connect(function()
-	collapsed = not collapsed
-	content.Visible = not collapsed
-	main.Size = collapsed and UDim2.new(0,220,0,40) or UDim2.new(0,220,0,260)
-end)
+--// DRAG (มือถือ)
+local drag=false
+local dragStart, startPos
 
--- DRAG
-local dragging, dragStart, startPos
-header.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPos = main.Position
+title.InputBegan:Connect(function(input)
+	if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
+		drag=true
+		dragStart=input.Position
+		startPos=frame.Position
 	end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.Touch then
-		local delta = input.Position - dragStart
-		main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
+UIS.InputChanged:Connect(function(input)
+	if drag then
+		local delta=input.Position-dragStart
+		frame.Position=UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset+delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset+delta.Y
+		)
 	end
 end)
 
-UserInputService.InputEnded:Connect(function()
-	dragging = false
+UIS.InputEnded:Connect(function()
+	drag=false
 end)
