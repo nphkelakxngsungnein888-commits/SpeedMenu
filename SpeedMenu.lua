@@ -107,9 +107,17 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --// ===== UI =====
-local gui = Instance.new("ScreenGui", player.PlayerGui)
+local gui = Instance.new("ScreenGui")
+gui.Name = "AimControlGui"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local success = pcall(function()
+	gui.Parent = game:GetService("CoreGui")
+end)
+if not success then
+	gui.Parent = player.PlayerGui
+end
 
 -- ===== COLORS =====
 local C = {
@@ -657,6 +665,33 @@ end)
 UIS.InputEnded:Connect(function(i)
 	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 		dragging = false
+	end
+end)
+
+-- ===== DRAG: SCAN GUI =====
+local sDragging, sDragStart, sSPos
+
+scanTitle.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+		sDragging = true
+		sDragStart = i.Position
+		sSPos = scanGui.Position
+	end
+end)
+
+UIS.InputChanged:Connect(function(i)
+	if sDragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+		local delta = i.Position - sDragStart
+		scanGui.Position = UDim2.new(
+			sSPos.X.Scale, sSPos.X.Offset + delta.X,
+			sSPos.Y.Scale, sSPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+UIS.InputEnded:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+		sDragging = false
 	end
 end)
 
