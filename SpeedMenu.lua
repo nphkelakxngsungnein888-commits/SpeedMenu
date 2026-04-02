@@ -61,13 +61,67 @@ local function getClosest(root)
 			end
 		end
 	else
-		for _, m in pairs(workspace:GetDescendants()) do
+		for _, m in pairs(workspace:GetChildren()) do
 			if m:IsA("Model") and isValid(m) then
 				local part = getRoot(m)
 				if part then
 					local d = (part.Position - root.Position).Magnitude
 					if d < dist then dist = d; best = m end
 				end
+			end
+		end
+	end
+	return best
+end
+
+
+--// ===== OPTIMIZED CACHE =====
+local cachedTargets = {}
+local lastScan = 0
+local SCAN_DELAY = 0.3
+
+local function updateTargets()
+	cachedTargets = {}
+	local char = getChar()
+	local root = getRoot(char)
+	if not root then return end
+
+	if targetMode == "Player" then
+		for _, plr in pairs(Players:GetPlayers()) do
+			if plr ~= player and plr.Character and isAlive(plr.Character) then
+				local part = getRoot(plr.Character)
+				if part then
+					local dist = (part.Position - root.Position).Magnitude
+					if dist <= scanDistance then
+						table.insert(cachedTargets, plr.Character)
+					end
+				end
+			end
+		end
+	else
+		for _, m in pairs(workspace:GetChildren()) do
+			if m:IsA("Model") and isValid(m) then
+				local part = getRoot(m)
+				if part then
+					local dist = (part.Position - root.Position).Magnitude
+					if dist <= scanDistance then
+						table.insert(cachedTargets, m)
+					end
+				end
+			end
+		end
+	end
+end
+
+local function getClosestCached(root)
+	local best, dist = nil, math.huge
+	for _, m in pairs(cachedTargets) do
+		local part = getRoot(m)
+		if part then
+			local d = (part.Position - root.Position).Magnitude
+			if d < dist then
+				dist = d
+				best = m
 			end
 		end
 	end
@@ -84,7 +138,11 @@ RunService.RenderStepped:Connect(function()
 	if selectedTarget and isAlive(selectedTarget) then
 		currentTarget = selectedTarget
 	else
-		currentTarget = getClosest(root)
+		if tick() - lastScan > SCAN_DELAY then
+	lastScan = tick()
+	updateTargets()
+end
+currentTarget = getClosestCached(root)
 	end
 
 	if not currentTarget then return end
@@ -481,7 +539,7 @@ scanNowBtn.MouseButton1Click:Connect(function()
 	if not root then return end
 
 	local idx = 0
-	for _, m in pairs(workspace:GetDescendants()) do
+	for _, m in pairs(workspace:GetChildren()) do
 		if m:IsA("Model") and isValid(m) then
 			local part = getRoot(m)
 			if part then
