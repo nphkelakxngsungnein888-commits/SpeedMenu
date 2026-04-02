@@ -171,7 +171,7 @@ end
 local function startLock()
     if lockConn then lockConn:Disconnect() end
 
-    lockConn = RunService.Heartbeat:Connect(function()
+    lockConn = RunService.RenderStepped:Connect(function()
         if not HRP then return end
 
         -- pick target ถ้ายังไม่มีหรือตายแล้ว
@@ -187,17 +187,26 @@ local function startLock()
             local aim = getAimPos(currentTarget)
             if not aim then return end
 
-            -- หมุนเฉพาะ HumanoidRootPart หาเป้า (กล้องจะตามอัตโนมัติ)
-            -- ไม่แตะ CameraType เลย → กล้อง Roblox ทำงานปกติ
-            local targetDir = Vector3.new(aim.X, HRP.Position.Y, aim.Z)
-            local newCFrame = CFrame.new(HRP.Position, targetDir)
-            HRP.CFrame = HRP.CFrame:Lerp(newCFrame, CFG.strength)
+            -- 1) หมุนตัวละครหาเป้า (smooth)
+            local flatAim = Vector3.new(aim.X, HRP.Position.Y, aim.Z)
+            local newHRP  = CFrame.new(HRP.Position, flatAim)
+            HRP.CFrame    = HRP.CFrame:Lerp(newHRP, CFG.strength)
+
+            -- 2) หมุนกล้องตามทิศที่ตัวละครหัน
+            -- คงระยะ + ความสูงกล้องไว้เดิม แค่เปลี่ยน LookAt ไปที่เป้า
+            local camPos  = Camera.CFrame.Position
+            local lookDir = (aim - camPos)
+            local flatLook = Vector3.new(lookDir.X, lookDir.Y * 0.4, lookDir.Z)
+            local targetCamCF = CFrame.new(camPos, camPos + flatLook)
+            Camera.CFrame = Camera.CFrame:Lerp(targetCamCF, CFG.strength * 0.6)
         end
     end)
 end
 
 local function stopLock()
     if lockConn then lockConn:Disconnect() lockConn=nil end
+    -- คืน CameraType ให้ Roblox จัดการเอง
+    Camera.CameraType = Enum.CameraType.Custom
     setTarget(nil)
 end
 
