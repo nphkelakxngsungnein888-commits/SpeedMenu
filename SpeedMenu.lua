@@ -1,5 +1,5 @@
 -- ╔══════════════════════════════════════╗
--- ║  KUY LOCK MENU v3 - ADVANCED FULL   ║
+-- ║  KUY LOCK MENU v4 - ADVANCED FULL   ║
 -- ║  Lock + Radar + Color Filter        ║
 -- ║  Camera Follow Player + Face Target ║
 -- ║  Mobile + PC Ready                  ║
@@ -170,51 +170,65 @@ local function setTarget(m)
 end
 
 local origCamType = Enum.CameraType.Custom
+local origCamSubject = nil
 
 local function startLock()
     if lockConn then lockConn:Disconnect() end
-    origCamType = Camera.CameraType
-    Camera.CameraType = Enum.CameraType.Scriptable
+    origCamType    = Camera.CameraType
+    origCamSubject = Camera.CameraSubject
+
+    -- หยุด Roblox engine ไม่ให้ขยับกล้องเอง
+    Camera.CameraType    = Enum.CameraType.Scriptable
+    Camera.CameraSubject = nil
+
+    -- snapshot offset กล้องจาก HRP ณ ตอนเริ่ม lock
+    local camOffset = HRP
+        and (Camera.CFrame.Position - HRP.Position)
+        or  Vector3.new(0, 5, -12)
 
     lockConn = RunService.RenderStepped:Connect(function(dt)
         if not HRP then return end
-        Camera.CameraType = Enum.CameraType.Scriptable
+        Camera.CameraType    = Enum.CameraType.Scriptable
+        Camera.CameraSubject = nil
+
+        -- อัพเดต offset ให้ลื่น (ป้องกัน drift เมื่อตัวละครย้ายกล้องด้วยมือ)
+        camOffset = camOffset:Lerp(Camera.CFrame.Position - HRP.Position, 0.05)
 
         -- pick target
         if not currentTarget or not isAlive(currentTarget) then
             setTarget(CFG.nearest and getNearest() or getLooked())
         end
 
+        -- ตำแหน่งกล้องตาม HRP เสมอ
+        local newCamPos = HRP.Position + camOffset
+
         if currentTarget then
             if not isAlive(currentTarget) then setTarget(getNearest()) return end
             local aim = getAimPos(currentTarget)
             if not aim then return end
 
-            -- rotate character toward target (yaw only)
+            -- หมุนตัวละครไปหาเป้า (yaw เท่านั้น)
             HRP.CFrame = CFrame.new(HRP.Position,
                 Vector3.new(aim.X, HRP.Position.Y, aim.Z))
 
-            -- keep camera offset relative to character (follow player)
-            local camOffset = Camera.CFrame.Position - HRP.Position
-
-            -- build target camera CFrame: position follows HRP + offset, looks at aim
-            local targetCamCF = CFrame.new(HRP.Position + camOffset, aim)
-
-            -- smooth lerp: camera follows player AND faces target
-            Camera.CFrame = Camera.CFrame:Lerp(targetCamCF, CFG.strength)
+            -- กล้อง: ตำแหน่งตาม HRP + offset, มองไปหาเป้า
+            local targetCF = CFrame.new(newCamPos, aim)
+            Camera.CFrame  = Camera.CFrame:Lerp(targetCF, CFG.strength)
         else
-            -- no target: smoothly follow character without snapping
-            local camOffset = Camera.CFrame.Position - HRP.Position
-            local followCF = CFrame.new(HRP.Position + camOffset,
-                HRP.Position + camOffset + Camera.CFrame.LookVector)
-            Camera.CFrame = Camera.CFrame:Lerp(followCF, CFG.strength)
+            -- ไม่มีเป้า: กล้องตามตัวละครโดยไม่เปลี่ยนทิศมอง
+            local targetCF = CFrame.new(newCamPos,
+                newCamPos + Camera.CFrame.LookVector)
+            Camera.CFrame  = Camera.CFrame:Lerp(targetCF, CFG.strength)
         end
     end)
 end
 
 local function stopLock()
     if lockConn then lockConn:Disconnect() lockConn=nil end
-    pcall(function() Camera.CameraType = origCamType end)
+    pcall(function()
+        Camera.CameraType    = origCamType
+        Camera.CameraSubject = origCamSubject or (LP.Character and LP.Character:FindFirstChildOfClass("Humanoid"))
+    end)
     setTarget(nil)
 end
 
@@ -284,9 +298,9 @@ end
 -- ═════════════════════════════════
 --  MAIN GUI BUILDER
 -- ═════════════════════════════════
-pcall(function() CoreGui:FindFirstChild("KuyLock_v3"):Destroy() end)
+pcall(function() CoreGui:FindFirstChild("KuyLock_v4"):Destroy() end)
 local sg=Instance.new("ScreenGui",CoreGui)
-sg.Name="KuyLock_v3" sg.ResetOnSpawn=false
+sg.Name="KuyLock_v4" sg.ResetOnSpawn=false
 sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 
 local function buildMainMenu()
@@ -306,7 +320,7 @@ local function buildMainMenu()
     tb.BorderSizePixel=0 cr(tb,9)
     makeDrag(mf,tb)
 
-    local tl=lbl(tb,"⚔ KuyLock v3",11*ms,Color3.fromRGB(255,255,255))
+    local tl=lbl(tb,"⚔ KuyLock v4",11*ms,Color3.fromRGB(255,255,255))
     tl.Size=UDim2.new(1,-115*ms,1,0) tl.Position=UDim2.new(0,8*ms,0,0)
 
     local szBox=inp(tb,"10",9*ms)
@@ -799,4 +813,4 @@ end
 --  START
 -- ═════════════════════════════════
 buildMainMenu()
-print("[KuyLock v3] Loaded ✓")
+print("[KuyLock v4] Loaded ✓")
