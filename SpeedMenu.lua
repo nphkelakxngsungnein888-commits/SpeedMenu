@@ -1,6 +1,7 @@
 -- ╔══════════════════════════════════════╗
--- ║  KUY LOCK MENU v2 - ADVANCED FULL   ║
+-- ║  KUY LOCK MENU v3 - ADVANCED FULL   ║
 -- ║  Lock + Radar + Color Filter        ║
+-- ║  Camera Follow Player + Face Target ║
 -- ║  Mobile + PC Ready                  ║
 -- ╚══════════════════════════════════════╝
 
@@ -168,45 +169,52 @@ local function setTarget(m)
     end
 end
 
+local origCamType = Enum.CameraType.Custom
+
 local function startLock()
     if lockConn then lockConn:Disconnect() end
+    origCamType = Camera.CameraType
+    Camera.CameraType = Enum.CameraType.Scriptable
 
-    lockConn = RunService.RenderStepped:Connect(function()
+    lockConn = RunService.RenderStepped:Connect(function(dt)
         if not HRP then return end
+        Camera.CameraType = Enum.CameraType.Scriptable
 
-        -- pick target ถ้ายังไม่มีหรือตายแล้ว
+        -- pick target
         if not currentTarget or not isAlive(currentTarget) then
             setTarget(CFG.nearest and getNearest() or getLooked())
         end
 
         if currentTarget then
-            if not isAlive(currentTarget) then
-                setTarget(getNearest())
-                return
-            end
+            if not isAlive(currentTarget) then setTarget(getNearest()) return end
             local aim = getAimPos(currentTarget)
             if not aim then return end
 
-            -- 1) หมุนตัวละครหาเป้า (smooth)
-            local flatAim = Vector3.new(aim.X, HRP.Position.Y, aim.Z)
-            local newHRP  = CFrame.new(HRP.Position, flatAim)
-            HRP.CFrame    = HRP.CFrame:Lerp(newHRP, CFG.strength)
+            -- rotate character toward target (yaw only)
+            HRP.CFrame = CFrame.new(HRP.Position,
+                Vector3.new(aim.X, HRP.Position.Y, aim.Z))
 
-            -- 2) หมุนกล้องตามทิศที่ตัวละครหัน
-            -- คงระยะ + ความสูงกล้องไว้เดิม แค่เปลี่ยน LookAt ไปที่เป้า
-            local camPos  = Camera.CFrame.Position
-            local lookDir = (aim - camPos)
-            local flatLook = Vector3.new(lookDir.X, lookDir.Y * 0.4, lookDir.Z)
-            local targetCamCF = CFrame.new(camPos, camPos + flatLook)
-            Camera.CFrame = Camera.CFrame:Lerp(targetCamCF, CFG.strength * 0.6)
+            -- keep camera offset relative to character (follow player)
+            local camOffset = Camera.CFrame.Position - HRP.Position
+
+            -- build target camera CFrame: position follows HRP + offset, looks at aim
+            local targetCamCF = CFrame.new(HRP.Position + camOffset, aim)
+
+            -- smooth lerp: camera follows player AND faces target
+            Camera.CFrame = Camera.CFrame:Lerp(targetCamCF, CFG.strength)
+        else
+            -- no target: smoothly follow character without snapping
+            local camOffset = Camera.CFrame.Position - HRP.Position
+            local followCF = CFrame.new(HRP.Position + camOffset,
+                HRP.Position + camOffset + Camera.CFrame.LookVector)
+            Camera.CFrame = Camera.CFrame:Lerp(followCF, CFG.strength)
         end
     end)
 end
 
 local function stopLock()
     if lockConn then lockConn:Disconnect() lockConn=nil end
-    -- คืน CameraType ให้ Roblox จัดการเอง
-    Camera.CameraType = Enum.CameraType.Custom
+    pcall(function() Camera.CameraType = origCamType end)
     setTarget(nil)
 end
 
@@ -276,9 +284,9 @@ end
 -- ═════════════════════════════════
 --  MAIN GUI BUILDER
 -- ═════════════════════════════════
-pcall(function() CoreGui:FindFirstChild("KuyLock_v2"):Destroy() end)
+pcall(function() CoreGui:FindFirstChild("KuyLock_v3"):Destroy() end)
 local sg=Instance.new("ScreenGui",CoreGui)
-sg.Name="KuyLock_v2" sg.ResetOnSpawn=false
+sg.Name="KuyLock_v3" sg.ResetOnSpawn=false
 sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 
 local function buildMainMenu()
@@ -298,7 +306,7 @@ local function buildMainMenu()
     tb.BorderSizePixel=0 cr(tb,9)
     makeDrag(mf,tb)
 
-    local tl=lbl(tb,"⚔ KuyLock v2",11*ms,Color3.fromRGB(255,255,255))
+    local tl=lbl(tb,"⚔ KuyLock v3",11*ms,Color3.fromRGB(255,255,255))
     tl.Size=UDim2.new(1,-115*ms,1,0) tl.Position=UDim2.new(0,8*ms,0,0)
 
     local szBox=inp(tb,"10",9*ms)
@@ -791,4 +799,4 @@ end
 --  START
 -- ═════════════════════════════════
 buildMainMenu()
-print("[KuyLock v2] Loaded ✓")
+print("[KuyLock v3] Loaded ✓")
