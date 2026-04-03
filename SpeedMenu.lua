@@ -765,11 +765,9 @@ local HEIGHT_OFFSET = 1.5 -- ปรับได้ (ยิ่งสูง = aim 
 
 local function StartLock()
     if lockConnection then lockConnection:Disconnect() lockConnection = nil end
-    -- FIX 1: ต้อง set Scriptable ก่อน ไม่งั้นเกมจะ override CFrame กลับ
-    Camera.CameraType = Enum.CameraType.Scriptable
     local timer = 0
-    lockConnection = RunService.Heartbeat:Connect(function(dt)
-        -- FIX 2: refresh Character ทุก frame เผื่อ respawn
+    -- ใช้ RenderStepped แทน Heartbeat → run หลัง engine update camera ทุก frame
+    lockConnection = RunService.RenderStepped:Connect(function(dt)
         if not Character or not Character.Parent then return end
         local myHRP = Character:FindFirstChild("HumanoidRootPart")
         if not myHRP then return end
@@ -799,26 +797,23 @@ local function StartLock()
         if currentTarget then
             local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
             local hum = currentTarget:FindFirstChildOfClass("Humanoid")
-            -- FIX 3: check model ยังอยู่ใน workspace
             if not hrp or not hum or hum.Health <= 0 or not currentTarget.Parent then
                 SetTarget(nil)
                 return
             end
-            -- FIX 4: height offset ให้ aim ที่หัว ไม่ใช่กลางตัว
+            -- หมุนกล้องหาเป้า โดยไม่แตะ CameraType → กล้องยังติดตามตัวละครตามปกติ
             local targetPos = hrp.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
-            local currentCF = Camera.CFrame
-            local lookAt = CFrame.lookAt(currentCF.Position, targetPos)
+            local camPos = Camera.CFrame.Position
+            local lookAt = CFrame.lookAt(camPos, targetPos)
             local safeDt = math.min(dt, 0.05)
             local lerpAlpha = 1 - (1 - strength) ^ (safeDt * 60)
-            Camera.CFrame = currentCF:Lerp(lookAt, lerpAlpha)
+            Camera.CFrame = Camera.CFrame:Lerp(lookAt, lerpAlpha)
         end
     end)
 end
 
 local function StopLock()
     if lockConnection then lockConnection:Disconnect() lockConnection = nil end
-    -- FIX 5: reset camera กลับ Custom เวลา stop
-    Camera.CameraType = Enum.CameraType.Custom
     SetTarget(nil)
 end
 
