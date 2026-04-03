@@ -287,7 +287,9 @@ end)
 
 -- Height Offset box (บรรทัดใหม่)
 SmallLabel(Content, "⬆ Height Offset", S(102), 8)
+SmallLabel(Content, "📷 Cam Dist", S(102), 112)
 local HeightBox = InputBox(Content, 1.5, S(116), 90, 8)
+local CamDistBox = InputBox(Content, 15, S(116), 90, 112)
 HeightBox.FocusLost:Connect(function()
     local v = tonumber(HeightBox.Text)
     if v then
@@ -295,6 +297,15 @@ HeightBox.FocusLost:Connect(function()
         HeightBox.Text = tostring(HEIGHT_OFFSET)
     else
         HeightBox.Text = tostring(HEIGHT_OFFSET)
+    end
+end)
+CamDistBox.FocusLost:Connect(function()
+    local v = tonumber(CamDistBox.Text)
+    if v then
+        CAM_DISTANCE = math.clamp(v, 5, 50)
+        CamDistBox.Text = tostring(CAM_DISTANCE)
+    else
+        CamDistBox.Text = tostring(CAM_DISTANCE)
     end
 end)
 
@@ -537,169 +548,6 @@ local ScanLayout = Instance.new("UIListLayout")
 ScanLayout.Padding = UDim.new(0, SS(3))
 ScanLayout.Parent = ScanScroll
 
--- ══════════════════════════════════════
---   COLOR PICKER POPUP (แยก frame)
--- ══════════════════════════════════════
-local ColorPopup = Instance.new("Frame")
-ColorPopup.Size = UDim2.new(0, SS(200), 0, SS(220))
-ColorPopup.Position = UDim2.new(0.5, SS(120), 0.5, SS(170))
-ColorPopup.BackgroundColor3 = Color3.fromRGB(18,18,18)
-ColorPopup.BorderSizePixel = 0
-ColorPopup.ClipsDescendants = true
-ColorPopup.Visible = false
-ColorPopup.ZIndex = 10
-ColorPopup.Parent = ScreenGui
-Instance.new("UICorner", ColorPopup).CornerRadius = UDim.new(0,8)
-
-local CPTitleBar = Instance.new("Frame")
-CPTitleBar.Size = UDim2.new(1, 0, 0, SS(26))
-CPTitleBar.BackgroundColor3 = Color3.fromRGB(30,30,30)
-CPTitleBar.BorderSizePixel = 0
-CPTitleBar.ZIndex = 10
-CPTitleBar.Parent = ColorPopup
-MakeDraggable(ColorPopup, CPTitleBar)
-
-local CPTitle = Instance.new("TextLabel")
-CPTitle.Size = UDim2.new(1, -SS(30), 1, 0)
-CPTitle.Position = UDim2.new(0, SS(8), 0, 0)
-CPTitle.BackgroundTransparency = 1
-CPTitle.Text = "🎨 เลือกสี Filter"
-CPTitle.TextColor3 = Color3.fromRGB(255,255,255)
-CPTitle.TextSize = SS(10)
-CPTitle.Font = Enum.Font.GothamBold
-CPTitle.TextXAlignment = Enum.TextXAlignment.Left
-CPTitle.ZIndex = 10
-CPTitle.Parent = CPTitleBar
-
-local CPCloseBtn = Instance.new("TextButton")
-CPCloseBtn.Size = UDim2.new(0, SS(20), 0, SS(20))
-CPCloseBtn.Position = UDim2.new(1, -SS(22), 0.5, -SS(10))
-CPCloseBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-CPCloseBtn.BorderSizePixel = 0
-CPCloseBtn.Text = "✕"
-CPCloseBtn.TextColor3 = Color3.fromRGB(255,255,255)
-CPCloseBtn.TextSize = SS(10)
-CPCloseBtn.Font = Enum.Font.GothamBold
-CPCloseBtn.ZIndex = 10
-CPCloseBtn.Parent = CPTitleBar
-Instance.new("UICorner", CPCloseBtn).CornerRadius = UDim.new(0,4)
-
-local CPNoColorBtn = Instance.new("TextButton")
-CPNoColorBtn.Size = UDim2.new(1, -SS(16), 0, SS(22))
-CPNoColorBtn.Position = UDim2.new(0, SS(8), 0, SS(30))
-CPNoColorBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-CPNoColorBtn.BorderSizePixel = 0
-CPNoColorBtn.Text = "✅ แสดงทั้งหมด (ไม่ filter)"
-CPNoColorBtn.TextColor3 = Color3.fromRGB(200,200,200)
-CPNoColorBtn.TextSize = SS(9)
-CPNoColorBtn.Font = Enum.Font.GothamBold
-CPNoColorBtn.ZIndex = 10
-CPNoColorBtn.Parent = ColorPopup
-Instance.new("UICorner", CPNoColorBtn).CornerRadius = UDim.new(0,5)
-
-local CPScroll = Instance.new("ScrollingFrame")
-CPScroll.Size = UDim2.new(1, -SS(8), 1, -SS(56))
-CPScroll.Position = UDim2.new(0, SS(4), 0, SS(54))
-CPScroll.BackgroundTransparency = 1
-CPScroll.BorderSizePixel = 0
-CPScroll.ScrollBarThickness = 3
-CPScroll.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
-CPScroll.CanvasSize = UDim2.new(0,0,0,0)
-CPScroll.ZIndex = 10
-CPScroll.Parent = ColorPopup
-
-local CPLayout = Instance.new("UIListLayout")
-CPLayout.Padding = UDim.new(0, SS(3))
-CPLayout.Parent = CPScroll
-
--- ══════════════════════════════
---        TEAM COLOR
--- ══════════════════════════════
-local function GetTeamColor(model)
-    local p = Players:GetPlayerFromCharacter(model)
-    if p and p.Team then return p.Team.TeamColor.Color end
-    local myTeam = LocalPlayer.Team
-    if p and myTeam then
-        if p.Team and p.Team == myTeam then
-            return Color3.fromRGB(60,200,100)
-        else
-            return Color3.fromRGB(220,60,60)
-        end
-    end
-    -- NPC default แยกตามชื่อ (ถ้าเกมไม่มีทีม)
-    return Color3.fromRGB(220,120,50)
-end
-
--- ══════════════════════════════
---        CORE FUNCTIONS
--- ══════════════════════════════
-local function GetTargetList()
-    -- ใช้ HumanoidRootPart ที่ update จาก CharacterAdded เสมอ
-    local myHRP = Character and Character:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return {} end
-    local list = {}
-    local range = tonumber(RangeBox.Text) or Settings.LockRange
-
-    if Settings.Mode == "Player" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                local hum = p.Character:FindFirstChild("Humanoid")
-                if hrp and hum and hum.Health > 0 then
-                    local dist = (hrp.Position - myHRP.Position).Magnitude
-                    if dist <= range then
-                        local col = GetTeamColor(p.Character)
-                        table.insert(list, {model = p.Character, name = p.Name, dist = dist, color = col})
-                    end
-                end
-            end
-        end
-    else
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= Character then
-                local hrp = obj:FindFirstChild("HumanoidRootPart")
-                local hum = obj:FindFirstChildOfClass("Humanoid")
-                if hrp and hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(obj) then
-                    local dist = (hrp.Position - myHRP.Position).Magnitude
-                    if dist <= range then
-                        local col = GetTeamColor(obj)
-                        table.insert(list, {model = obj, name = obj.Name, dist = dist, color = col})
-                    end
-                end
-            end
-        end
-    end
-
-    table.sort(list, function(a,b) return a.dist < b.dist end)
-    return list
-end
-
--- กรอง list ตาม filter color
-local function FilterList(list)
-    if not Settings.FilterColor then return list end
-    local fHex = ColorToHex(Settings.FilterColor)
-    local filtered = {}
-    for _, entry in ipairs(list) do
-        if ColorToHex(entry.color) == fHex then
-            table.insert(filtered, entry)
-        end
-    end
-    return filtered
-end
-
-local function SetTarget(model)
-    currentTarget = model
-    if model then
-        TargetLabel.Text = model.Name
-        StatusLabel.Text = "🔒 " .. model.Name
-        StatusLabel.TextColor3 = Color3.fromRGB(220,220,220)
-    else
-        TargetLabel.Text = "No Target"
-        StatusLabel.Text = "● Idle"
-        StatusLabel.TextColor3 = Color3.fromRGB(120,120,120)
-    end
-end
-
 -- ══════════════════════════════
 --   COLOR PICKER POPULATE
 -- ══════════════════════════════
@@ -761,12 +609,14 @@ end
 -- ══════════════════════════════
 --     LOCK CORE
 -- ══════════════════════════════
-local HEIGHT_OFFSET = 1.5 -- ปรับได้ (ยิ่งสูง = aim ที่หัว)
+local HEIGHT_OFFSET = 1.5  -- offset เป้าหมาย (aim ที่หัว)
+local CAM_DISTANCE  = 15   -- ระยะกล้องถอยหลัง (จาก HRP)
+local CAM_HEIGHT    = 3    -- ความสูงกล้องเหนือ HRP
 
 local function StartLock()
     if lockConnection then lockConnection:Disconnect() lockConnection = nil end
     local timer = 0
-    -- ใช้ RenderStepped แทน Heartbeat → run หลัง engine update camera ทุก frame
+
     lockConnection = RunService.RenderStepped:Connect(function(dt)
         if not Character or not Character.Parent then return end
         local myHRP = Character:FindFirstChild("HumanoidRootPart")
@@ -775,6 +625,7 @@ local function StartLock()
         local strength = math.clamp(tonumber(StrBox.Text) or 0.3, 0.01, 1)
         Settings.LockStrength = strength
 
+        -- scan หาเป้าทุก SCAN_INTERVAL
         if not currentTarget or Settings.NearestMode then
             timer = timer + dt
             if timer >= SCAN_INTERVAL then
@@ -801,13 +652,26 @@ local function StartLock()
                 SetTarget(nil)
                 return
             end
-            -- หมุนกล้องหาเป้า โดยไม่แตะ CameraType → กล้องยังติดตามตัวละครตามปกติ
+
             local targetPos = hrp.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
-            local camPos = Camera.CFrame.Position
-            local lookAt = CFrame.lookAt(camPos, targetPos)
-            local safeDt = math.min(dt, 0.05)
-            local lerpAlpha = 1 - (1 - strength) ^ (safeDt * 60)
-            Camera.CFrame = Camera.CFrame:Lerp(lookAt, lerpAlpha)
+            local myPos    = myHRP.Position
+
+            -- ทิศจาก ตัวละคร → เป้า (แกน XZ เท่านั้น ไม่ให้กล้องเอียงขึ้น-ลง)
+            local flatDir = (Vector3.new(targetPos.X, myPos.Y, targetPos.Z) - myPos).Unit
+
+            -- ตำแหน่งกล้อง = ถอยหลังตัวละคร + สูงขึ้นหน่อย
+            local camTargetPos = myPos - flatDir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
+            local camLookAt    = CFrame.lookAt(camTargetPos, targetPos)
+
+            local safeDt    = math.min(dt, 0.05)
+            local alpha     = 1 - (1 - strength) ^ (safeDt * 60)
+
+            -- smooth กล้อง
+            Camera.CFrame = Camera.CFrame:Lerp(camLookAt, alpha)
+
+            -- หมุนตัวละครหันหน้าไปทางเป้า (XZ เท่านั้น)
+            local bodyLook = CFrame.lookAt(myPos, Vector3.new(targetPos.X, myPos.Y, targetPos.Z))
+            myHRP.CFrame   = myHRP.CFrame:Lerp(bodyLook, alpha)
         end
     end)
 end
