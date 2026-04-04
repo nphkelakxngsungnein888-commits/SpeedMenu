@@ -7,8 +7,6 @@
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local CoreGui        = game:GetService("CoreGui")
-
 local LocalPlayer    = Players.LocalPlayer
 local Camera         = workspace.CurrentCamera
 
@@ -42,8 +40,9 @@ local CAM_HEIGHT    = 3     -- ความสูงกล้องเหนื�
 -- ══════════════════════════════
 --   GUI SETUP
 -- ══════════════════════════════
+local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 pcall(function()
-    local old = CoreGui:FindFirstChild("LockMenu")
+    local old = PlayerGui:FindFirstChild("LockMenu")
     if old then old:Destroy() end
 end)
 
@@ -51,7 +50,7 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "LockMenu"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = CoreGui
+ScreenGui.Parent = PlayerGui
 
 local function S(n)  return n * (Settings.MenuSize / 10) end
 local function SS(n) return n * (Settings.ScanMenuSize / 10) end
@@ -548,7 +547,7 @@ local function UpdateColorPicker()
             outline.Thickness = 2
             outline.Parent = btn
         end
-        btn.Activated:Connect(function()
+        btn.MouseButton1Click:Connect(function()
             Settings.FilterColor = col
             FilterLabel.Text = "🎨 Filter: #" .. hexStr
             FilterLabel.TextColor3 = col
@@ -663,18 +662,18 @@ end)
 -- ══════════════════════════════
 --   BUTTON CONNECTIONS
 -- ══════════════════════════════
-ModePlayer.Activated:Connect(function()
+ModePlayer.MouseButton1Click:Connect(function()
     Settings.Mode = "Player"
     currentTarget = nil
     UpdateModeUI()
 end)
-ModeNPC.Activated:Connect(function()
+ModeNPC.MouseButton1Click:Connect(function()
     Settings.Mode = "NPC"
     currentTarget = nil
     UpdateModeUI()
 end)
 
-LockBtn.Activated:Connect(function()
+LockBtn.MouseButton1Click:Connect(function()
     Settings.Enabled = not Settings.Enabled
     if Settings.Enabled then
         LockBtn.Text = "🔒 Lock : ON"
@@ -687,13 +686,13 @@ LockBtn.Activated:Connect(function()
     end
 end)
 
-NearBtn.Activated:Connect(function()
+NearBtn.MouseButton1Click:Connect(function()
     Settings.NearestMode = not Settings.NearestMode
     NearBtn.Text = Settings.NearestMode and "📍 Nearest : ON" or "📍 Nearest : OFF"
     NearBtn.BackgroundColor3 = Settings.NearestMode and Color3.fromRGB(40,80,40) or Color3.fromRGB(35,35,35)
 end)
 
-PrevBtn.Activated:Connect(function()
+PrevBtn.MouseButton1Click:Connect(function()
     if #targetList == 0 then targetList = FilterList(GetTargetList()) end
     if #targetList > 0 then
         targetIndex = targetIndex - 1
@@ -702,7 +701,7 @@ PrevBtn.Activated:Connect(function()
     end
 end)
 
-NextBtn.Activated:Connect(function()
+NextBtn.MouseButton1Click:Connect(function()
     if #targetList == 0 then targetList = FilterList(GetTargetList()) end
     if #targetList > 0 then
         targetIndex = targetIndex + 1
@@ -712,26 +711,26 @@ NextBtn.Activated:Connect(function()
 end)
 
 local minimized = false
-MinBtn.Activated:Connect(function()
+MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     Content.Visible = not minimized
     MainFrame.Size = minimized and UDim2.new(0, S(220), 0, S(30)) or UDim2.new(0, S(220), 0, S(380))
 end)
 
-CloseBtn.Activated:Connect(function()
+CloseBtn.MouseButton1Click:Connect(function()
     StopLock()
     ScreenGui:Destroy()
 end)
 
 local scanVisible = false
-ScanToggleBtn.Activated:Connect(function()
+ScanToggleBtn.MouseButton1Click:Connect(function()
     scanVisible = not scanVisible
     ScanFrame.Visible = scanVisible
     ScanToggleBtn.Text = scanVisible and "🔍 Scan Menu : ON" or "🔍 Scan Menu : OFF"
     ScanToggleBtn.BackgroundColor3 = scanVisible and Color3.fromRGB(40,80,40) or Color3.fromRGB(35,35,35)
 end)
 
-ScanCloseBtn.Activated:Connect(function()
+ScanCloseBtn.MouseButton1Click:Connect(function()
     scanVisible = false
     ScanFrame.Visible = false
     ColorPopup.Visible = false
@@ -740,7 +739,7 @@ ScanCloseBtn.Activated:Connect(function()
 end)
 
 local scanMin = false
-ScanMinBtn.Activated:Connect(function()
+ScanMinBtn.MouseButton1Click:Connect(function()
     scanMin = not scanMin
     ScanScroll.Visible = not scanMin
     DoScanBtn.Visible = not scanMin
@@ -750,7 +749,7 @@ ScanMinBtn.Activated:Connect(function()
     if scanMin then ColorPopup.Visible = false end
 end)
 
-DoScanBtn.Activated:Connect(function()
+DoScanBtn.MouseButton1Click:Connect(function()
     for _, c in ipairs(ScanScroll:GetChildren()) do
         if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
     end
@@ -782,7 +781,7 @@ DoScanBtn.Activated:Connect(function()
         dot.BorderSizePixel = 0
         dot.Parent = btn
         Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)
-        btn.Activated:Connect(function()
+        btn.MouseButton1Click:Connect(function()
             targetIndex = i
             SetTarget(entry.model)
         end)
@@ -791,16 +790,16 @@ DoScanBtn.Activated:Connect(function()
     UpdateColorPicker()
 end)
 
-ColorPickerBtn.Activated:Connect(function()
+ColorPickerBtn.MouseButton1Click:Connect(function()
     ColorPopup.Visible = not ColorPopup.Visible
     if ColorPopup.Visible then UpdateColorPicker() end
 end)
 
-CPCloseBtn.Activated:Connect(function()
+CPCloseBtn.MouseButton1Click:Connect(function()
     ColorPopup.Visible = false
 end)
 
-ClearFilterBtn.Activated:Connect(function()
+ClearFilterBtn.MouseButton1Click:Connect(function()
     Settings.FilterColor = nil
     FilterLabel.Text = "🎨 Filter: ทั้งหมด"
     FilterLabel.TextColor3 = Color3.fromRGB(160,160,160)
@@ -808,7 +807,7 @@ ClearFilterBtn.Activated:Connect(function()
     UpdateColorPicker()
 end)
 
-CPNoColorBtn.Activated:Connect(function()
+CPNoColorBtn.MouseButton1Click:Connect(function()
     Settings.FilterColor = nil
     FilterLabel.Text = "🎨 Filter: ทั้งหมด"
     FilterLabel.TextColor3 = Color3.fromRGB(160,160,160)
