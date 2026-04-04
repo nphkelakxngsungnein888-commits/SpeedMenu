@@ -7,6 +7,8 @@
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local CoreGui        = game:GetService("CoreGui")
+
 local LocalPlayer    = Players.LocalPlayer
 local Camera         = workspace.CurrentCamera
 
@@ -40,9 +42,8 @@ local CAM_HEIGHT    = 3     -- ความสูงกล้องเหนื�
 -- ══════════════════════════════
 --   GUI SETUP
 -- ══════════════════════════════
-local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 pcall(function()
-    local old = PlayerGui:FindFirstChild("LockMenu")
+    local old = CoreGui:FindFirstChild("LockMenu")
     if old then old:Destroy() end
 end)
 
@@ -50,7 +51,7 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "LockMenu"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = PlayerGui
+ScreenGui.Parent = CoreGui
 
 local function S(n)  return n * (Settings.MenuSize / 10) end
 local function SS(n) return n * (Settings.ScanMenuSize / 10) end
@@ -272,12 +273,12 @@ local CamDistBox = InputBox(Content, CAM_DISTANCE,  S(120), 90, 112)
 
 HeightBox.FocusLost:Connect(function()
     local v = tonumber(HeightBox.Text)
-    if v then HEIGHT_OFFSET = v HeightBox.Text = tostring(HEIGHT_OFFSET)
+    if v then HEIGHT_OFFSET = v HeightBox.Text = tostring(v)
     else HeightBox.Text = tostring(HEIGHT_OFFSET) end
 end)
 CamDistBox.FocusLost:Connect(function()
     local v = tonumber(CamDistBox.Text)
-    if v then CAM_DISTANCE = v CamDistBox.Text = tostring(CAM_DISTANCE)
+    if v then CAM_DISTANCE = v CamDistBox.Text = tostring(v)
     else CamDistBox.Text = tostring(CAM_DISTANCE) end
 end)
 
@@ -519,6 +520,165 @@ ScanLayout.Padding = UDim.new(0, SS(3))
 ScanLayout.Parent = ScanScroll
 
 -- ══════════════════════════════
+--   COLOR PICKER POPUP
+-- ══════════════════════════════
+local ColorPopup = Instance.new("Frame")
+ColorPopup.Size = UDim2.new(0, SS(200), 0, SS(220))
+ColorPopup.Position = UDim2.new(0.5, SS(120), 0.5, SS(170))
+ColorPopup.BackgroundColor3 = Color3.fromRGB(18,18,18)
+ColorPopup.BorderSizePixel = 0
+ColorPopup.ClipsDescendants = true
+ColorPopup.Visible = false
+ColorPopup.ZIndex = 10
+ColorPopup.Parent = ScreenGui
+Instance.new("UICorner", ColorPopup).CornerRadius = UDim.new(0,8)
+
+local CPTitleBar = Instance.new("Frame")
+CPTitleBar.Size = UDim2.new(1, 0, 0, SS(26))
+CPTitleBar.BackgroundColor3 = Color3.fromRGB(30,30,30)
+CPTitleBar.BorderSizePixel = 0
+CPTitleBar.ZIndex = 10
+CPTitleBar.Parent = ColorPopup
+MakeDraggable(ColorPopup, CPTitleBar)
+
+local CPTitle = Instance.new("TextLabel")
+CPTitle.Size = UDim2.new(1, -SS(30), 1, 0)
+CPTitle.Position = UDim2.new(0, SS(8), 0, 0)
+CPTitle.BackgroundTransparency = 1
+CPTitle.Text = "🎨 เลือกสี Filter"
+CPTitle.TextColor3 = Color3.fromRGB(255,255,255)
+CPTitle.TextSize = SS(10)
+CPTitle.Font = Enum.Font.GothamBold
+CPTitle.TextXAlignment = Enum.TextXAlignment.Left
+CPTitle.ZIndex = 10
+CPTitle.Parent = CPTitleBar
+
+local CPCloseBtn = Instance.new("TextButton")
+CPCloseBtn.Size = UDim2.new(0, SS(20), 0, SS(20))
+CPCloseBtn.Position = UDim2.new(1, -SS(22), 0.5, -SS(10))
+CPCloseBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+CPCloseBtn.BorderSizePixel = 0
+CPCloseBtn.Text = "✕"
+CPCloseBtn.TextColor3 = Color3.fromRGB(255,255,255)
+CPCloseBtn.TextSize = SS(10)
+CPCloseBtn.Font = Enum.Font.GothamBold
+CPCloseBtn.ZIndex = 10
+CPCloseBtn.Parent = CPTitleBar
+Instance.new("UICorner", CPCloseBtn).CornerRadius = UDim.new(0,4)
+
+local CPNoColorBtn = Instance.new("TextButton")
+CPNoColorBtn.Size = UDim2.new(1, -SS(16), 0, SS(22))
+CPNoColorBtn.Position = UDim2.new(0, SS(8), 0, SS(30))
+CPNoColorBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+CPNoColorBtn.BorderSizePixel = 0
+CPNoColorBtn.Text = "✅ แสดงทั้งหมด (ไม่ filter)"
+CPNoColorBtn.TextColor3 = Color3.fromRGB(200,200,200)
+CPNoColorBtn.TextSize = SS(9)
+CPNoColorBtn.Font = Enum.Font.GothamBold
+CPNoColorBtn.ZIndex = 10
+CPNoColorBtn.Parent = ColorPopup
+Instance.new("UICorner", CPNoColorBtn).CornerRadius = UDim.new(0,5)
+
+local CPScroll = Instance.new("ScrollingFrame")
+CPScroll.Size = UDim2.new(1, -SS(8), 1, -SS(56))
+CPScroll.Position = UDim2.new(0, SS(4), 0, SS(54))
+CPScroll.BackgroundTransparency = 1
+CPScroll.BorderSizePixel = 0
+CPScroll.ScrollBarThickness = 3
+CPScroll.ScrollBarImageColor3 = Color3.fromRGB(80,80,80)
+CPScroll.CanvasSize = UDim2.new(0,0,0,0)
+CPScroll.ZIndex = 10
+CPScroll.Parent = ColorPopup
+
+local CPLayout = Instance.new("UIListLayout")
+CPLayout.Padding = UDim.new(0, SS(3))
+CPLayout.Parent = CPScroll
+
+-- ══════════════════════════════
+--   CORE FUNCTIONS (declare ก่อน connect)
+-- ══════════════════════════════
+local function GetTeamColor(model)
+    local p = Players:GetPlayerFromCharacter(model)
+    if p and p.Team then return p.Team.TeamColor.Color end
+    local myTeam = LocalPlayer.Team
+    if p and myTeam then
+        if p.Team and p.Team == myTeam then return Color3.fromRGB(60,200,100)
+        else return Color3.fromRGB(220,60,60) end
+    end
+    return Color3.fromRGB(220,120,50)
+end
+
+local function GetTargetList()
+    local myHRP = Character and Character:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return {} end
+    local list  = {}
+    local range = tonumber(RangeBox.Text) or Settings.LockRange
+
+    if Settings.Mode == "Player" then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                local hum = p.Character:FindFirstChild("Humanoid")
+                if hrp and hum and hum.Health > 0 then
+                    local dist = (hrp.Position - myHRP.Position).Magnitude
+                    if dist <= range then
+                        table.insert(list, {model=p.Character, name=p.Name, dist=dist, color=GetTeamColor(p.Character)})
+                    end
+                end
+            end
+        end
+    else
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= Character and not Players:GetPlayerFromCharacter(obj) then
+                local hum = obj:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local hrp = obj:FindFirstChild("HumanoidRootPart")
+                        or obj:FindFirstChild("RootPart")
+                        or obj.PrimaryPart
+                    if not hrp then
+                        for _, part in ipairs(obj:GetChildren()) do
+                            if part:IsA("BasePart") then hrp = part break end
+                        end
+                    end
+                    if hrp then
+                        local dist = (hrp.Position - myHRP.Position).Magnitude
+                        if dist <= range then
+                            table.insert(list, {model=obj, name=obj.Name, dist=dist, color=GetTeamColor(obj)})
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(list, function(a,b) return a.dist < b.dist end)
+    return list
+end
+
+local function FilterList(list)
+    if not Settings.FilterColor then return list end
+    local fHex = ColorToHex(Settings.FilterColor)
+    local out  = {}
+    for _, e in ipairs(list) do
+        if ColorToHex(e.color) == fHex then table.insert(out, e) end
+    end
+    return out
+end
+
+local function SetTarget(model)
+    currentTarget = model
+    if model then
+        TargetLabel.Text = model.Name
+        StatusLabel.Text = "🔒 " .. model.Name
+        StatusLabel.TextColor3 = Color3.fromRGB(100,220,100)
+    else
+        TargetLabel.Text = "No Target"
+        StatusLabel.Text = "● Idle"
+        StatusLabel.TextColor3 = Color3.fromRGB(120,120,120)
+    end
+end
+
+-- ══════════════════════════════
 --   COLOR PICKER POPULATE
 -- ══════════════════════════════
 local function UpdateColorPicker()
@@ -547,7 +707,7 @@ local function UpdateColorPicker()
             outline.Thickness = 2
             outline.Parent = btn
         end
-        btn.MouseButton1Click:Connect(function()
+        btn.Activated:Connect(function()
             Settings.FilterColor = col
             FilterLabel.Text = "🎨 Filter: #" .. hexStr
             FilterLabel.TextColor3 = col
@@ -602,15 +762,8 @@ local function StartLock()
         end
 
         if currentTarget then
-            local hum = currentTarget:FindFirstChildOfClass("Humanoid")
             local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
-                or currentTarget:FindFirstChild("RootPart")
-                or currentTarget.PrimaryPart
-            if not hrp then
-                for _, part in ipairs(currentTarget:GetChildren()) do
-                    if part:IsA("BasePart") then hrp = part break end
-                end
-            end
+            local hum = currentTarget:FindFirstChildOfClass("Humanoid")
             if not hrp or not hum or hum.Health <= 0 or not currentTarget.Parent then
                 SetTarget(nil)
                 return
@@ -662,18 +815,18 @@ end)
 -- ══════════════════════════════
 --   BUTTON CONNECTIONS
 -- ══════════════════════════════
-ModePlayer.MouseButton1Click:Connect(function()
+ModePlayer.Activated:Connect(function()
     Settings.Mode = "Player"
     currentTarget = nil
     UpdateModeUI()
 end)
-ModeNPC.MouseButton1Click:Connect(function()
+ModeNPC.Activated:Connect(function()
     Settings.Mode = "NPC"
     currentTarget = nil
     UpdateModeUI()
 end)
 
-LockBtn.MouseButton1Click:Connect(function()
+LockBtn.Activated:Connect(function()
     Settings.Enabled = not Settings.Enabled
     if Settings.Enabled then
         LockBtn.Text = "🔒 Lock : ON"
@@ -686,13 +839,13 @@ LockBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-NearBtn.MouseButton1Click:Connect(function()
+NearBtn.Activated:Connect(function()
     Settings.NearestMode = not Settings.NearestMode
     NearBtn.Text = Settings.NearestMode and "📍 Nearest : ON" or "📍 Nearest : OFF"
     NearBtn.BackgroundColor3 = Settings.NearestMode and Color3.fromRGB(40,80,40) or Color3.fromRGB(35,35,35)
 end)
 
-PrevBtn.MouseButton1Click:Connect(function()
+PrevBtn.Activated:Connect(function()
     if #targetList == 0 then targetList = FilterList(GetTargetList()) end
     if #targetList > 0 then
         targetIndex = targetIndex - 1
@@ -701,7 +854,7 @@ PrevBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-NextBtn.MouseButton1Click:Connect(function()
+NextBtn.Activated:Connect(function()
     if #targetList == 0 then targetList = FilterList(GetTargetList()) end
     if #targetList > 0 then
         targetIndex = targetIndex + 1
@@ -711,26 +864,26 @@ NextBtn.MouseButton1Click:Connect(function()
 end)
 
 local minimized = false
-MinBtn.MouseButton1Click:Connect(function()
+MinBtn.Activated:Connect(function()
     minimized = not minimized
     Content.Visible = not minimized
     MainFrame.Size = minimized and UDim2.new(0, S(220), 0, S(30)) or UDim2.new(0, S(220), 0, S(380))
 end)
 
-CloseBtn.MouseButton1Click:Connect(function()
+CloseBtn.Activated:Connect(function()
     StopLock()
     ScreenGui:Destroy()
 end)
 
 local scanVisible = false
-ScanToggleBtn.MouseButton1Click:Connect(function()
+ScanToggleBtn.Activated:Connect(function()
     scanVisible = not scanVisible
     ScanFrame.Visible = scanVisible
     ScanToggleBtn.Text = scanVisible and "🔍 Scan Menu : ON" or "🔍 Scan Menu : OFF"
     ScanToggleBtn.BackgroundColor3 = scanVisible and Color3.fromRGB(40,80,40) or Color3.fromRGB(35,35,35)
 end)
 
-ScanCloseBtn.MouseButton1Click:Connect(function()
+ScanCloseBtn.Activated:Connect(function()
     scanVisible = false
     ScanFrame.Visible = false
     ColorPopup.Visible = false
@@ -739,7 +892,7 @@ ScanCloseBtn.MouseButton1Click:Connect(function()
 end)
 
 local scanMin = false
-ScanMinBtn.MouseButton1Click:Connect(function()
+ScanMinBtn.Activated:Connect(function()
     scanMin = not scanMin
     ScanScroll.Visible = not scanMin
     DoScanBtn.Visible = not scanMin
@@ -749,7 +902,7 @@ ScanMinBtn.MouseButton1Click:Connect(function()
     if scanMin then ColorPopup.Visible = false end
 end)
 
-DoScanBtn.MouseButton1Click:Connect(function()
+DoScanBtn.Activated:Connect(function()
     for _, c in ipairs(ScanScroll:GetChildren()) do
         if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
     end
@@ -781,7 +934,7 @@ DoScanBtn.MouseButton1Click:Connect(function()
         dot.BorderSizePixel = 0
         dot.Parent = btn
         Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)
-        btn.MouseButton1Click:Connect(function()
+        btn.Activated:Connect(function()
             targetIndex = i
             SetTarget(entry.model)
         end)
@@ -790,16 +943,16 @@ DoScanBtn.MouseButton1Click:Connect(function()
     UpdateColorPicker()
 end)
 
-ColorPickerBtn.MouseButton1Click:Connect(function()
+ColorPickerBtn.Activated:Connect(function()
     ColorPopup.Visible = not ColorPopup.Visible
     if ColorPopup.Visible then UpdateColorPicker() end
 end)
 
-CPCloseBtn.MouseButton1Click:Connect(function()
+CPCloseBtn.Activated:Connect(function()
     ColorPopup.Visible = false
 end)
 
-ClearFilterBtn.MouseButton1Click:Connect(function()
+ClearFilterBtn.Activated:Connect(function()
     Settings.FilterColor = nil
     FilterLabel.Text = "🎨 Filter: ทั้งหมด"
     FilterLabel.TextColor3 = Color3.fromRGB(160,160,160)
@@ -807,7 +960,7 @@ ClearFilterBtn.MouseButton1Click:Connect(function()
     UpdateColorPicker()
 end)
 
-CPNoColorBtn.MouseButton1Click:Connect(function()
+CPNoColorBtn.Activated:Connect(function()
     Settings.FilterColor = nil
     FilterLabel.Text = "🎨 Filter: ทั้งหมด"
     FilterLabel.TextColor3 = Color3.fromRGB(160,160,160)
