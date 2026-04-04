@@ -731,71 +731,79 @@ local function UpdateColorPicker()
 end
 
 -- ══════════════════════════════
---   LOCK CORE (Third-Person)
+--   LOCK CORE
 -- ══════════════════════════════
+local scanConnection = nil
+
 local function StartLock()
     if lockConnection then lockConnection:Disconnect() lockConnection = nil end
-    local timer = 0
+    if scanConnection then scanConnection:Disconnect() scanConnection = nil end
 
-    lockConnection = RunService.RenderStepped:Connect(function(dt)
-        -- ดึง character ล่าสุดเสมอ
-        local myHRP = Character and Character:FindFirstChild("HumanoidRootPart")
-        if not myHRP then return end
+    -- ── SCAN LOOP แยก: รันทุก 0.15s ไม่บล็อค camera loop ──
+    local scanTimer = 0
+    scanConnection = RunService.Heartbeat:Connect(function(dt)
+        if not Settings.Enabled then return end
+        scanTimer = scanTimer + dt
+        if scanTimer < 0.15 then return end
+        scanTimer = 0
 
-        local strength = tonumber(StrBox.Text) or Settings.LockStrength
+        -- ตรวจเป้าตายแบบ instant
+        if currentTarget then
+            local hum = currentTarget:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 or not currentTarget.Parent then
+                SetTarget(nil)
+            end
+        end
 
-        -- scan หาเป้า
+        -- หาเป้าใหม่ถ้าไม่มีหรือ NearestMode
         if not currentTarget or Settings.NearestMode then
-            timer = timer + dt
-            if timer >= SCAN_INTERVAL then
-                timer = 0
-                local raw      = GetTargetList()
-                local filtered = FilterList(raw)
-                targetList = filtered
-                if #filtered > 0 then
-                    if Settings.NearestMode or not currentTarget then
-                        SetTarget(filtered[1].model)
-                        targetIndex = 1
-                    end
+            local raw      = GetTargetList()
+            local filtered = FilterList(raw)
+            targetList = filtered
+            if #filtered > 0 then
+                if Settings.NearestMode or not currentTarget then
+                    SetTarget(filtered[1].model)
+                    targetIndex = 1
                 end
             end
         end
+    end)
 
-        if currentTarget then
-            local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
-            local hum = currentTarget:FindFirstChildOfClass("Humanoid")
-            if not hrp or not hum or hum.Health <= 0 or not currentTarget.Parent then
-                SetTarget(nil)
-                return
-            end
+    -- ── CAMERA LOOP: รันทุก frame เฉพาะหมุนกล้อง ไม่มี scan ──
+    lockConnection = RunService.RenderStepped:Connect(function(dt)
+        if not currentTarget then return end
+        local myHRP = Character and Character:FindFirstChild("HumanoidRootPart")
+        if not myHRP then return end
 
-            local myPos    = myHRP.Position
-            local aimPos   = hrp.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
+        local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
+            or currentTarget:FindFirstChild("RootPart")
+            or currentTarget.PrimaryPart
+        if not hrp then return end
 
-            -- ทิศ XZ จาก ตัวละคร → เป้า
-            local flatDiff = Vector3.new(aimPos.X - myPos.X, 0, aimPos.Z - myPos.Z)
-            if flatDiff.Magnitude < 0.01 then return end
-            local flatDir  = flatDiff.Unit
+        local strength = tonumber(StrBox.Text) or Settings.LockStrength
+        if not strength or strength <= 0 then strength = 0.3 end
 
-            -- คำนวณ position กล้อง: ถอยหลัง + ยกขึ้น
-            local camPos   = myPos - flatDir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
-            local goalCF   = CFrame.lookAt(camPos, aimPos)
+        local myPos   = myHRP.Position
+        local aimPos  = hrp.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
+        local flatDiff = Vector3.new(aimPos.X - myPos.X, 0, aimPos.Z - myPos.Z)
+        if flatDiff.Magnitude < 0.01 then return end
+        local flatDir = flatDiff.Unit
 
-            local safeDt   = math.min(dt, 0.05)
-            local alpha    = 1 - (1 - strength) ^ (safeDt * 60)
+        local camPos  = myPos - flatDir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
+        local goalCF  = CFrame.lookAt(camPos, aimPos)
+        local safeDt  = math.min(dt, 0.05)
+        local alpha   = 1 - (1 - strength) ^ (safeDt * 60)
 
-            -- smooth กล้อง
-            Camera.CFrame  = Camera.CFrame:Lerp(goalCF, alpha)
+        Camera.CFrame = Camera.CFrame:Lerp(goalCF, alpha)
 
-            -- หมุน HRP ตาม (ไม่กระตุก)
-            local bodyGoal = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-flatDir.X, -flatDir.Z), 0)
-            myHRP.CFrame   = myHRP.CFrame:Lerp(bodyGoal, alpha)
-        end
+        local bodyGoal = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-flatDir.X, -flatDir.Z), 0)
+        myHRP.CFrame   = myHRP.CFrame:Lerp(bodyGoal, alpha)
     end)
 end
 
 local function StopLock()
-    if lockConnection then lockConnection:Disconnect() lockConnection = nil end
+    if lockConnection  then lockConnection:Disconnect()  lockConnection  = nil end
+    if scanConnection  then scanConnection:Disconnect()  scanConnection  = nil end
     SetTarget(nil)
 end
 
