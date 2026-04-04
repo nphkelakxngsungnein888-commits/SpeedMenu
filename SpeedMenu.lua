@@ -1,4 +1,4 @@
--- Lock Menu v15 | All Features | Codex Android Compatible
+-- Lock Menu v16 | All Features | Codex Android Compatible
 -- Lock + Scan + ESP + Teleport + Color Exclude + Menu Lock + Hard Lock Mode
 
 -- ══════════════════════════════
@@ -71,14 +71,14 @@ local lockPos        = nil
 pcall(function()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     if pg then
-        local old = pg:FindFirstChild("LockMenu_v15")
+        local old = pg:FindFirstChild("LockMenu_v16")
         if old then old:Destroy() end
     end
 end)
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "LockMenu_v15"
+ScreenGui.Name = "LockMenu_v16"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -249,7 +249,7 @@ accent.BackgroundColor3 = Color3.fromRGB(80,120,255)
 accent.BorderSizePixel = 0
 accent.Parent = TitleBar
 
-local TitleLabel = MakeLabel(TitleBar, "⚔  Lock Menu  v15",
+local TitleLabel = MakeLabel(TitleBar, "⚔  Lock Menu  v16",
     UDim2.new(1, -S(100), 1, 0), UDim2.new(0, S(10), 0, 0),
     S(12), Color3.fromRGB(255,255,255), Enum.Font.GothamBold)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1005,17 +1005,21 @@ local function StartLock()
         local camPos = myPos - dir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
         local goalCF = CFrame.lookAt(camPos, aimPos)
 
+        -- คำนวณ yaw ที่ต้องการให้ตัวละครหันหาเป้า
+        local targetYaw = math.atan2(-dir.X, -dir.Z)
+        -- หมุน HRP in-place (ไม่เลื่อน position) เพื่อให้ทิศเดินถูก
+        local bodyGoal = CFrame.new(myPos) * CFrame.Angles(0, targetYaw, 0)
+
         if Settings.HardLock then
-            -- ══ HARD LOCK: snap กล้องตรงเป้าทันที ไม่มีหลุด ══
+            -- ══ HARD LOCK: snap กล้อง + body ทันที ไม่มี lerp ══
             Camera.CFrame = goalCF
-            myHRP.CFrame  = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
+            myHRP.CFrame  = bodyGoal
         else
             -- ══ LERP: ค่อยๆ หมุนหาเป้า (เดิม) ══
             local safeDt = math.min(dt, 0.05)
             local alpha  = 1 - (1 - math.min(strength, 0.99)) ^ (safeDt * 60)
             Camera.CFrame = Camera.CFrame:Lerp(goalCF, alpha)
-            local bodyGoal = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
-            myHRP.CFrame   = myHRP.CFrame:Lerp(bodyGoal, alpha)
+            myHRP.CFrame  = myHRP.CFrame:Lerp(bodyGoal, alpha)
         end
     end)
 end
@@ -1076,7 +1080,6 @@ LocalPlayer.CharacterAdded:Connect(function(c)
         StartLock()
     end
 end)
-
 -- ══════════════════════════════
 --   INPUT HANDLERS
 -- ══════════════════════════════
