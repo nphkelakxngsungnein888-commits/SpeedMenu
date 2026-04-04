@@ -1,5 +1,5 @@
--- Lock Menu v14 | All Features | Codex Android Compatible
--- Lock + Scan + ESP + Teleport + Color Exclude + Menu Lock
+-- Lock Menu v15 | All Features | Codex Android Compatible
+-- Lock + Scan + ESP + Teleport + Color Exclude + Menu Lock + Hard Lock Mode
 
 -- ══════════════════════════════
 --   SERVICES
@@ -25,6 +25,7 @@ local Settings = {
     Mode          = _S.Mode          or "NPC",
     Enabled       = false,
     NearestMode   = _S.NearestMode   or false,
+    HardLock      = _S.HardLock      or false,  -- Hard Lock mode: snap กล้องตรงเป้าทันที
     FilterColor   = nil,
     ESPEnabled    = false,
     ExcludeColors = {},  -- สีที่ไม่ต้องการล็อค
@@ -41,6 +42,7 @@ local function SaveSettings()
         LockRange     = Settings.LockRange,
         Mode          = Settings.Mode,
         NearestMode   = Settings.NearestMode,
+        HardLock      = Settings.HardLock,
         HEIGHT_OFFSET = HEIGHT_OFFSET,
         CAM_DISTANCE  = CAM_DISTANCE,
     }
@@ -69,14 +71,14 @@ local lockPos        = nil
 pcall(function()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     if pg then
-        local old = pg:FindFirstChild("LockMenu_v14")
+        local old = pg:FindFirstChild("LockMenu_v15")
         if old then old:Destroy() end
     end
 end)
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "LockMenu_v14"
+ScreenGui.Name = "LockMenu_v15"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -216,8 +218,8 @@ end
 -- ══════════════════════════════
 local menuLocked = false
 local MainFrame = MakeFrame(ScreenGui,
-    UDim2.new(0, S(230), 0, S(420)),
-    UDim2.new(0.5, -S(115), 0.5, -S(210)),
+    UDim2.new(0, S(230), 0, S(432)),
+    UDim2.new(0.5, -S(115), 0.5, -S(216)),
     Color3.fromRGB(12,12,12), true)
 
 -- gradient บน frame
@@ -247,7 +249,7 @@ accent.BackgroundColor3 = Color3.fromRGB(80,120,255)
 accent.BorderSizePixel = 0
 accent.Parent = TitleBar
 
-local TitleLabel = MakeLabel(TitleBar, "⚔  Lock Menu  v14",
+local TitleLabel = MakeLabel(TitleBar, "⚔  Lock Menu  v15",
     UDim2.new(1, -S(100), 1, 0), UDim2.new(0, S(10), 0, 0),
     S(12), Color3.fromRGB(255,255,255), Enum.Font.GothamBold)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -331,18 +333,22 @@ local LockBtn = MakeBtn(Content, "🔓 Lock : OFF",
     Color3.fromRGB(30,30,45), Color3.fromRGB(200,200,255), S(12))
 
 local NearBtn = MakeBtn(Content, "📍 Nearest : OFF",
-    UDim2.new(1,-S(16),0,S(26)), UDim2.new(0,S(8),0,S(191)),
+    UDim2.new(0,S(103),0,S(26)), UDim2.new(0,S(8),0,S(191)),
     Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), S(11))
+
+local HardLockBtn = MakeBtn(Content, "⚡ Hard Lock : OFF",
+    UDim2.new(0,S(103),0,S(26)), UDim2.new(0,S(114),0,S(191)),
+    Color3.fromRGB(30,30,45), Color3.fromRGB(255,200,100), S(11))
 
 -- ══════════════════════════════
 --   SECTION: PREV/TARGET/NEXT
 -- ══════════════════════════════
 local PrevBtn = MakeBtn(Content, "◀",
-    UDim2.new(0,S(40),0,S(26)), UDim2.new(0,S(8),0,S(223)),
+    UDim2.new(0,S(40),0,S(26)), UDim2.new(0,S(8),0,S(229)),
     Color3.fromRGB(35,35,55), Color3.fromRGB(200,200,255), S(13))
 local TargetLabel = Instance.new("TextLabel")
 TargetLabel.Size = UDim2.new(0,S(118),0,S(26))
-TargetLabel.Position = UDim2.new(0,S(52),0,S(223))
+TargetLabel.Position = UDim2.new(0,S(52),0,S(229))
 TargetLabel.BackgroundColor3 = Color3.fromRGB(20,20,30)
 TargetLabel.BorderSizePixel = 0
 TargetLabel.Text = "No Target"
@@ -354,34 +360,34 @@ TargetLabel.Parent = Content
 Instance.new("UICorner", TargetLabel).CornerRadius = UDim.new(0,5)
 
 local NextBtn = MakeBtn(Content, "▶",
-    UDim2.new(0,S(40),0,S(26)), UDim2.new(0,S(174),0,S(223)),
+    UDim2.new(0,S(40),0,S(26)), UDim2.new(0,S(174),0,S(229)),
     Color3.fromRGB(35,35,55), Color3.fromRGB(200,200,255), S(13))
 
-Divider(Content, S(256))
+Divider(Content, S(262))
 
 -- ══════════════════════════════
 --   SECTION: FEATURE BUTTONS ROW
 -- ══════════════════════════════
 -- ESP Toggle
 local ESPBtn = MakeBtn(Content, "👁 ESP : OFF",
-    UDim2.new(0,S(99),0,S(26)), UDim2.new(0,S(8),0,S(262)),
+    UDim2.new(0,S(99),0,S(26)), UDim2.new(0,S(8),0,S(268)),
     Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), S(10))
 
 -- Scan Menu Toggle
 local ScanToggleBtn = MakeBtn(Content, "🔍 Scan",
-    UDim2.new(0,S(57),0,S(26)), UDim2.new(0,S(114),0,S(262)),
+    UDim2.new(0,S(57),0,S(26)), UDim2.new(0,S(114),0,S(268)),
     Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), S(10))
 
 -- TP Menu Toggle
 local TPToggleBtn = MakeBtn(Content, "🚀 TP",
-    UDim2.new(0,S(38),0,S(26)), UDim2.new(0,S(178),0,S(262)),
+    UDim2.new(0,S(38),0,S(26)), UDim2.new(0,S(178),0,S(268)),
     Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), S(10))
 
-Divider(Content, S(295))
+Divider(Content, S(301))
 
 -- Status
 local StatusLabel = MakeLabel(Content, "● Idle",
-    UDim2.new(1,-S(16),0,S(20)), UDim2.new(0,S(8),0,S(300)),
+    UDim2.new(1,-S(16),0,S(20)), UDim2.new(0,S(8),0,S(306)),
     S(10), Color3.fromRGB(100,100,130), Enum.Font.Gotham)
 
 -- ══════════════════════════════
@@ -734,8 +740,10 @@ local function SetTarget(model)
     currentTarget = model
     if model then
         TargetLabel.Text = model.Name
-        StatusLabel.Text = "🔒 " .. model.Name
-        StatusLabel.TextColor3 = Color3.fromRGB(100,200,255)
+        local modeTag = Settings.HardLock and " [HARD]" or ""
+        StatusLabel.Text = "🔒 " .. model.Name .. modeTag
+        StatusLabel.TextColor3 = Settings.HardLock
+            and Color3.fromRGB(255,200,60) or Color3.fromRGB(100,200,255)
     else
         TargetLabel.Text = "No Target"
         StatusLabel.Text = "● Idle"
@@ -988,22 +996,27 @@ local function StartLock()
             return
         end
 
-        local myPos   = myHRP.Position
-        local aimPos  = hrp.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
-        local diff    = Vector3.new(aimPos.X-myPos.X, 0, aimPos.Z-myPos.Z)
+        local myPos  = myHRP.Position
+        local aimPos = hrp.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
+        local diff   = Vector3.new(aimPos.X - myPos.X, 0, aimPos.Z - myPos.Z)
         if diff.Magnitude < 0.01 then return end
-        local dir     = diff.Unit
+        local dir    = diff.Unit
 
-        local camPos  = myPos - dir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
-        local goalCF  = CFrame.lookAt(camPos, aimPos)
+        local camPos = myPos - dir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
+        local goalCF = CFrame.lookAt(camPos, aimPos)
 
-        local safeDt  = math.min(dt, 0.05)
-        local alpha   = 1 - (1 - math.min(strength, 0.99)) ^ (safeDt * 60)
-
-        Camera.CFrame = Camera.CFrame:Lerp(goalCF, alpha)
-
-        local bodyGoal = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
-        myHRP.CFrame   = myHRP.CFrame:Lerp(bodyGoal, alpha)
+        if Settings.HardLock then
+            -- ══ HARD LOCK: snap กล้องตรงเป้าทันที ไม่มีหลุด ══
+            Camera.CFrame = goalCF
+            myHRP.CFrame  = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
+        else
+            -- ══ LERP: ค่อยๆ หมุนหาเป้า (เดิม) ══
+            local safeDt = math.min(dt, 0.05)
+            local alpha  = 1 - (1 - math.min(strength, 0.99)) ^ (safeDt * 60)
+            Camera.CFrame = Camera.CFrame:Lerp(goalCF, alpha)
+            local bodyGoal = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
+            myHRP.CFrame   = myHRP.CFrame:Lerp(bodyGoal, alpha)
+        end
     end)
 end
 
@@ -1122,6 +1135,20 @@ NearBtn.Activated:Connect(function()
     SaveSettings()
 end)
 
+HardLockBtn.Activated:Connect(function()
+    Settings.HardLock = not Settings.HardLock
+    HardLockBtn.Text = Settings.HardLock and "⚡ Hard Lock : ON" or "⚡ Hard Lock : OFF"
+    HardLockBtn.BackgroundColor3 = Settings.HardLock
+        and Color3.fromRGB(80,55,0) or Color3.fromRGB(30,30,45)
+    HardLockBtn.TextColor3 = Settings.HardLock
+        and Color3.fromRGB(255,200,60) or Color3.fromRGB(255,200,100)
+    -- restart lock ถ้า lock กำลัง on อยู่
+    if Settings.Enabled then
+        StartLock()
+    end
+    SaveSettings()
+end)
+
 PrevBtn.Activated:Connect(function()
     if #targetList == 0 then targetList = FilterList(GetTargetList()) end
     if #targetList > 0 then
@@ -1163,7 +1190,7 @@ MinBtn.Activated:Connect(function()
     Content.Visible = not minimized
     MainFrame.Size = minimized
         and UDim2.new(0,S(230),0,S(32))
-        or  UDim2.new(0,S(230),0,S(420))
+        or  UDim2.new(0,S(230),0,S(432))
 end)
 
 CloseBtn.Activated:Connect(function()
@@ -1387,4 +1414,10 @@ end)
 if Settings.NearestMode then
     NearBtn.Text = "📍 Nearest : ON"
     NearBtn.BackgroundColor3 = Color3.fromRGB(30,60,30)
+end
+
+if Settings.HardLock then
+    HardLockBtn.Text = "⚡ Hard Lock : ON"
+    HardLockBtn.BackgroundColor3 = Color3.fromRGB(80,55,0)
+    HardLockBtn.TextColor3 = Color3.fromRGB(255,200,60)
 end
