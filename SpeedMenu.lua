@@ -1,5 +1,5 @@
--- Lock Menu v14 | All Features | Codex Android Compatible
--- Lock + Scan + ESP + Teleport + Color Exclude + Menu Lock
+-- Hard Lock Menu v17 | All Features | Codex Android Compatible
+-- HardLock + Snap Lock + Scan + ESP + Teleport + Color Exclude + Menu Lock
 
 -- ══════════════════════════════
 --   SERVICES
@@ -20,7 +20,7 @@ local _S = _G.LockMenuSave or {}
 local Settings = {
     MenuSize      = 10,
     ScanMenuSize  = 10,
-    LockStrength  = _S.LockStrength  or 0.3,
+    LockStrength  = _S.LockStrength  or 1.0,  -- Hard Lock default
     LockRange     = _S.LockRange     or 100,
     Mode          = _S.Mode          or "NPC",
     Enabled       = false,
@@ -69,14 +69,14 @@ local lockPos        = nil
 pcall(function()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     if pg then
-        local old = pg:FindFirstChild("LockMenu_v14")
+        local old = pg:FindFirstChild("HardLockMenu_v17")
         if old then old:Destroy() end
     end
 end)
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "LockMenu_v14"
+ScreenGui.Name = "HardLockMenu_v17"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -247,7 +247,7 @@ accent.BackgroundColor3 = Color3.fromRGB(80,120,255)
 accent.BorderSizePixel = 0
 accent.Parent = TitleBar
 
-local TitleLabel = MakeLabel(TitleBar, "⚔  Lock Menu  v14",
+local TitleLabel = MakeLabel(TitleBar, "⚔  Hard Lock Menu  v17",
     UDim2.new(1, -S(100), 1, 0), UDim2.new(0, S(10), 0, 0),
     S(12), Color3.fromRGB(255,255,255), Enum.Font.GothamBold)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -975,6 +975,7 @@ local function StartLock()
             end
         end
 
+        
         if not currentTarget then
             -- ไม่มีเป้า → กล้องติดตามตัวละครตามปกติ (คำนวณเอง ไม่ปล่อยให้เกม override)
             local camOffset = Vector3.new(0, CAM_HEIGHT, CAM_DISTANCE)
@@ -1009,19 +1010,12 @@ local function StartLock()
         local camPos = myPos - dir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
         local goalCF = CFrame.lookAt(camPos, aimPos)
 
-        local safeDt = math.min(dt, 0.05)
-        local alpha  = 1 - (1 - math.min(strength, 0.99)) ^ (safeDt * 60)
+        -- ══ HARD LOCK : snap ทุก frame ไม่มี lerp ══
+        Camera.CFrame = goalCF
 
-        -- strength >= 0.9 → snap ทันที ไม่ lerp (ป้องกันหลุด)
-        if strength >= 0.9 then
-            Camera.CFrame = goalCF
-        else
-            Camera.CFrame = Camera.CFrame:Lerp(goalCF, alpha)
-        end
-
-        -- หมุนตัวละคร
+        -- หมุนตัวละครไปหาเป้าทันที (Hard Lock body)
         local bodyGoal = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
-        myHRP.CFrame   = myHRP.CFrame:Lerp(bodyGoal, math.min(alpha * 1.5, 1))
+        myHRP.CFrame   = bodyGoal
     end)
 end
 
@@ -1588,4 +1582,10 @@ end)
 if Settings.NearestMode then
     NearBtn.Text = "📍 Nearest : ON"
     NearBtn.BackgroundColor3 = Color3.fromRGB(30,60,30)
-end
+end    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local hit = Mouse.Hit
+    if hit then
+        lockPos = hit.Position
+     
