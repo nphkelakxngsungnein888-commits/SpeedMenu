@@ -1,5 +1,5 @@
--- Hard Lock Menu v17 | All Features | Codex Android Compatible
--- HardLock + Snap Lock + Scan + ESP + Teleport + Color Exclude + Menu Lock
+-- Lock Menu v14 | All Features | Codex Android Compatible
+-- Lock + Scan + ESP + Teleport + Color Exclude + Menu Lock
 
 -- ══════════════════════════════
 --   SERVICES
@@ -20,7 +20,7 @@ local _S = _G.LockMenuSave or {}
 local Settings = {
     MenuSize      = 10,
     ScanMenuSize  = 10,
-    LockStrength  = _S.LockStrength  or 1.0,  -- Hard Lock default
+    LockStrength  = _S.LockStrength  or 0.3,
     LockRange     = _S.LockRange     or 100,
     Mode          = _S.Mode          or "NPC",
     Enabled       = false,
@@ -69,14 +69,14 @@ local lockPos        = nil
 pcall(function()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     if pg then
-        local old = pg:FindFirstChild("HardLockMenu_v17")
+        local old = pg:FindFirstChild("LockMenu_v14")
         if old then old:Destroy() end
     end
 end)
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "HardLockMenu_v17"
+ScreenGui.Name = "LockMenu_v14"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -216,8 +216,8 @@ end
 -- ══════════════════════════════
 local menuLocked = false
 local MainFrame = MakeFrame(ScreenGui,
-    UDim2.new(0, S(230), 0, S(458)),
-    UDim2.new(0.5, -S(115), 0.5, -S(229)),
+    UDim2.new(0, S(230), 0, S(420)),
+    UDim2.new(0.5, -S(115), 0.5, -S(210)),
     Color3.fromRGB(12,12,12), true)
 
 -- gradient บน frame
@@ -247,7 +247,7 @@ accent.BackgroundColor3 = Color3.fromRGB(80,120,255)
 accent.BorderSizePixel = 0
 accent.Parent = TitleBar
 
-local TitleLabel = MakeLabel(TitleBar, "⚔  Hard Lock Menu  v17",
+local TitleLabel = MakeLabel(TitleBar, "⚔  Lock Menu  v14",
     UDim2.new(1, -S(100), 1, 0), UDim2.new(0, S(10), 0, 0),
     S(12), Color3.fromRGB(255,255,255), Enum.Font.GothamBold)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -362,27 +362,26 @@ Divider(Content, S(256))
 -- ══════════════════════════════
 --   SECTION: FEATURE BUTTONS ROW
 -- ══════════════════════════════
+-- ESP Toggle
 local ESPBtn = MakeBtn(Content, "👁 ESP : OFF",
     UDim2.new(0,S(99),0,S(26)), UDim2.new(0,S(8),0,S(262)),
     Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), S(10))
 
+-- Scan Menu Toggle
 local ScanToggleBtn = MakeBtn(Content, "🔍 Scan",
     UDim2.new(0,S(57),0,S(26)), UDim2.new(0,S(114),0,S(262)),
     Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), S(10))
 
+-- TP Menu Toggle
 local TPToggleBtn = MakeBtn(Content, "🚀 TP",
     UDim2.new(0,S(38),0,S(26)), UDim2.new(0,S(178),0,S(262)),
     Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), S(10))
 
--- Camera System button (แถวที่ 2)
-local CamSysBtn = MakeBtn(Content, "🎥 Camera : OFF",
-    UDim2.new(1,-S(16),0,S(26)), UDim2.new(0,S(8),0,S(294)),
-    Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), S(10))
+Divider(Content, S(295))
 
-Divider(Content, S(327))
-
+-- Status
 local StatusLabel = MakeLabel(Content, "● Idle",
-    UDim2.new(1,-S(16),0,S(20)), UDim2.new(0,S(8),0,S(332)),
+    UDim2.new(1,-S(16),0,S(20)), UDim2.new(0,S(8),0,S(300)),
     S(10), Color3.fromRGB(100,100,130), Enum.Font.Gotham)
 
 -- ══════════════════════════════
@@ -536,343 +535,6 @@ CPLayout.Padding = UDim.new(0,SS(3))
 CPLayout.Parent = CPScroll
 
 -- ══════════════════════════════
---   EXCLUDE COLOR POPUP
--- ══════════════════════════════
-local ExcludePopup = MakeFrame(ScreenGui,
-    UDim2.new(0,SS(200),0,SS(260)),
-    UDim2.new(0.5,SS(125),0.5,SS(175)),
-    Color3.fromRGB(18,10,10), true)
-ExcludePopup.Visible = false
-ExcludePopup.ZIndex = 10
-
-local EPTitleBar = Instance.new("Frame")
-EPTitleBar.Size = UDim2.new(1,0,0,SS(28))
-EPTitleBar.BackgroundColor3 = Color3.fromRGB(28,16,16)
-EPTitleBar.BorderSizePixel = 0
-EPTitleBar.ZIndex = 10
-EPTitleBar.Parent = ExcludePopup
-Instance.new("UICorner", EPTitleBar).CornerRadius = UDim.new(0,8)
-MakeDraggable(ExcludePopup, EPTitleBar, nil)
-
-MakeLabel(EPTitleBar, "🚫 Exclude Color",
-    UDim2.new(1,-SS(30),1,0), UDim2.new(0,SS(8),0,0),
-    SS(10), Color3.fromRGB(255,200,200), Enum.Font.GothamBold)
-
-local EPCloseBtn = MakeBtn(EPTitleBar, "✕",
-    UDim2.new(0,SS(20),0,SS(20)), UDim2.new(1,-SS(22),0.5,-SS(10)),
-    Color3.fromRGB(180,40,40), Color3.fromRGB(255,255,255), SS(10))
-EPCloseBtn.ZIndex = 10
-
-local EPSelectingLabel = MakeLabel(ExcludePopup,
-    "กดเลือกสีที่ไม่ต้องการล็อค",
-    UDim2.new(1,-SS(16),0,SS(22)), UDim2.new(0,SS(8),0,SS(30)),
-    SS(9), Color3.fromRGB(200,160,160), Enum.Font.Gotham)
-EPSelectingLabel.ZIndex = 10
-EPSelectingLabel.TextWrapped = true
-
-local EPOKBtn = MakeBtn(ExcludePopup, "✅ OK",
-    UDim2.new(1,-SS(16),0,SS(22)), UDim2.new(0,SS(8),0,SS(54)),
-    Color3.fromRGB(35,60,35), Color3.fromRGB(180,255,180), SS(9))
-EPOKBtn.ZIndex = 10
-
-local EPScroll = Instance.new("ScrollingFrame")
-EPScroll.Size = UDim2.new(1,-SS(8),1,-SS(82))
-EPScroll.Position = UDim2.new(0,SS(4),0,SS(80))
-EPScroll.BackgroundTransparency = 1
-EPScroll.BorderSizePixel = 0
-EPScroll.ScrollBarThickness = 3
-EPScroll.CanvasSize = UDim2.new(0,0,0,0)
-EPScroll.ZIndex = 10
-EPScroll.Parent = ExcludePopup
-
-local EPLayout = Instance.new("UIListLayout")
-EPLayout.Padding = UDim.new(0,SS(3))
-EPLayout.Parent = EPScroll
-
--- ══════════════════════════════
---   TELEPORT FRAME
--- ══════════════════════════════
-local TPFrame = MakeFrame(ScreenGui,
-    UDim2.new(0,210,0,260),
-    UDim2.new(0.5,-340,0.5,-130),
-    Color3.fromRGB(12,12,18), true)
-TPFrame.Visible = false
-
-local TPTitleBar = Instance.new("Frame")
-TPTitleBar.Size = UDim2.new(1,0,0,30)
-TPTitleBar.BackgroundColor3 = Color3.fromRGB(22,22,32)
-TPTitleBar.BorderSizePixel = 0
-TPTitleBar.Parent = TPFrame
-Instance.new("UICorner", TPTitleBar).CornerRadius = UDim.new(0,8)
-MakeDraggable(TPFrame, TPTitleBar, nil)
-
-local tpAccent = Instance.new("Frame")
-tpAccent.Size = UDim2.new(1,0,0,2)
-tpAccent.Position = UDim2.new(0,0,1,-2)
-tpAccent.BackgroundColor3 = Color3.fromRGB(80,200,120)
-tpAccent.BorderSizePixel = 0
-tpAccent.Parent = TPTitleBar
-
-MakeLabel(TPTitleBar, "🚀  Teleport Save",
-    UDim2.new(1,-90,1,0), UDim2.new(0,10,0,0),
-    13, Color3.fromRGB(255,255,255), Enum.Font.GothamBold)
-
-local TPMinBtn = MakeBtn(TPTitleBar, "–", UDim2.new(0,22,0,22),
-    UDim2.new(1,-46,0.5,-11), Color3.fromRGB(50,50,50), Color3.fromRGB(255,255,255), 13)
-local TPCloseBtn = MakeBtn(TPTitleBar, "✕", UDim2.new(0,22,0,22),
-    UDim2.new(1,-23,0.5,-11), Color3.fromRGB(180,40,40), Color3.fromRGB(255,255,255), 12)
-
--- TP buttons row
-local TPSaveBtn = MakeBtn(TPFrame, "+ Save", UDim2.new(0,63,0,28),
-    UDim2.new(0,5,0,33), Color3.fromRGB(30,90,30), Color3.fromRGB(180,255,180), 11)
-local TPClickBtn = MakeBtn(TPFrame, "Click TP OFF", UDim2.new(0,72,0,28),
-    UDim2.new(0,71,0,33), Color3.fromRGB(150,40,40), Color3.fromRGB(255,180,180), 10)
-local TPDeleteBtn = MakeBtn(TPFrame, "Delete", UDim2.new(0,57,0,28),
-    UDim2.new(0,147,0,33), Color3.fromRGB(80,30,30), Color3.fromRGB(255,160,160), 11)
-
-local TPScroll = Instance.new("ScrollingFrame")
-TPScroll.Size = UDim2.new(1,-10,1,-70)
-TPScroll.Position = UDim2.new(0,5,0,65)
-TPScroll.BackgroundColor3 = Color3.fromRGB(16,16,24)
-TPScroll.BorderSizePixel = 0
-TPScroll.ScrollBarThickness = 3
-TPScroll.ScrollBarImageColor3 = Color3.fromRGB(60,60,100)
-TPScroll.CanvasSize = UDim2.new(0,0,0,0)
-TPScroll.Parent = TPFrame
-Instance.new("UICorner", TPScroll).CornerRadius = UDim.new(0,5)
-
-local TPLayout = Instance.new("UIListLayout")
-TPLayout.Padding = UDim.new(0,4)
-TPLayout.Parent = TPScroll
-
--- ══════════════════════════════
---   CORE FUNCTIONS
--- ══════════════════════════════
-local function GetTeamColor(model)
-    local p = Players:GetPlayerFromCharacter(model)
-    if p and p.Team then return p.Team.TeamColor.Color end
-    if p then
-        local myTeam = LocalPlayer.Team
-        if myTeam and p.Team then
-            return p.Team == myTeam and Color3.fromRGB(60,200,100) or Color3.fromRGB(220,60,60)
-        end
-    end
-    return Color3.fromRGB(220,120,50)
-end
-
-local function IsExcluded(color)
-    local hex = ColorToHex(color)
-    for _, exHex in ipairs(Settings.ExcludeColors) do
-        if exHex == hex then return true end
-    end
-    return false
-end
-
-local function GetTargetList()
-    local myHRP = Character and Character:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return {} end
-    local list  = {}
-    local range = tonumber(RangeBox.Text) or Settings.LockRange
-
-    if Settings.Mode == "Player" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                local hum = p.Character:FindFirstChild("Humanoid")
-                if hrp and hum and hum.Health > 0 then
-                    local dist = (hrp.Position - myHRP.Position).Magnitude
-                    if dist <= range then
-                        local col = GetTeamColor(p.Character)
-                        if not IsExcluded(col) then
-                            table.insert(list, {model=p.Character, name=p.Name, dist=dist, color=col})
-                        end
-                    end
-                end
-            end
-        end
-    else
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= Character and not Players:GetPlayerFromCharacter(obj) then
-                local hum = obj:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    local hrp = obj:FindFirstChild("HumanoidRootPart")
-                        or obj:FindFirstChild("RootPart")
-                        or obj.PrimaryPart
-                    if not hrp then
-                        for _, part in ipairs(obj:GetChildren()) do
-                            if part:IsA("BasePart") then hrp = part break end
-                        end
-                    end
-                    if hrp then
-                        local dist = (hrp.Position - myHRP.Position).Magnitude
-                        if dist <= range then
-                            local col = GetTeamColor(obj)
-                            if not IsExcluded(col) then
-                                table.insert(list, {model=obj, name=obj.Name, dist=dist, color=col})
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    table.sort(list, function(a,b) return a.dist < b.dist end)
-    return list
-end
-
-local function FilterList(list)
-    if not Settings.FilterColor then return list end
-    local fHex = ColorToHex(Settings.FilterColor)
-    local out  = {}
-    for _, e in ipairs(list) do
-        if ColorToHex(e.color) == fHex then table.insert(out, e) end
-    end
-    return out
-end
-
-local function SetTarget(model)
-    currentTarget = model
-    if model then
-        TargetLabel.Text = model.Name
-        StatusLabel.Text = "🔒 " .. model.Name
-        StatusLabel.TextColor3 = Color3.fromRGB(100,200,255)
-    else
-        TargetLabel.Text = "No Target"
-        StatusLabel.Text = "● Idle"
-        StatusLabel.TextColor3 = Color3.fromRGB(80,80,110)
-    end
-end
-
--- ══════════════════════════════
---   ESP SYSTEM (optimized)
--- ══════════════════════════════
-local espTimer = 0
-local ESP_INTERVAL = 0.15  -- update ทุก 0.15s ไม่ใช่ทุก frame
-
-local function ClearESP()
-    for model, bb in pairs(espBoxes) do
-        pcall(function() bb:Destroy() end)
-    end
-    espBoxes = {}
-end
-
-local function UpdateESP()
-    if not Settings.ESPEnabled then ClearESP() return end
-    local myHRP = Character and Character:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return end
-
-    local range  = tonumber(RangeBox.Text) or Settings.LockRange
-    local active = {}
-    local list   = GetTargetList()
-
-    for _, entry in ipairs(list) do
-        local model = entry.model
-        active[model] = true
-
-        -- หา root part
-        local hrp = model:FindFirstChild("HumanoidRootPart")
-            or model:FindFirstChild("RootPart")
-            or model.PrimaryPart
-        if not hrp then
-            for _, part in ipairs(model:GetChildren()) do
-                if part:IsA("BasePart") then hrp = part break end
-            end
-        end
-        if not hrp then continue end
-
-        -- สร้าง billboard ครั้งเดียว ไม่สร้างซ้ำ
-        if not espBoxes[model] then
-            local bb = Instance.new("BillboardGui")
-            bb.Name = "ESP_BB"
-            bb.Adornee = hrp
-            bb.Size = UDim2.new(0, 4, 0, 5)
-            bb.AlwaysOnTop = true
-            bb.LightInfluence = 0
-            bb.Parent = hrp
-
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(1,0,1,0)
-            frame.BackgroundTransparency = 1
-            frame.BorderSizePixel = 0
-            frame.Parent = bb
-            local stroke = Instance.new("UIStroke")
-            stroke.Color = Color3.fromRGB(255,255,255)
-            stroke.Thickness = 1.5
-            stroke.Parent = frame
-
-            local dl = Instance.new("TextLabel")
-            dl.Name = "DistLabel"
-            dl.Size = UDim2.new(1,0,0,16)
-            dl.Position = UDim2.new(0,0,1,2)
-            dl.BackgroundTransparency = 1
-            dl.TextColor3 = Color3.fromRGB(255,255,255)
-            dl.TextSize = 10
-            dl.Font = Enum.Font.GothamBold
-            dl.Text = ""
-            dl.Parent = bb
-
-            espBoxes[model] = bb
-        end
-
-        -- อัป size + dist label เท่านั้น (ไม่สร้างใหม่)
-        local dist  = entry.dist
-        local scale = math.clamp(50 / math.max(dist, 1), 1.5, 7)
-        espBoxes[model].Size = UDim2.new(0, scale * 1.2, 0, scale * 1.8)
-        local dl = espBoxes[model]:FindFirstChild("DistLabel")
-        if dl then dl.Text = string.format("%.0fm", dist) end
-    end
-
-    -- ลบ ESP ที่หมดอายุ
-    for model, bb in pairs(espBoxes) do
-        if not active[model] then
-            pcall(function() bb:Destroy() end)
-            espBoxes[model] = nil
-        end
-    end
-end
-
--- ══════════════════════════════
---   COLOR PICKER
--- ══════════════════════════════
-local function UpdateColorPicker()
-    for _, c in ipairs(CPScroll:GetChildren()) do
-        if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
-    end
-    local count = 0
-    for hexStr, col in pairs(foundColors) do
-        count = count + 1
-        local btn = MakeBtn(CPScroll, "  #"..hexStr,
-            UDim2.new(1,0,0,SS(26)), UDim2.new(0,0,0,0),
-            col, Color3.fromRGB(255,255,255), SS(9))
-        btn.TextXAlignment = Enum.TextXAlignment.Left
-        btn.ZIndex = 11
-        Instance.new("UIPadding", btn).PaddingLeft = UDim.new(0,SS(8))
-        if Settings.FilterColor and ColorToHex(Settings.FilterColor) == hexStr then
-            local s = Instance.new("UIStroke")
-            s.Color = Color3.fromRGB(255,255,255)
-            s.Thickness = 2
-            s.Parent = btn
-        end
-        btn.Activated:Connect(function()
-            Settings.FilterColor = col
-            FilterLabel.Text = "🎨 #"..hexStr
-            FilterLabel.TextColor3 = col
-            ColorPickerBtn.BackgroundColor3 = col
-            ColorPopup.Visible = false
-            UpdateColorPicker()
-        end)
-    end
-    CPScroll.CanvasSize = UDim2.new(0,0,0,CPLayout.AbsoluteContentSize.Y + SS(4))
-    if count == 0 then
-        local l = MakeLabel(CPScroll, "Scan ก่อน",
-            UDim2.new(1,0,0,SS(30)), UDim2.new(0,0,0,0), SS(9),
-            Color3.fromRGB(100,100,130))
-        l.ZIndex = 11
-    end
-end
-
--- ══════════════════════════════
 --   EXCLUDE PICKER
 -- ══════════════════════════════
 local pendingExcludes = {}  -- hex ที่เลือกไว้ก่อน OK
@@ -897,7 +559,7 @@ local function UpdateExcludePicker()
         btn.ZIndex = 11
         Instance.new("UIPadding", btn).PaddingLeft = UDim.new(0,SS(8))
 
-        btn.Activated:Connect(function()
+        btn.MouseButton1Click:Connect(function()
             local found = false
             for i, h in ipairs(pendingExcludes) do
                 if h == hexStr then
@@ -937,11 +599,7 @@ local function StartLock()
     if lockConnection then lockConnection:Disconnect() lockConnection = nil end
     local timer = 0
 
-    -- Scriptable = เกมไม่ override CFrame กลับ → ล็อคได้จริง
-    Camera.CameraType = Enum.CameraType.Scriptable
-
-    -- ใช้ RenderStepped → run ก่อน render ทุก frame → ไม่มี frame fighting
-    lockConnection = RunService.RenderStepped:Connect(function(dt)
+    lockConnection = RunService.Heartbeat:Connect(function(dt)
         local myHRP = Character and Character:FindFirstChild("HumanoidRootPart")
         if not myHRP then return end
 
@@ -975,16 +633,8 @@ local function StartLock()
             end
         end
 
-        
-        if not currentTarget then
-            -- ไม่มีเป้า → กล้องติดตามตัวละครตามปกติ (คำนวณเอง ไม่ปล่อยให้เกม override)
-            local camOffset = Vector3.new(0, CAM_HEIGHT, CAM_DISTANCE)
-            local defaultPos = myHRP.CFrame:PointToWorldSpace(camOffset)
-            Camera.CFrame = CFrame.new(defaultPos, myHRP.Position + Vector3.new(0, HEIGHT_OFFSET, 0))
-            return
-        end
+        if not currentTarget then return end
 
-        -- หา root part เป้า
         local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
             or currentTarget:FindFirstChild("RootPart")
             or currentTarget.PrimaryPart
@@ -1000,209 +650,35 @@ local function StartLock()
             return
         end
 
-        local myPos  = myHRP.Position
-        local aimPos = hrp.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
-        local diff   = Vector3.new(aimPos.X - myPos.X, 0, aimPos.Z - myPos.Z)
+        local myPos   = myHRP.Position
+        local aimPos  = hrp.Position + Vector3.new(0, HEIGHT_OFFSET, 0)
+        local diff    = Vector3.new(aimPos.X-myPos.X, 0, aimPos.Z-myPos.Z)
         if diff.Magnitude < 0.01 then return end
-        local dir = diff.Unit
+        local dir     = diff.Unit
 
-        -- position กล้องคำนวณจาก HRP ทุก frame → ไม่หลุดเวลาเดิน
-        local camPos = myPos - dir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
-        local goalCF = CFrame.lookAt(camPos, aimPos)
+        local camPos  = myPos - dir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
+        local goalCF  = CFrame.lookAt(camPos, aimPos)
 
-        -- ══ HARD LOCK : snap ทุก frame ไม่มี lerp ══
-        Camera.CFrame = goalCF
+        local safeDt  = math.min(dt, 0.05)
+        local alpha   = 1 - (1 - math.min(strength, 0.99)) ^ (safeDt * 60)
 
-        -- หมุนตัวละครไปหาเป้าทันที (Hard Lock body)
+        Camera.CFrame = Camera.CFrame:Lerp(goalCF, alpha)
+
         local bodyGoal = CFrame.new(myPos) * CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
-        myHRP.CFrame   = bodyGoal
+        myHRP.CFrame   = myHRP.CFrame:Lerp(bodyGoal, alpha)
     end)
 end
 
 local function StopLock()
     if lockConnection then lockConnection:Disconnect() lockConnection = nil end
-    -- reset camera กลับปกติ
-    Camera.CameraType = Enum.CameraType.Custom
     SetTarget(nil)
 end
 
--- ESP loop แยก (throttled)
-espConnection = RunService.Heartbeat:Connect(function(dt)
-    if not Settings.ESPEnabled then return end
-    espTimer = espTimer + dt
-    if espTimer >= ESP_INTERVAL then
-        espTimer = 0
+-- ESP loop แยก
+espConnection = RunService.Heartbeat:Connect(function()
+    if Settings.ESPEnabled then
         UpdateESP()
     end
-end)
-
--- ══════════════════════════════
---   CAMERA SYSTEM FRAME
--- ══════════════════════════════
-local camEnabled  = false
-local camFreecam  = false
-local camDistance = 50
-local camPos2     = Vector3.new()
-local camAngleX   = 0
-local camAngleY   = 0
-local camSpeed    = 5
-local camMove     = Vector3.new()
-
-local CamFrame = MakeFrame(ScreenGui,
-    UDim2.new(0,200,0,200),
-    UDim2.new(0.05,0,0.3,0),
-    Color3.fromRGB(12,12,18), true)
-CamFrame.Visible = false
-
-local CamTitleBar = Instance.new("Frame")
-CamTitleBar.Size = UDim2.new(1,0,0,30)
-CamTitleBar.BackgroundColor3 = Color3.fromRGB(22,22,32)
-CamTitleBar.BorderSizePixel = 0
-CamTitleBar.Parent = CamFrame
-Instance.new("UICorner", CamTitleBar).CornerRadius = UDim.new(0,8)
-MakeDraggable(CamFrame, CamTitleBar, nil)
-
-local camAccent2 = Instance.new("Frame")
-camAccent2.Size = UDim2.new(1,0,0,2)
-camAccent2.Position = UDim2.new(0,0,1,-2)
-camAccent2.BackgroundColor3 = Color3.fromRGB(180,100,255)
-camAccent2.BorderSizePixel = 0
-camAccent2.Parent = CamTitleBar
-
-MakeLabel(CamTitleBar, "🎥  Camera System",
-    UDim2.new(1,-60,1,0), UDim2.new(0,8,0,0),
-    11, Color3.fromRGB(255,255,255), Enum.Font.GothamBold)
-
-local CamMinBtn = MakeBtn(CamTitleBar, "–", UDim2.new(0,22,0,22),
-    UDim2.new(1,-46,0.5,-11), Color3.fromRGB(50,50,50), Color3.fromRGB(255,255,255), 13)
-local CamCloseBtn = MakeBtn(CamTitleBar, "✕", UDim2.new(0,22,0,22),
-    UDim2.new(1,-23,0.5,-11), Color3.fromRGB(180,40,40), Color3.fromRGB(255,255,255), 12)
-
-local CamContent = Instance.new("Frame")
-CamContent.Size = UDim2.new(1,0,1,-30)
-CamContent.Position = UDim2.new(0,0,0,30)
-CamContent.BackgroundTransparency = 1
-CamContent.Parent = CamFrame
-
-local CamLockBtn = MakeBtn(CamContent, "🔒 Lock : OFF",
-    UDim2.new(1,-10,0,30), UDim2.new(0,5,0,5),
-    Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), 11)
-
-local CamFreeBtn = MakeBtn(CamContent, "🎮 FreeCam : OFF",
-    UDim2.new(1,-10,0,30), UDim2.new(0,5,0,40),
-    Color3.fromRGB(30,30,45), Color3.fromRGB(180,180,220), 11)
-
-local CamDistBox = MakeInput(CamContent, camDistance,
-    UDim2.new(1,-10,0,28), UDim2.new(0,5,0,76))
-CamDistBox.PlaceholderText = "Distance"
-
-local CamSpeedBox = MakeInput(CamContent, camSpeed,
-    UDim2.new(1,-10,0,28), UDim2.new(0,5,0,110))
-CamSpeedBox.PlaceholderText = "Speed"
-
--- D-pad สำหรับ FreeCam (มือถือ)
-local DPad = Instance.new("Frame")
-DPad.Size = UDim2.new(0,160,0,160)
-DPad.Position = UDim2.new(0.75,0,0.6,0)
-DPad.BackgroundTransparency = 1
-DPad.Visible = false
-DPad.Parent = ScreenGui
-
-local function MakeDPadBtn(label, pos, vec)
-    local b = MakeBtn(DPad, label, UDim2.new(0,48,0,48), pos,
-        Color3.fromRGB(40,40,60), Color3.fromRGB(220,220,255), 16)
-    b.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-            or i.UserInputType == Enum.UserInputType.Touch then
-            camMove = camMove + vec
-        end
-    end)
-    b.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-            or i.UserInputType == Enum.UserInputType.Touch then
-            camMove = camMove - vec
-        end
-    end)
-    return b
-end
-
-MakeDPadBtn("↑",  UDim2.new(0.5,-24,0,0),   Vector3.new(0,0,-1))
-MakeDPadBtn("↓",  UDim2.new(0.5,-24,0,96),  Vector3.new(0,0,1))
-MakeDPadBtn("←",  UDim2.new(0,0,0.5,-24),   Vector3.new(-1,0,0))
-MakeDPadBtn("→",  UDim2.new(0,96,0.5,-24),  Vector3.new(1,0,0))
-MakeDPadBtn("▲",  UDim2.new(0,0,0,0),        Vector3.new(0,1,0))
-MakeDPadBtn("▼",  UDim2.new(0,96,0,0),       Vector3.new(0,-1,0))
-
--- Camera loop (Heartbeat ไม่ใช่ RenderStepped)
-RunService.Heartbeat:Connect(function(dt)
-    if not camEnabled and not camFreecam then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-
-    if camEnabled and not camFreecam then
-        -- Lock: กล้องติดตามตัวละคร
-        local look = Camera.CFrame.LookVector
-        Camera.CFrame = CFrame.new(root.Position - look * camDistance, root.Position)
-    end
-
-    if camFreecam then
-        local rot = CFrame.Angles(0, math.rad(camAngleX), 0) * CFrame.Angles(math.rad(camAngleY), 0, 0)
-        local dir = rot.LookVector
-        camPos2 = camPos2 + dir * camMove.Z * camSpeed * dt * 60
-        camPos2 = camPos2 + rot.RightVector * camMove.X * camSpeed * dt * 60
-        camPos2 = camPos2 + Vector3.new(0, camMove.Y * camSpeed * dt * 60, 0)
-        Camera.CFrame = CFrame.new(camPos2, camPos2 + dir)
-    end
-end)
-
--- FreeCam mouse look
-UserInputService.InputChanged:Connect(function(input)
-    if not camFreecam then return end
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
-        camAngleX = camAngleX - input.Delta.X * 0.2
-        camAngleY = math.clamp(camAngleY - input.Delta.Y * 0.2, -80, 80)
-    end
-end)
-
--- Camera buttons
-CamLockBtn.Activated:Connect(function()
-    camEnabled = not camEnabled
-    CamLockBtn.Text = camEnabled and "🔒 Lock : ON" or "🔒 Lock : OFF"
-    CamLockBtn.BackgroundColor3 = camEnabled and Color3.fromRGB(30,60,30) or Color3.fromRGB(30,30,45)
-end)
-
-CamFreeBtn.Activated:Connect(function()
-    camFreecam = not camFreecam
-    CamFreeBtn.Text = camFreecam and "🎮 FreeCam : ON" or "🎮 FreeCam : OFF"
-    CamFreeBtn.BackgroundColor3 = camFreecam and Color3.fromRGB(60,30,80) or Color3.fromRGB(30,30,45)
-    DPad.Visible = camFreecam
-    if camFreecam then camPos2 = Camera.CFrame.Position end
-end)
-
-CamDistBox.FocusLost:Connect(function()
-    local v = tonumber(CamDistBox.Text)
-    if v then camDistance = v else CamDistBox.Text = tostring(camDistance) end
-end)
-
-CamSpeedBox.FocusLost:Connect(function()
-    local v = tonumber(CamSpeedBox.Text)
-    if v then camSpeed = v else CamSpeedBox.Text = tostring(camSpeed) end
-end)
-
-local camMin = false
-CamMinBtn.Activated:Connect(function()
-    camMin = not camMin
-    CamContent.Visible = not camMin
-    CamFrame.Size = camMin and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,200)
-end)
-
-CamCloseBtn.Activated:Connect(function()
-    CamFrame.Visible = false
-    DPad.Visible = false
-    CamSysBtn.BackgroundColor3 = Color3.fromRGB(30,30,45)
 end)
 
 -- ══════════════════════════════
@@ -1219,7 +695,7 @@ local function TPRefresh()
             Color3.fromRGB(28,28,40), Color3.fromRGB(180,200,255), 10)
         btn.TextXAlignment = Enum.TextXAlignment.Left
         Instance.new("UIPadding", btn).PaddingLeft = UDim.new(0,8)
-        btn.Activated:Connect(function()
+        btn.MouseButton1Click:Connect(function()
             tpSelected = i
             local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             local root = char:FindFirstChild("HumanoidRootPart")
@@ -1244,7 +720,6 @@ LocalPlayer.CharacterAdded:Connect(function(c)
     c:WaitForChild("HumanoidRootPart")
     currentTarget = nil
     ClearESP()
-    Camera.CameraType = Enum.CameraType.Custom
     if Settings.Enabled then
         task.wait(0.5)
         StartLock()
@@ -1281,14 +756,14 @@ end)
 -- ══════════════════════════════
 --   BUTTON CONNECTIONS
 -- ══════════════════════════════
-ModePlayer.Activated:Connect(function()
+ModePlayer.MouseButton1Click:Connect(function()
     Settings.Mode = "Player" currentTarget = nil UpdateModeUI() SaveSettings()
 end)
-ModeNPC.Activated:Connect(function()
+ModeNPC.MouseButton1Click:Connect(function()
     Settings.Mode = "NPC" currentTarget = nil UpdateModeUI() SaveSettings()
 end)
 
-LockBtn.Activated:Connect(function()
+LockBtn.MouseButton1Click:Connect(function()
     Settings.Enabled = not Settings.Enabled
     if Settings.Enabled then
         LockBtn.Text = "🔒 Lock : ON"
@@ -1301,7 +776,7 @@ LockBtn.Activated:Connect(function()
     end
 end)
 
-NearBtn.Activated:Connect(function()
+NearBtn.MouseButton1Click:Connect(function()
     Settings.NearestMode = not Settings.NearestMode
     NearBtn.Text = Settings.NearestMode and "📍 Nearest : ON" or "📍 Nearest : OFF"
     NearBtn.BackgroundColor3 = Settings.NearestMode
@@ -1309,7 +784,7 @@ NearBtn.Activated:Connect(function()
     SaveSettings()
 end)
 
-PrevBtn.Activated:Connect(function()
+PrevBtn.MouseButton1Click:Connect(function()
     if #targetList == 0 then targetList = FilterList(GetTargetList()) end
     if #targetList > 0 then
         targetIndex = targetIndex - 1
@@ -1318,7 +793,7 @@ PrevBtn.Activated:Connect(function()
     end
 end)
 
-NextBtn.Activated:Connect(function()
+NextBtn.MouseButton1Click:Connect(function()
     if #targetList == 0 then targetList = FilterList(GetTargetList()) end
     if #targetList > 0 then
         targetIndex = targetIndex + 1
@@ -1327,7 +802,7 @@ NextBtn.Activated:Connect(function()
     end
 end)
 
-ESPBtn.Activated:Connect(function()
+ESPBtn.MouseButton1Click:Connect(function()
     Settings.ESPEnabled = not Settings.ESPEnabled
     ESPBtn.Text = Settings.ESPEnabled and "👁 ESP : ON" or "👁 ESP : OFF"
     ESPBtn.BackgroundColor3 = Settings.ESPEnabled
@@ -1335,16 +810,8 @@ ESPBtn.Activated:Connect(function()
     if not Settings.ESPEnabled then ClearESP() end
 end)
 
-CamSysBtn.Activated:Connect(function()
-    local vis = not CamFrame.Visible
-    CamFrame.Visible = vis
-    CamSysBtn.Text = vis and "🎥 Camera : ON" or "🎥 Camera : OFF"
-    CamSysBtn.BackgroundColor3 = vis and Color3.fromRGB(50,30,70) or Color3.fromRGB(30,30,45)
-    if not vis then DPad.Visible = false end
-end)
-
 -- Menu Lock
-LockMenuBtn.Activated:Connect(function()
+LockMenuBtn.MouseButton1Click:Connect(function()
     menuLocked = not menuLocked
     LockMenuBtn.Text = menuLocked and "🔒" or "🔓"
     LockMenuBtn.BackgroundColor3 = menuLocked
@@ -1353,15 +820,15 @@ end)
 
 -- Minimize / Close
 local minimized = false
-MinBtn.Activated:Connect(function()
+MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     Content.Visible = not minimized
     MainFrame.Size = minimized
         and UDim2.new(0,S(230),0,S(32))
-        or  UDim2.new(0,S(230),0,S(458))
+        or  UDim2.new(0,S(230),0,S(420))
 end)
 
-CloseBtn.Activated:Connect(function()
+CloseBtn.MouseButton1Click:Connect(function()
     StopLock()
     ClearESP()
     if espConnection then espConnection:Disconnect() end
@@ -1370,14 +837,14 @@ end)
 
 -- Scan Menu
 local scanVisible = false
-ScanToggleBtn.Activated:Connect(function()
+ScanToggleBtn.MouseButton1Click:Connect(function()
     scanVisible = not scanVisible
     ScanFrame.Visible = scanVisible
     ScanToggleBtn.BackgroundColor3 = scanVisible
         and Color3.fromRGB(30,50,90) or Color3.fromRGB(30,30,45)
 end)
 
-ScanCloseBtn.Activated:Connect(function()
+ScanCloseBtn.MouseButton1Click:Connect(function()
     scanVisible = false
     ScanFrame.Visible = false
     ColorPopup.Visible = false
@@ -1386,7 +853,7 @@ ScanCloseBtn.Activated:Connect(function()
 end)
 
 local scanMin = false
-ScanMinBtn.Activated:Connect(function()
+ScanMinBtn.MouseButton1Click:Connect(function()
     scanMin = not scanMin
     ScanScroll.Visible = not scanMin
     DoScanBtn.Visible = not scanMin
@@ -1400,7 +867,7 @@ ScanMinBtn.Activated:Connect(function()
 end)
 
 -- Scan Now
-DoScanBtn.Activated:Connect(function()
+DoScanBtn.MouseButton1Click:Connect(function()
     for _, c in ipairs(ScanScroll:GetChildren()) do
         if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
     end
@@ -1428,7 +895,7 @@ DoScanBtn.Activated:Connect(function()
         dot.BorderSizePixel = 0
         dot.Parent = btn
         Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)
-        btn.Activated:Connect(function()
+        btn.MouseButton1Click:Connect(function()
             targetIndex = i
             SetTarget(entry.model)
         end)
@@ -1439,15 +906,15 @@ DoScanBtn.Activated:Connect(function()
 end)
 
 -- Color Picker
-ColorPickerBtn.Activated:Connect(function()
+ColorPickerBtn.MouseButton1Click:Connect(function()
     ColorPopup.Visible = not ColorPopup.Visible
     ExcludePopup.Visible = false
     if ColorPopup.Visible then UpdateColorPicker() end
 end)
 
-CPCloseBtn.Activated:Connect(function() ColorPopup.Visible = false end)
+CPCloseBtn.MouseButton1Click:Connect(function() ColorPopup.Visible = false end)
 
-CPNoColorBtn.Activated:Connect(function()
+CPNoColorBtn.MouseButton1Click:Connect(function()
     Settings.FilterColor = nil
     FilterLabel.Text = "🎨 Filter: ทั้งหมด"
     FilterLabel.TextColor3 = Color3.fromRGB(140,140,180)
@@ -1456,7 +923,7 @@ CPNoColorBtn.Activated:Connect(function()
     UpdateColorPicker()
 end)
 
-ClearFilterBtn.Activated:Connect(function()
+ClearFilterBtn.MouseButton1Click:Connect(function()
     Settings.FilterColor = nil
     FilterLabel.Text = "🎨 Filter: ทั้งหมด"
     FilterLabel.TextColor3 = Color3.fromRGB(140,140,180)
@@ -1465,7 +932,7 @@ ClearFilterBtn.Activated:Connect(function()
 end)
 
 -- Exclude Color
-ExcludeBtn.Activated:Connect(function()
+ExcludeBtn.MouseButton1Click:Connect(function()
     ExcludePopup.Visible = not ExcludePopup.Visible
     ColorPopup.Visible = false
     if ExcludePopup.Visible then
@@ -1477,12 +944,12 @@ ExcludeBtn.Activated:Connect(function()
     end
 end)
 
-EPCloseBtn.Activated:Connect(function()
+EPCloseBtn.MouseButton1Click:Connect(function()
     ExcludePopup.Visible = false
     pendingExcludes = {}
 end)
 
-EPOKBtn.Activated:Connect(function()
+EPOKBtn.MouseButton1Click:Connect(function()
     Settings.ExcludeColors = {}
     for _, h in ipairs(pendingExcludes) do
         table.insert(Settings.ExcludeColors, h)
@@ -1492,7 +959,7 @@ EPOKBtn.Activated:Connect(function()
     pendingExcludes = {}
 end)
 
-ClearExcludeBtn.Activated:Connect(function()
+ClearExcludeBtn.MouseButton1Click:Connect(function()
     Settings.ExcludeColors = {}
     pendingExcludes = {}
     UpdateExcludePicker()
@@ -1500,7 +967,7 @@ end)
 
 -- TP Menu
 local tpVisible = false
-TPToggleBtn.Activated:Connect(function()
+TPToggleBtn.MouseButton1Click:Connect(function()
     tpVisible = not tpVisible
     TPFrame.Visible = tpVisible
     TPToggleBtn.BackgroundColor3 = tpVisible
@@ -1509,7 +976,7 @@ TPToggleBtn.Activated:Connect(function()
 end)
 
 local tpMin = false
-TPMinBtn.Activated:Connect(function()
+TPMinBtn.MouseButton1Click:Connect(function()
     tpMin = not tpMin
     TPScroll.Visible = not tpMin
     TPSaveBtn.Visible = not tpMin
@@ -1520,13 +987,13 @@ TPMinBtn.Activated:Connect(function()
         or  UDim2.new(0,210,0,260)
 end)
 
-TPCloseBtn.Activated:Connect(function()
+TPCloseBtn.MouseButton1Click:Connect(function()
     tpVisible = false
     TPFrame.Visible = false
     TPToggleBtn.BackgroundColor3 = Color3.fromRGB(30,30,45)
 end)
 
-TPSaveBtn.Activated:Connect(function()
+TPSaveBtn.MouseButton1Click:Connect(function()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
@@ -1534,7 +1001,7 @@ TPSaveBtn.Activated:Connect(function()
     TPRefresh()
 end)
 
-TPDeleteBtn.Activated:Connect(function()
+TPDeleteBtn.MouseButton1Click:Connect(function()
     if tpSelected then
         table.remove(tpSaves, tpSelected)
         tpSelected = nil
@@ -1542,7 +1009,7 @@ TPDeleteBtn.Activated:Connect(function()
     end
 end)
 
-TPClickBtn.Activated:Connect(function()
+TPClickBtn.MouseButton1Click:Connect(function()
     clickTP = not clickTP
     if not clickTP then lockPos = nil end
     TPClickBtn.Text = clickTP and "Click TP ON" or "Click TP OFF"
@@ -1582,10 +1049,4 @@ end)
 if Settings.NearestMode then
     NearBtn.Text = "📍 Nearest : ON"
     NearBtn.BackgroundColor3 = Color3.fromRGB(30,60,30)
-end    if not char then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    local hit = Mouse.Hit
-    if hit then
-        lockPos = hit.Position
-     
+end
