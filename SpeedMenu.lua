@@ -51,6 +51,7 @@ local tpSaves       = {}
 local tpSelected    = nil
 local clickTP       = false
 local lockPos       = nil
+local scanWarpClick = false
 -- CamSystem
 local camLocked   = false
 local camFreecam  = false
@@ -233,10 +234,11 @@ SF.Visible=false
 local STB=mkFrame(SF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8); mkAccent(STB)
 mkDrag(SF,STB,nil)
 mkLbl(STB,"🔍 Scan",UDim2.new(1,-108,1,0),UDim2.new(0,8,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
-local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-92,0.5,-11),Color3.fromRGB(48,48,160))
-local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-68,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
-local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-44,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
-local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
+local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-114,0.5,-11),Color3.fromRGB(48,48,160))
+local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-90,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
+local BtnScanTP =mkBtn(STB,"TP", UDim2.new(0,22,0,22),UDim2.new(1,-66,0.5,-11),Color3.fromRGB(20,84,20),Color3.fromRGB(210,255,210),9)
+local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-42,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
+local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-20,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
 
 local FBar=mkFrame(SF,UDim2.new(1,-16,0,22),UDim2.new(0,8,0,32),Color3.fromRGB(16,16,26),false,5)
 local FLbl=mkLbl(FBar,"🎨 Filter: ทั้งหมด",UDim2.new(1,-28,1,0),UDim2.new(0,6,0,0),9,Color3.fromRGB(120,120,170))
@@ -434,6 +436,18 @@ local function SetTarget(model)
         TgtLbl.Text="No Target"; StatusLbl.Text="● Idle"
         StatusLbl.TextColor3=Color3.fromRGB(60,60,90)
     end
+end
+
+local function TeleportToModel(model)
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    if not model or not model.Parent then return false end
+    local hrp = GetRoot(model)
+    if not hrp then return false end
+    root.CFrame = hrp.CFrame + Vector3.new(0, 3, 0)
+    return true
 end
 
 -- ══ ESP ══
@@ -647,6 +661,7 @@ local function TPRefresh()
     end
     TPScr.CanvasSize=UDim2.new(0,0,0,#tpSaves*30)
 end
+
 -- ══ RESPAWN ══
 LocalPlayer.CharacterAdded:Connect(function(c)
     Character=c; c:WaitForChild("HumanoidRootPart"); currentTarget=nil; ClearESP()
@@ -753,6 +768,11 @@ BtnSClose.Activated:Connect(function()
     scanVis=false; SF.Visible=false; CPop.Visible=false; EPop.Visible=false
     BtnScan.BackgroundColor3=Color3.fromRGB(24,24,40)
 end)
+BtnScanTP.Activated:Connect(function()
+    scanWarpClick = not scanWarpClick
+    BtnScanTP.Text = scanWarpClick and "TP ON" or "TP"
+    BtnScanTP.BackgroundColor3 = scanWarpClick and Color3.fromRGB(20,92,40) or Color3.fromRGB(20,84,20)
+end)
 local sMin=false
 BtnSMin.Activated:Connect(function()
     sMin=not sMin; SScr.Visible=not sMin; BtnDoScan.Visible=not sMin
@@ -773,7 +793,13 @@ BtnDoScan.Activated:Connect(function()
         local dot=Instance.new("Frame"); dot.Size=UDim2.new(0,6,0,6); dot.Position=UDim2.new(0,4,0.5,-3)
         dot.BackgroundColor3=e.color; dot.BorderSizePixel=0; dot.Parent=b
         Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
-        b.Activated:Connect(function() targetIndex=i; SetTarget(e.model) end)
+        b.Activated:Connect(function()
+            targetIndex=i
+            SetTarget(e.model)
+            if scanWarpClick then
+                TeleportToModel(e.model)
+            end
+        end)
     end
     SScr.CanvasSize=UDim2.new(0,0,0,SLayout.AbsoluteContentSize.Y+4)
     UpdateCPicker(); UpdateEPicker()
