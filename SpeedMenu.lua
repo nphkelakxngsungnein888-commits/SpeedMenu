@@ -1,5 +1,5 @@
--- Lock Menu v17 | Codex Android
--- Camera = RenderStepped | ESP = Heartbeat 0.3s throttle | TP+CamSystem | ScanTP
+-- Lock Menu v16 | Codex Android
+-- Camera = RenderStepped | ESP = Heartbeat 0.3s throttle | TP+CamSystem
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
@@ -64,11 +64,11 @@ local camFreePos  = Vector3.new()
 -- ══ GUI CLEANUP ══
 pcall(function()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if pg then local o=pg:FindFirstChild("LM_v17") if o then o:Destroy() end end
+    if pg then local o=pg:FindFirstChild("LM_v16") if o then o:Destroy() end end
 end)
 local PGui = LocalPlayer:WaitForChild("PlayerGui")
 local SG   = Instance.new("ScreenGui")
-SG.Name="LM_v17"; SG.ResetOnSpawn=false; SG.Parent=PGui
+SG.Name="LM_v16"; SG.ResetOnSpawn=false; SG.Parent=PGui
 
 -- ══ UI FACTORY ══
 local function Hex(c)
@@ -158,7 +158,7 @@ local MF=mkFrame(SG,UDim2.new(0,232,0,370),UDim2.new(0.5,-116,0.5,-185),Color3.f
 local TB=mkFrame(MF,UDim2.new(1,0,0,32),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 TB.ClipsDescendants=false; mkAccent(TB)
 mkDrag(MF,TB,function() return menuLocked end)
-mkLbl(TB,"⚔ Lock Menu v17",UDim2.new(1,-112,1,0),UDim2.new(0,10,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(TB,"⚔ Lock Menu v16",UDim2.new(1,-112,1,0),UDim2.new(0,10,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 local BtnLockMenu=mkBtn(TB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-72,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnMin     =mkBtn(TB,"–", UDim2.new(0,22,0,22),UDim2.new(1,-48,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),14)
 local BtnClose   =mkBtn(TB,"✕", UDim2.new(0,22,0,22),UDim2.new(1,-24,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
@@ -228,26 +228,15 @@ local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,308),
 -- ══════════════════════════════════════════════
 --   SCAN FRAME
 -- ══════════════════════════════════════════════
--- ══ SCAN TP STATE ══
-local scanTPEnabled = false
-local scanTPConn    = nil
-local scanTPTarget  = nil  -- HumanoidRootPart ของเป้าที่เลือก
-
-local function StopScanTP()
-    if scanTPConn then scanTPConn:Disconnect(); scanTPConn=nil end
-    scanTPTarget=nil
-end
-
 local SF=mkFrame(SG,UDim2.new(0,220,0,340),UDim2.new(0.5,126,0.5,-170),Color3.fromRGB(11,11,17),true)
 SF.Visible=false
 local STB=mkFrame(SF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8); mkAccent(STB)
 mkDrag(SF,STB,nil)
-mkLbl(STB,"🔍 Scan",UDim2.new(1,-132,1,0),UDim2.new(0,8,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
-local BtnScanTP =mkBtn(STB,"tp",UDim2.new(0,26,0,22),UDim2.new(1,-116,0.5,-11),Color3.fromRGB(30,60,30),Color3.fromRGB(130,255,160),9)
-local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-88,0.5,-11),Color3.fromRGB(48,48,160))
-local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-64,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
-local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-40,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
-local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-18,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
+mkLbl(STB,"🔍 Scan",UDim2.new(1,-108,1,0),UDim2.new(0,8,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-92,0.5,-11),Color3.fromRGB(48,48,160))
+local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-68,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
+local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-44,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
+local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
 
 local FBar=mkFrame(SF,UDim2.new(1,-16,0,22),UDim2.new(0,8,0,32),Color3.fromRGB(16,16,26),false,5)
 local FLbl=mkLbl(FBar,"🎨 Filter: ทั้งหมด",UDim2.new(1,-28,1,0),UDim2.new(0,6,0,0),9,Color3.fromRGB(120,120,170))
@@ -658,7 +647,6 @@ local function TPRefresh()
     end
     TPScr.CanvasSize=UDim2.new(0,0,0,#tpSaves*30)
 end
-
 -- ══ RESPAWN ══
 LocalPlayer.CharacterAdded:Connect(function(c)
     Character=c; c:WaitForChild("HumanoidRootPart"); currentTarget=nil; ClearESP()
@@ -755,21 +743,6 @@ BtnMin.Activated:Connect(function()
 end)
 BtnClose.Activated:Connect(function() StopLock(); ClearESP(); SG:Destroy() end)
 
--- Scan TP toggle
-BtnScanTP.Activated:Connect(function()
-    scanTPEnabled = not scanTPEnabled
-    if scanTPEnabled then
-        BtnScanTP.Text="tp ✓"
-        BtnScanTP.BackgroundColor3=Color3.fromRGB(20,80,30)
-        BtnScanTP.TextColor3=Color3.fromRGB(170,255,180)
-    else
-        BtnScanTP.Text="tp"
-        BtnScanTP.BackgroundColor3=Color3.fromRGB(30,60,30)
-        BtnScanTP.TextColor3=Color3.fromRGB(130,255,160)
-        StopScanTP()
-    end
-end)
-
 -- Scan
 local scanVis=false
 BtnScan.Activated:Connect(function()
@@ -779,7 +752,6 @@ end)
 BtnSClose.Activated:Connect(function()
     scanVis=false; SF.Visible=false; CPop.Visible=false; EPop.Visible=false
     BtnScan.BackgroundColor3=Color3.fromRGB(24,24,40)
-    StopScanTP()
 end)
 local sMin=false
 BtnSMin.Activated:Connect(function()
@@ -801,32 +773,7 @@ BtnDoScan.Activated:Connect(function()
         local dot=Instance.new("Frame"); dot.Size=UDim2.new(0,6,0,6); dot.Position=UDim2.new(0,4,0.5,-3)
         dot.BackgroundColor3=e.color; dot.BorderSizePixel=0; dot.Parent=b
         Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
-        b.Activated:Connect(function()
-            targetIndex=i; SetTarget(e.model)
-            -- ── SCAN TP ──
-            if scanTPEnabled then
-                StopScanTP()
-                local targetHRP = GetRoot(e.model)
-                if not targetHRP then return end
-                scanTPTarget = targetHRP
-                -- วาปครั้งแรกทันที
-                local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                local myRoot = char:FindFirstChild("HumanoidRootPart")
-                if myRoot then myRoot.CFrame = CFrame.new(targetHRP.Position + Vector3.new(0,3,0)) end
-                -- loop วาปรัวๆ 0.05s → ดึงกลับไม่ทัน
-                scanTPConn = RunService.Heartbeat:Connect(function()
-                    local c2 = LocalPlayer.Character
-                    if not c2 then StopScanTP(); return end
-                    local r2 = c2:FindFirstChild("HumanoidRootPart")
-                    if not r2 then StopScanTP(); return end
-                    if not scanTPTarget or not scanTPTarget.Parent then StopScanTP(); return end
-                    local dest = scanTPTarget.Position + Vector3.new(0,3,0)
-                    if (r2.Position - dest).Magnitude > 4 then
-                        r2.CFrame = CFrame.new(dest)
-                    end
-                end)
-            end
-        end)
+        b.Activated:Connect(function() targetIndex=i; SetTarget(e.model) end)
     end
     SScr.CanvasSize=UDim2.new(0,0,0,SLayout.AbsoluteContentSize.Y+4)
     UpdateCPicker(); UpdateEPicker()
