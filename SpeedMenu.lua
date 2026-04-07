@@ -314,8 +314,16 @@ local bF=mkPad("↑",UDim2.new(0.5,-22,0,0));  local bB=mkPad("↓",UDim2.new(0.
 local bL=mkPad("←",UDim2.new(0,0,0.5,-22));  local bR=mkPad("→",UDim2.new(0,90,0.5,-22))
 local bU=mkPad("▲",UDim2.new(0,0,0,0));       local bD=mkPad("▼",UDim2.new(0,90,0,0))
 local function bindPad(b,v)
-    b.MouseButton1Down:Connect(function() camMove=camMove+v end)
-    b.MouseButton1Up:Connect(function()   camMove=camMove-v end)
+    b.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            camMove=camMove+v
+        end
+    end)
+    b.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            camMove=camMove-v
+        end
+    end)
 end
 bindPad(bF,Vector3.new(0,0,-1)); bindPad(bB,Vector3.new(0,0,1))
 bindPad(bL,Vector3.new(-1,0,0)); bindPad(bR,Vector3.new(1,0,0))
@@ -579,32 +587,35 @@ local function StopLock()
     if lockConn then lockConn:Disconnect(); lockConn=nil end; SetTarget(nil)
 end
 
--- ══ ESP LOOP (Heartbeat + throttle ไม่แล็ค) ══
+-- ══ ESP + TP ANCHOR (Heartbeat เท่านั้น ไม่แตะ Camera) ══
 RunService.Heartbeat:Connect(function(dt)
-    -- ESP
     if Settings.ESPEnabled then
         espTimer=espTimer+dt
         if espTimer>=ESP_INTERVAL then espTimer=0; UpdateESP() end
     end
-    -- CamSystem Lock
-    if camLocked and not camFreecam then
-        local char=LocalPlayer.Character; if not char then return end
-        local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
-        local look=Camera.CFrame.LookVector
-        Camera.CFrame=CFrame.new(root.Position-look*camDist,root.Position)
-    end
-    -- FreeCam
-    if camFreecam then
-        local rot=CFrame.Angles(0,math.rad(camAngleX),0)*CFrame.Angles(math.rad(camAngleY),0,0)
-        local d=rot.LookVector
-        camFreePos=camFreePos+d*camMove.Z*camSpeed+rot.RightVector*camMove.X*camSpeed+Vector3.new(0,camMove.Y*camSpeed,0)
-        Camera.CFrame=CFrame.new(camFreePos,camFreePos+d)
-    end
-    -- Click TP anchor
     if clickTP and lockPos then
         local char=LocalPlayer.Character; if not char then return end
         local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
         if (root.Position-lockPos).Magnitude>10 then root.CFrame=CFrame.new(lockPos+Vector3.new(0,3,0)) end
+    end
+end)
+
+-- ══ CAMERA SYSTEM (RenderStepped — Camera.CFrame ต้องอยู่นี่) ══
+RunService.RenderStepped:Connect(function(dt)
+    if camLocked and not camFreecam then
+        local char=LocalPlayer.Character; if not char then return end
+        local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
+        local look=Camera.CFrame.LookVector
+        Camera.CFrame=CFrame.new(root.Position - look*camDist, root.Position)
+    end
+    if camFreecam then
+        local rot=CFrame.Angles(0,math.rad(camAngleX),0)*CFrame.Angles(math.rad(camAngleY),0,0)
+        local d=rot.LookVector
+        camFreePos = camFreePos
+            + d               * camMove.Z * camSpeed * dt * 60
+            + rot.RightVector * camMove.X * camSpeed * dt * 60
+            + Vector3.new(0,1,0) * camMove.Y * camSpeed * dt * 60
+        Camera.CFrame=CFrame.new(camFreePos, camFreePos+d)
     end
 end)
 
@@ -692,6 +703,37 @@ BtnLock.Activated:Connect(function()
         BtnLock.Text="🔓 Lock : OFF"; BtnLock.BackgroundColor3=Color3.fromRGB(24,24,40)
         StopLock()
     end
+end)
+
+BtnNear.Activated:Connect(function()
+    Settings.NearestMode=not Settings.NearestMode
+    BtnNear.Text=Settings.NearestMode and "📍 Nearest : ON" or "📍 Nearest : OFF"
+    BtnNear.BackgroundColor3=Settings.NearestMode and Color3.fromRGB(20,58,20) or Color3.fromRGB(24,24,40)
+    SaveSettings()
+end)
+
+BtnPrev.Activated:Connect(function()
+    if #targetList==0 then targetList=FilterList(GetTargetList()) end
+    if #targetList>0 then targetIndex=targetIndex-1; if targetIndex<1 then targetIndex=#targetList end; SetTarget(targetList[targetIndex].model) end
+end)
+BtnNext.Activated:Connect(function()
+    if #targetList==0 then targetList=FilterList(GetTargetList()) end
+    if #targetList>0 then targetIndex=targetIndex+1; if targetIndex>#targetList then targetIndex=1 end; SetTarget(targetList[targetIndex].model) end
+end)
+
+-- ESP
+BtnESP.Activated:Connect(function()
+    Settings.ESPEnabled=not Settings.ESPEnabled
+    BtnESP.Text=Settings.ESPEnabled and "👁 ESP ON" or "👁 ESP"
+    BtnESP.BackgroundColor3=Settings.ESPEnabled and Color3.fromRGB(20,50,74) or Color3.fromRGB(24,24,40)
+    if not Settings.ESPEnabled then ClearESP() end
+end)
+
+-- Menu Lock
+BtnLockMenu.Activated:Connect(function()
+    menuLocked=not menuLocked
+    BtnLockMenu.Text=menuLocked and "🔒" or "🔓"
+    BtnLockMenu.BackgroundColor3=menuLocked and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
 end)
 
 -- Minimize/Close
