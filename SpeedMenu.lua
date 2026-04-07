@@ -43,6 +43,7 @@ local targetIndex   = 1
 local lockConn      = nil
 local foundColors   = {}
 local forceRescan   = false
+local TPScanEnabled = false
 local espBoxes      = {}
 local espTimer      = 0
 local ESP_INTERVAL  = 0.3
@@ -51,7 +52,6 @@ local tpSaves       = {}
 local tpSelected    = nil
 local clickTP       = false
 local lockPos       = nil
-local scanWarpClick = false
 -- CamSystem
 local camLocked   = false
 local camFreecam  = false
@@ -234,11 +234,11 @@ SF.Visible=false
 local STB=mkFrame(SF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8); mkAccent(STB)
 mkDrag(SF,STB,nil)
 mkLbl(STB,"🔍 Scan",UDim2.new(1,-108,1,0),UDim2.new(0,8,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
-local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-114,0.5,-11),Color3.fromRGB(48,48,160))
-local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-90,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
-local BtnScanTP =mkBtn(STB,"TP", UDim2.new(0,22,0,22),UDim2.new(1,-66,0.5,-11),Color3.fromRGB(20,84,20),Color3.fromRGB(210,255,210),9)
-local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-42,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
-local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-20,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
+local BtnTPScan=mkBtn(STB,"🚀",UDim2.new(0,22,0,22),UDim2.new(1,-116,0.5,-11),Color3.fromRGB(30,80,30))
+local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-92,0.5,-11),Color3.fromRGB(48,48,160))
+local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-68,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
+local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-44,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
+local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
 
 local FBar=mkFrame(SF,UDim2.new(1,-16,0,22),UDim2.new(0,8,0,32),Color3.fromRGB(16,16,26),false,5)
 local FLbl=mkLbl(FBar,"🎨 Filter: ทั้งหมด",UDim2.new(1,-28,1,0),UDim2.new(0,6,0,0),9,Color3.fromRGB(120,120,170))
@@ -438,18 +438,6 @@ local function SetTarget(model)
     end
 end
 
-local function TeleportToModel(model)
-    local char = LocalPlayer.Character
-    if not char then return false end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
-    if not model or not model.Parent then return false end
-    local hrp = GetRoot(model)
-    if not hrp then return false end
-    root.CFrame = hrp.CFrame + Vector3.new(0, 3, 0)
-    return true
-end
-
 -- ══ ESP ══
 local function ClearESP()
     for _,bb in pairs(espBoxes) do pcall(function() bb:Destroy() end) end
@@ -577,23 +565,21 @@ local function StartLock()
             SetTarget(nil); forceRescan=true; return
         end
 
-        local myPos  = myHRP.Position
-        local aimPos = hrp.Position + Vector3.new(0, AIM_OFFSET, 0)
-        local diff   = Vector3.new(aimPos.X-myPos.X, 0, aimPos.Z-myPos.Z)
-        if diff.Magnitude < 0.01 then return end
-        local dir = diff.Unit
+        local myPos = myHRP.Position
 
-        -- คำนวณ CFrame กล้อง
-        local camPos = myPos - dir * CAM_DISTANCE + Vector3.new(0, CAM_HEIGHT, 0)
-        local goalCF = CFrame.lookAt(camPos, aimPos)
+        local head = currentTarget:FindFirstChild("Head")
+        local targetPos = head and head.Position or hrp.Position
+        local aimPos = targetPos + Vector3.new(0, AIM_OFFSET, 0)
 
-        -- frame-independent lerp ไม่สั่น
+        local camCF = CFrame.new(Camera.CFrame.Position, aimPos)
         local alpha = 1 - (1 - str)^(math.min(dt,0.05)*60)
-        Camera.CFrame = Camera.CFrame:Lerp(goalCF, alpha)
+        Camera.CFrame = Camera.CFrame:Lerp(camCF, alpha)
 
-        -- หมุนตัวละคร XZ
-        local bg = CFrame.new(myPos)*CFrame.Angles(0, math.atan2(-dir.X,-dir.Z), 0)
-        myHRP.CFrame = myHRP.CFrame:Lerp(bg, alpha)
+        local lookDir = (Vector3.new(aimPos.X, myPos.Y, aimPos.Z) - myPos)
+        if lookDir.Magnitude > 0 then
+            local bodyCF = CFrame.new(myPos, myPos + lookDir.Unit)
+            myHRP.CFrame = myHRP.CFrame:Lerp(bodyCF, alpha)
+        end
     end)
 end
 
@@ -768,11 +754,6 @@ BtnSClose.Activated:Connect(function()
     scanVis=false; SF.Visible=false; CPop.Visible=false; EPop.Visible=false
     BtnScan.BackgroundColor3=Color3.fromRGB(24,24,40)
 end)
-BtnScanTP.Activated:Connect(function()
-    scanWarpClick = not scanWarpClick
-    BtnScanTP.Text = scanWarpClick and "TP ON" or "TP"
-    BtnScanTP.BackgroundColor3 = scanWarpClick and Color3.fromRGB(20,92,40) or Color3.fromRGB(20,84,20)
-end)
 local sMin=false
 BtnSMin.Activated:Connect(function()
     sMin=not sMin; SScr.Visible=not sMin; BtnDoScan.Visible=not sMin
@@ -796,8 +777,15 @@ BtnDoScan.Activated:Connect(function()
         b.Activated:Connect(function()
             targetIndex=i
             SetTarget(e.model)
-            if scanWarpClick then
-                TeleportToModel(e.model)
+            if TPScanEnabled then
+                local char=LocalPlayer.Character
+                if char then
+                    local root=char:FindFirstChild("HumanoidRootPart")
+                    local hrp=GetRoot(e.model)
+                    if root and hrp then
+                        root.CFrame = hrp.CFrame + Vector3.new(0,3,0)
+                    end
+                end
             end
         end)
     end
@@ -895,3 +883,9 @@ end)
 
 -- ══ INIT ══
 if Settings.NearestMode then BtnNear.Text="📍 Nearest : ON"; BtnNear.BackgroundColor3=Color3.fromRGB(20,58,20) end
+
+
+BtnTPScan.Activated:Connect(function()
+    TPScanEnabled = not TPScanEnabled
+    BtnTPScan.BackgroundColor3 = TPScanEnabled and Color3.fromRGB(20,120,20) or Color3.fromRGB(30,80,30)
+end)
