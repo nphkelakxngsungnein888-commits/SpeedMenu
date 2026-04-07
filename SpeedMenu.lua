@@ -191,7 +191,7 @@ local InpRange=mkInp(Con,Settings.LockRange,UDim2.new(1,-16,0,24),UDim2.new(0,8,
 mkDiv(Con,100)
 
 -- AIM OFFSET + CAM DIST (ค่า 3=AimOffset, ค่า 4=CamDist ค่า default 0 ทั้งคู่)
-mkLbl(Con,"⬆ Aim Offset (↑1 ↓-1 กลาง=0)", UDim2.new(1,-16,0,13),UDim2.new(0,8,0,104),9)
+mkLbl(Con,"⬆ Aim Offset องศา (0=กลาง ↑บน ↓ล่าง)", UDim2.new(1,-16,0,13),UDim2.new(0,8,0,104),9)
 mkLbl(Con,"📷 Cam Dist",UDim2.new(0,95,0,13),UDim2.new(0,120,0,118),9)
 local InpAim    =mkInp(Con,AIM_OFFSET,  UDim2.new(0,96,0,24),UDim2.new(0,8,0,117))
 local InpCamDst =mkInp(Con,CAM_DISTANCE,UDim2.new(0,96,0,24),UDim2.new(0,120,0,131))
@@ -567,16 +567,30 @@ local function StartLock()
 
         local myPos = myHRP.Position
 
+        -- หาตำแหน่งเป้าหมาย (ใช้ Head ถ้ามี ไม่งั้นใช้ HRP)
         local head = currentTarget:FindFirstChild("Head")
         local targetPos = head and head.Position or hrp.Position
-        local aimPos = targetPos + Vector3.new(0, AIM_OFFSET, 0)
 
-        local camCF = CFrame.new(Camera.CFrame.Position, aimPos)
+        -- ═══════════════════════════════════════════════════
+        -- FIX: Screen-space offset — ไม่ขึ้นกับระยะ
+        -- วิธี: มองตรงไปที่เป้าก่อน แล้วหมุนกล้องขึ้น/ลง
+        -- ตาม AIM_OFFSET เป็น "องศา" (ไม่ใช่ studs)
+        -- 0 = ตรงเป้า, บวก = เลยขึ้นบน, ลบ = ลงล่าง
+        -- ═══════════════════════════════════════════════════
+        local camPos   = Camera.CFrame.Position
+        -- หา direction ตรงไปที่เป้า
+        local toTarget = (targetPos - camPos)
+        if toTarget.Magnitude < 0.1 then return end
+        local baseCF   = CFrame.lookAt(camPos, targetPos)
+        -- หมุนกล้องขึ้น/ลง ตาม AIM_OFFSET องศา (pitch offset)
+        local offsetCF = baseCF * CFrame.Angles(math.rad(-AIM_OFFSET), 0, 0)
+
         local alpha = 1 - (1 - str)^(math.min(dt,0.05)*60)
-        Camera.CFrame = Camera.CFrame:Lerp(camCF, alpha)
+        Camera.CFrame = Camera.CFrame:Lerp(offsetCF, alpha)
 
-        local lookDir = (Vector3.new(aimPos.X, myPos.Y, aimPos.Z) - myPos)
-        if lookDir.Magnitude > 0 then
+        -- หมุนตัวละครหันหน้าตามเป้า (XZ plane เท่านั้น)
+        local lookDir = Vector3.new(targetPos.X - myPos.X, 0, targetPos.Z - myPos.Z)
+        if lookDir.Magnitude > 0.1 then
             local bodyCF = CFrame.new(myPos, myPos + lookDir.Unit)
             myHRP.CFrame = myHRP.CFrame:Lerp(bodyCF, alpha)
         end
@@ -599,7 +613,6 @@ RunService.Heartbeat:Connect(function(dt)
         if (root.Position-lockPos).Magnitude>10 then root.CFrame=CFrame.new(lockPos+Vector3.new(0,3,0)) end
     end
 end)
-
 -- ══ CAMERA SYSTEM (RenderStepped — Camera.CFrame ต้องอยู่นี่) ══
 RunService.RenderStepped:Connect(function(dt)
     if camLocked and not camFreecam then
