@@ -24,7 +24,7 @@ local jumpCount = 0
 local flying = false
 local flyBV, flyBG
 
---// CHARACTER SETUP
+--// CHARACTER
 local function setupCharacter(char)
     character = char
     humanoid = char:WaitForChild("Humanoid")
@@ -53,20 +53,18 @@ UIS.JumpRequest:Connect(function()
     end
 end)
 
---// FLY SYSTEM
+--// FLY
 local function startFly()
     if not root then return end
-
     flying = true
 
     flyBV = Instance.new("BodyVelocity")
     flyBV.MaxForce = Vector3.new(1e5,1e5,1e5)
-    flyBV.Velocity = Vector3.zero
     flyBV.Parent = root
 
     flyBG = Instance.new("BodyGyro")
     flyBG.MaxTorque = Vector3.new(1e5,1e5,1e5)
-    flyBG.CFrame = root.CFrame
+    flyBG.P = 1e4
     flyBG.Parent = root
 end
 
@@ -76,40 +74,44 @@ local function stopFly()
     if flyBG then flyBG:Destroy() flyBG = nil end
 end
 
---// MOVEMENT LOOP
+--// LOOP
 RunService.RenderStepped:Connect(function()
     if humanoid then
         if state.enableSpeed then
             humanoid.WalkSpeed = state.walkSpeed
+        else
+            humanoid.WalkSpeed = 16
         end
 
         if state.enableJump then
             humanoid.JumpPower = state.jumpPower
+        else
+            humanoid.JumpPower = 50
         end
     end
 
-    if state.enableFly and flying and root then
-        local moveDir = humanoid.MoveDirection
+    if state.enableFly and flying and root and humanoid then
         local camCF = camera.CFrame
+        local moveDir = humanoid.MoveDirection
 
-        local direction = (camCF.LookVector * moveDir.Z + camCF.RightVector * moveDir.X)
-        flyBV.Velocity = direction * state.flySpeed
+        local move = (camCF.LookVector * moveDir.Z + camCF.RightVector * moveDir.X)
+
+        flyBV.Velocity = move * state.flySpeed
         flyBG.CFrame = CFrame.new(root.Position, root.Position + camCF.LookVector)
     end
 end)
 
 --// UI
-local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+local gui = Instance.new("ScreenGui")
+gui.Parent = player:WaitForChild("PlayerGui")
 gui.ResetOnSpawn = false
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0,220,0,260)
-frame.Position = UDim2.new(0.02,0,0.2,0)
-frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+frame.Size = UDim2.new(0,230,0,300)
+frame.Position = UDim2.new(0.03,0,0.2,0)
+frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
 frame.BorderSizePixel = 0
-
-local uiCorner = Instance.new("UICorner", frame)
-uiCorner.CornerRadius = UDim.new(0,8)
+Instance.new("UICorner", frame)
 
 -- DRAG
 local dragging, dragInput, dragStart, startPos
@@ -146,56 +148,76 @@ UIS.InputEnded:Connect(function(input)
     end
 end)
 
--- UI ELEMENT CREATOR
-local function createToggle(name, posY, callback)
-    local btn = Instance.new("TextButton", frame)
-    btn.Size = UDim2.new(0.9,0,0,28)
-    btn.Position = UDim2.new(0.05,0,0,posY)
-    btn.Text = name.." : OFF"
-    btn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    btn.TextColor3 = Color3.white
-    Instance.new("UICorner", btn)
+-- UI LAYOUT
+local layout = Instance.new("UIListLayout", frame)
+layout.Padding = UDim.new(0,5)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local stateLocal = false
+local function createRow(title, default, toggleCallback, valueCallback)
+    local row = Instance.new("Frame", frame)
+    row.Size = UDim2.new(1,0,0,40)
+    row.BackgroundTransparency = 1
 
-    btn.MouseButton1Click:Connect(function()
-        stateLocal = not stateLocal
-        btn.Text = name.." : "..(stateLocal and "ON" or "OFF")
-        callback(stateLocal)
-    end)
-end
+    local label = Instance.new("TextLabel", row)
+    label.Size = UDim2.new(0.4,0,1,0)
+    label.Text = title
+    label.TextColor3 = Color3.white
+    label.BackgroundTransparency = 1
+    label.TextScaled = true
 
-local function createBox(name, posY, default, callback)
-    local box = Instance.new("TextBox", frame)
-    box.Size = UDim2.new(0.9,0,0,28)
-    box.Position = UDim2.new(0.05,0,0,posY)
-    box.Text = name..": "..default
+    local toggle = Instance.new("TextButton", row)
+    toggle.Size = UDim2.new(0.25,0,0.8,0)
+    toggle.Position = UDim2.new(0.4,0,0.1,0)
+    toggle.Text = "OFF"
+    toggle.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    toggle.TextColor3 = Color3.white
+    Instance.new("UICorner", toggle)
+
+    local box = Instance.new("TextBox", row)
+    box.Size = UDim2.new(0.3,0,0.8,0)
+    box.Position = UDim2.new(0.7,0,0.1,0)
+    box.Text = tostring(default)
     box.BackgroundColor3 = Color3.fromRGB(35,35,35)
     box.TextColor3 = Color3.white
     Instance.new("UICorner", box)
 
+    local enabled = false
+
+    toggle.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        toggle.Text = enabled and "ON" or "OFF"
+        toggle.BackgroundColor3 = enabled and Color3.fromRGB(0,170,100) or Color3.fromRGB(50,50,50)
+        toggleCallback(enabled)
+    end)
+
     box.FocusLost:Connect(function()
-        local val = tonumber(box.Text:match("%d+"))
+        local val = tonumber(box.Text)
         if val then
-            callback(val)
+            valueCallback(val)
         end
     end)
 end
 
---// UI BUILD
+-- BUILD UI
+createRow("Speed", state.walkSpeed,
+    function(v) state.enableSpeed = v end,
+    function(v) state.walkSpeed = v end
+)
 
-createToggle("Speed",10,function(v) state.enableSpeed = v end)
-createBox("WalkSpeed",45,state.walkSpeed,function(v) state.walkSpeed = v end)
+createRow("Jump", state.jumpPower,
+    function(v) state.enableJump = v end,
+    function(v) state.jumpPower = v end
+)
 
-createToggle("Jump",80,function(v) state.enableJump = v end)
-createBox("JumpPower",115,state.jumpPower,function(v) state.jumpPower = v end)
+createRow("MultiJump", state.multiJump,
+    function(v) state.enableMultiJump = v end,
+    function(v) state.multiJump = v end
+)
 
-createToggle("MultiJump",150,function(v) state.enableMultiJump = v end)
-createBox("JumpCount",185,state.multiJump,function(v) state.multiJump = v end)
-
-createToggle("Fly",220,function(v)
-    state.enableFly = v
-    if v then startFly() else stopFly() end
-end)
-
-createBox("FlySpeed",255,state.flySpeed,function(v) state.flySpeed = v end)
+createRow("Fly", state.flySpeed,
+    function(v)
+        state.enableFly = v
+        if v then startFly() else stopFly() end
+    end,
+    function(v) state.flySpeed = v end
+)
