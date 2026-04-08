@@ -1,214 +1,148 @@
---// SERVICES
-local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-
---// PLAYER
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
-
---// CONTROLS
-local PlayerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
-local controls = PlayerModule:GetControls()
-
---// STATE
-local state = {
-	walkSpeed = 16,
-	jumpPower = 50,
-	multiJump = 1,
-	flySpeed = 60,
-
-	enableSpeed = false,
-	enableJump = false,
-	enableMultiJump = false,
-	enableFly = false,
-}
-
-local character, humanoid, root
-local stateConn
-local jumpCount = 0
-local flying = false
-local flyBV, flyBG
-
---// CLEANUP
-local function cleanupFly()
-	flying = false
-	if flyBV then flyBV:Destroy() flyBV = nil end
-	if flyBG then flyBG:Destroy() flyBG = nil end
-end
-
---// CHARACTER
-local function setupCharacter(char)
-	character = char
-	humanoid = char:WaitForChild("Humanoid")
-	root = char:WaitForChild("HumanoidRootPart")
-	camera = workspace.CurrentCamera
-
-	if stateConn then stateConn:Disconnect() end
-	jumpCount = 0
-
-	humanoid.WalkSpeed = state.walkSpeed
-	humanoid.JumpPower = state.jumpPower
-	humanoid.UseJumpPower = true
-	humanoid.AutoRotate = true
-
-	stateConn = humanoid.StateChanged:Connect(function(_, s)
-		if s == Enum.HumanoidStateType.Landed then
-			jumpCount = 0
-		end
-	end)
-end
-
-if player.Character then setupCharacter(player.Character) end
-player.CharacterAdded:Connect(setupCharacter)
-
---// MULTI JUMP
-UIS.JumpRequest:Connect(function()
-	if state.enableMultiJump and humanoid then
-		if jumpCount < math.floor(state.multiJump) then
-			jumpCount += 1
-			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-		end
-	end
-end)
-
---// FLY
-local function startFly()
-	if not root then return end
-	cleanupFly()
-	flying = true
-
-	flyBV = Instance.new("BodyVelocity")
-	flyBV.MaxForce = Vector3.new(1e5,1e5,1e5)
-	flyBV.P = 1e4
-	flyBV.Parent = root
-
-	flyBG = Instance.new("BodyGyro")
-	flyBG.MaxTorque = Vector3.new(1e5,1e5,1e5)
-	flyBG.P = 1e4
-	flyBG.Parent = root
-
-	if humanoid then humanoid.AutoRotate = false end
-end
-
-local function stopFly()
-	if humanoid then humanoid.AutoRotate = true end
-	cleanupFly()
-end
-
---// LOOP (⭐ แกน 3D เต็ม)
-RunService.RenderStepped:Connect(function()
-	if humanoid then
-		humanoid.WalkSpeed = state.enableSpeed and state.walkSpeed or 16
-		humanoid.JumpPower = state.enableJump and state.jumpPower or 50
-	end
-
-	if state.enableFly and flying and root and flyBV and flyBG then
-		local camCF = camera.CFrame
-		local move = controls:GetMoveVector()
-
-		-- ⭐ คำนวณ 3 แกนตามกล้อง
-		local dir =
-			(camCF.LookVector * -move.Z) +
-			(camCF.RightVector * move.X) +
-			(camCF.UpVector * -move.Y)
-
-		flyBV.Velocity = dir * state.flySpeed
-
-		-- หันตามกล้อง
-		flyBG.CFrame = CFrame.new(root.Position, root.Position + camCF.LookVector)
-	end
-end)
+-- เอาโค้ดเดิมทั้งหมดของคุณไว้เหมือนเดิมด้านบน
+-- ❗ แล้ว "แทนที่เฉพาะส่วน UI ทั้งหมด" ด้วยอันนี้
 
 --// UI
 local gui = Instance.new("ScreenGui")
 gui.Name = "MovementPanel"
 gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
 gui.Parent = player:WaitForChild("PlayerGui")
 
-local main = Instance.new("Frame", gui)
-main.Size = UDim2.fromOffset(290,280)
-main.Position = UDim2.new(0,20,0.25,0)
+local main = Instance.new("Frame")
+main.Parent = gui
+main.Size = UDim2.fromOffset(300, 320)
+main.Position = UDim2.new(0, 20, 0.25, 0)
 main.BackgroundColor3 = Color3.fromRGB(20,20,20)
+main.BorderSizePixel = 0
 main.ClipsDescendants = true
-Instance.new("UICorner", main)
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,10)
 
+local stroke = Instance.new("UIStroke", main)
+stroke.Color = Color3.fromRGB(70,70,70)
+stroke.Transparency = 0.3
+
+-- HEADER
 local header = Instance.new("Frame", main)
-header.Size = UDim2.new(1,0,0,34)
+header.Size = UDim2.new(1,0,0,36)
 header.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Instance.new("UICorner", header).CornerRadius = UDim.new(0,10)
+
+local fix = Instance.new("Frame", header)
+fix.Size = UDim2.new(1,0,0.5,0)
+fix.Position = UDim2.new(0,0,0.5,0)
+fix.BackgroundColor3 = header.BackgroundColor3
+fix.BorderSizePixel = 0
 
 local title = Instance.new("TextLabel", header)
 title.Size = UDim2.new(1,-80,1,0)
-title.Position = UDim2.fromOffset(10,0)
-title.Text = "Movement Panel"
-title.TextColor3 = Color3.new(1,1,1)
+title.Position = UDim2.fromOffset(12,0)
+title.Text = "Movement"
+title.Font = Enum.Font.GothamSemibold
+title.TextSize = 14
+title.TextColor3 = Color3.fromRGB(240,240,240)
 title.BackgroundTransparency = 1
+title.TextXAlignment = Enum.TextXAlignment.Left
 
 local mini = Instance.new("TextButton", header)
-mini.Size = UDim2.fromOffset(30,22)
+mini.Size = UDim2.fromOffset(26,22)
 mini.Position = UDim2.new(1,-60,0.5,-11)
 mini.Text = "-"
+mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
+Instance.new("UICorner", mini).CornerRadius = UDim.new(0,6)
 
 local close = Instance.new("TextButton", header)
-close.Size = UDim2.fromOffset(30,22)
+close.Size = UDim2.fromOffset(26,22)
 close.Position = UDim2.new(1,-30,0.5,-11)
 close.Text = "X"
+close.BackgroundColor3 = Color3.fromRGB(120,50,50)
+Instance.new("UICorner", close).CornerRadius = UDim.new(0,6)
 
+-- SCROLL
 local scroll = Instance.new("ScrollingFrame", main)
-scroll.Position = UDim2.fromOffset(0,34)
-scroll.Size = UDim2.new(1,0,1,-34)
+scroll.Position = UDim2.fromOffset(0,36)
+scroll.Size = UDim2.new(1,0,1,-36)
+scroll.BackgroundTransparency = 1
+scroll.ScrollBarThickness = 4
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
+local pad = Instance.new("UIPadding", scroll)
+pad.PaddingTop = UDim.new(0,10)
+pad.PaddingBottom = UDim.new(0,10)
+pad.PaddingLeft = UDim.new(0,10)
+pad.PaddingRight = UDim.new(0,10)
+
 local list = Instance.new("UIListLayout", scroll)
-list.Padding = UDim.new(0,6)
+list.Padding = UDim.new(0,10)
 
-local function row(name, def, tFunc, vFunc)
-	local r = Instance.new("Frame", scroll)
-	r.Size = UDim2.new(1,0,0,40)
-	r.BackgroundColor3 = Color3.fromRGB(40,40,40)
+-- ROW (สวย)
+local function makeRow(name, def, tFunc, vFunc)
+	local row = Instance.new("Frame", scroll)
+	row.Size = UDim2.new(1,0,0,50)
+	row.BackgroundColor3 = Color3.fromRGB(32,32,32)
+	row.BorderSizePixel = 0
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0,8)
 
-	local l = Instance.new("TextLabel", r)
-	l.Size = UDim2.fromOffset(100,40)
-	l.Text = name
-	l.TextColor3 = Color3.new(1,1,1)
-	l.BackgroundTransparency = 1
+	local s = Instance.new("UIStroke", row)
+	s.Color = Color3.fromRGB(70,70,70)
+	s.Transparency = 0.4
 
-	local t = Instance.new("TextButton", r)
-	t.Position = UDim2.fromOffset(105,5)
-	t.Size = UDim2.fromOffset(60,30)
-	t.Text = "OFF"
+	local label = Instance.new("TextLabel", row)
+	label.Position = UDim2.fromOffset(12,0)
+	label.Size = UDim2.fromOffset(110,50)
+	label.Text = name
+	label.Font = Enum.Font.GothamMedium
+	label.TextSize = 13
+	label.TextColor3 = Color3.fromRGB(240,240,240)
+	label.BackgroundTransparency = 1
+	label.TextXAlignment = Enum.TextXAlignment.Left
 
-	local b = Instance.new("TextBox", r)
-	b.Position = UDim2.new(1,-80,0.5,-15)
-	b.Size = UDim2.fromOffset(70,30)
-	b.Text = tostring(def)
+	local toggle = Instance.new("TextButton", row)
+	toggle.Size = UDim2.fromOffset(60,28)
+	toggle.Position = UDim2.new(0,130,0.5,-14)
+	toggle.Text = "OFF"
+	toggle.Font = Enum.Font.GothamBold
+	toggle.TextSize = 12
+	toggle.BackgroundColor3 = Color3.fromRGB(70,70,70)
+	toggle.TextColor3 = Color3.new(1,1,1)
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0,6)
+
+	local box = Instance.new("TextBox", row)
+	box.Size = UDim2.fromOffset(80,28)
+	box.Position = UDim2.new(1,-90,0.5,-14)
+	box.Text = tostring(def)
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 12
+	box.BackgroundColor3 = Color3.fromRGB(24,24,24)
+	box.TextColor3 = Color3.new(1,1,1)
+	Instance.new("UICorner", box).CornerRadius = UDim.new(0,6)
 
 	local on=false
-	t.MouseButton1Click:Connect(function()
-		on=not on
-		t.Text=on and "ON" or "OFF"
+	toggle.MouseButton1Click:Connect(function()
+		on = not on
+		toggle.Text = on and "ON" or "OFF"
+		toggle.BackgroundColor3 = on and Color3.fromRGB(0,170,110) or Color3.fromRGB(70,70,70)
 		tFunc(on)
 	end)
 
-	b.FocusLost:Connect(function()
-		local v=tonumber(b.Text)
-		if v then vFunc(v) end
+	box.FocusLost:Connect(function()
+		local v=tonumber(box.Text)
+		if v then vFunc(v) else box.Text=tostring(def) end
 	end)
 end
 
-row("WalkSpeed", state.walkSpeed,
+makeRow("WalkSpeed", state.walkSpeed,
 	function(v) state.enableSpeed=v end,
 	function(v) state.walkSpeed=v end)
 
-row("JumpPower", state.jumpPower,
+makeRow("JumpPower", state.jumpPower,
 	function(v) state.enableJump=v end,
 	function(v) state.jumpPower=v end)
 
-row("MultiJump", state.multiJump,
+makeRow("MultiJump", state.multiJump,
 	function(v) state.enableMultiJump=v end,
 	function(v) state.multiJump=v end)
 
-row("FlySpeed", state.flySpeed,
+makeRow("FlySpeed", state.flySpeed,
 	function(v)
 		state.enableFly=v
 		if v then startFly() else stopFly() end
@@ -243,10 +177,4 @@ local minimized=false
 mini.MouseButton1Click:Connect(function()
 	minimized=not minimized
 	scroll.Visible=not minimized
-	main.Size=minimized and UDim2.fromOffset(290,34) or UDim2.fromOffset(290,280)
-end)
-
-close.MouseButton1Click:Connect(function()
-	stopFly()
-	gui:Destroy()
-end)
+	main.Size=minimized and UDim
