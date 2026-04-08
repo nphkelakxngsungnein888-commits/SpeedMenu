@@ -218,10 +218,11 @@ local BtnNext=mkBtn(Con,"▶",UDim2.new(0,38,0,26),UDim2.new(0,176,0,233),Color3
 mkDiv(Con,265)
 
 -- FEATURE ROW
-local BtnESP   =mkBtn(Con,"👁 ESP",  UDim2.new(0,50,0,26),UDim2.new(0,8,0,271),  Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),10)
-local BtnScan  =mkBtn(Con,"🔍 Scan", UDim2.new(0,50,0,26),UDim2.new(0,62,0,271), Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),10)
-local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,50,0,26),UDim2.new(0,116,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),10)
-local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,46,0,26),UDim2.new(0,170,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),10)
+local BtnESP   =mkBtn(Con,"👁 ESP",  UDim2.new(0,42,0,26),UDim2.new(0,8,0,271),  Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnScan  =mkBtn(Con,"🔍 Scan", UDim2.new(0,42,0,26),UDim2.new(0,54,0,271), Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,42,0,26),UDim2.new(0,100,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,38,0,26),UDim2.new(0,146,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnMove  =mkBtn(Con,"🏃 Move", UDim2.new(0,42,0,26),UDim2.new(0,188,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
 
 mkDiv(Con,303)
 local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,308),10,Color3.fromRGB(60,60,90))
@@ -350,6 +351,165 @@ TPScr.BackgroundColor3=Color3.fromRGB(13,13,20); TPScr.BorderSizePixel=0
 TPScr.ScrollBarThickness=3; TPScr.CanvasSize=UDim2.new(0,0,0,0); TPScr.Parent=TF
 Instance.new("UICorner",TPScr).CornerRadius=UDim.new(0,5)
 local TPLayout=Instance.new("UIListLayout"); TPLayout.Padding=UDim.new(0,4); TPLayout.Parent=TPScr
+
+-- ══════════════════════════════════════════════
+--   MOVEMENT PANEL FRAME
+-- ══════════════════════════════════════════════
+local MvF=mkFrame(SG,UDim2.new(0,260,0,360),UDim2.new(0.5,-130,0.5,-180),Color3.fromRGB(11,11,17),true)
+MvF.Visible=false
+
+local MvTB=mkFrame(MvF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
+do local a=Instance.new("Frame"); a.Size=UDim2.new(1,0,0,2); a.Position=UDim2.new(0,0,1,-2)
+   a.BackgroundColor3=Color3.fromRGB(80,200,100); a.BorderSizePixel=0; a.Parent=MvTB end
+mkDrag(MvF,MvTB,nil)
+mkLbl(MvTB,"🏃 Movement Panel",UDim2.new(1,-55,1,0),UDim2.new(0,8,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local BtnMvMin  =mkBtn(MvTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
+local BtnMvClose=mkBtn(MvTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
+
+local MvScr=Instance.new("ScrollingFrame")
+MvScr.Size=UDim2.new(1,-8,1,-36); MvScr.Position=UDim2.new(0,4,0,36)
+MvScr.BackgroundTransparency=1; MvScr.BorderSizePixel=0
+MvScr.ScrollBarThickness=3; MvScr.ScrollBarImageColor3=Color3.fromRGB(60,60,100)
+MvScr.AutomaticCanvasSize=Enum.AutomaticSize.Y
+MvScr.CanvasSize=UDim2.new(0,0,0,0); MvScr.Parent=MvF
+local MvLayout=Instance.new("UIListLayout"); MvLayout.Padding=UDim.new(0,6); MvLayout.Parent=MvScr
+Instance.new("UIPadding",MvScr).PaddingTop=UDim.new(0,6)
+
+-- ══ MOVEMENT STATE ══
+local mvState = {
+    walkSpeed=16, jumpPower=50, multiJump=5, flySpeed=60, heightLock=0,
+    enableSpeed=false, enableJump=false, enableMultiJump=false,
+    enableFly=false, enableHeight=false, enableNoclip=false, enableAntiTP=true,
+}
+local mvChar, mvHumanoid, mvRoot
+local mvJumpCount=0; local mvCanJumpAgain=false; local mvJumpDebounce=false
+local mvFlying=false; local mvFlyBV=nil; local mvFlyBG=nil
+local mvStateConn=nil; local mvLastPos=nil
+
+local function mvSetupChar(char)
+    mvChar=char
+    mvHumanoid=char:WaitForChild("Humanoid")
+    mvRoot=char:WaitForChild("HumanoidRootPart")
+    mvJumpCount=0; mvCanJumpAgain=false; mvJumpDebounce=false; mvLastPos=nil
+    if mvStateConn then mvStateConn:Disconnect() end
+    mvStateConn=mvHumanoid.StateChanged:Connect(function(_,new)
+        if new==Enum.HumanoidStateType.Landed then mvJumpCount=0; mvCanJumpAgain=false
+        elseif new==Enum.HumanoidStateType.Freefall then mvCanJumpAgain=true end
+    end)
+end
+if LocalPlayer.Character then mvSetupChar(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(mvSetupChar)
+
+-- MultiJump
+UserInputService.InputBegan:Connect(function(input,gp)
+    if gp then return end
+    if input.KeyCode==Enum.KeyCode.Space then
+        if mvState.enableMultiJump and mvHumanoid then
+            if mvJumpDebounce then return end
+            mvJumpDebounce=true
+            if mvCanJumpAgain and mvJumpCount<mvState.multiJump then
+                mvJumpCount=mvJumpCount+1; mvCanJumpAgain=false
+                mvHumanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+            task.delay(0.15,function() mvJumpDebounce=false end)
+        end
+    end
+end)
+
+-- Fly
+local PlayerModule2=require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
+local mvControls=PlayerModule2:GetControls()
+
+local function mvStartFly()
+    if not mvRoot then return end; mvFlying=true
+    mvFlyBV=Instance.new("BodyVelocity",mvRoot); mvFlyBV.MaxForce=Vector3.new(1e6,1e6,1e6)
+    mvFlyBG=Instance.new("BodyGyro",mvRoot); mvFlyBG.MaxTorque=Vector3.new(1e6,1e6,1e6)
+    mvHumanoid.AutoRotate=false
+end
+local function mvStopFly()
+    mvFlying=false
+    if mvFlyBV then mvFlyBV:Destroy() end
+    if mvFlyBG then mvFlyBG:Destroy() end
+    if mvHumanoid then mvHumanoid.AutoRotate=true end
+end
+
+local mvRayParams=RaycastParams.new(); mvRayParams.FilterType=Enum.RaycastFilterType.Blacklist
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+    if not mvHumanoid or not mvRoot then return end
+    mvHumanoid.WalkSpeed = mvState.enableSpeed and mvState.walkSpeed or 16
+    mvHumanoid.JumpPower = mvState.enableJump  and mvState.jumpPower  or 50
+    if mvState.enableFly and mvFlying and mvFlyBV and mvFlyBG then
+        local cf=Camera.CFrame; local mv=mvControls:GetMoveVector()
+        local dir=(cf.LookVector*-mv.Z)+(cf.RightVector*mv.X)+(cf.UpVector*-mv.Y)
+        mvFlyBV.Velocity=dir*mvState.flySpeed
+        mvFlyBG.CFrame=CFrame.new(mvRoot.Position,mvRoot.Position+cf.LookVector)
+    end
+    if mvState.enableHeight then
+        mvRayParams.FilterDescendantsInstances={mvChar}
+        local res=workspace:Raycast(mvRoot.Position,Vector3.new(0,-1000,0),mvRayParams)
+        if res then
+            local tgt=res.Position+res.Normal*mvState.heightLock
+            mvRoot.CFrame=CFrame.new(mvRoot.Position.X,tgt.Y,mvRoot.Position.Z)
+            mvRoot.Velocity=Vector3.new(mvRoot.Velocity.X,0,mvRoot.Velocity.Z)
+        end
+    end
+    if mvState.enableNoclip and mvChar then
+        for _,v in pairs(mvChar:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide=false; v.Massless=true end
+        end
+    end
+    if mvState.enableAntiTP then
+        if mvLastPos then
+            local dist=(mvRoot.Position-mvLastPos).Magnitude
+            local spd=mvRoot.Velocity.Magnitude
+            if dist>30 and spd<120 then mvRoot.CFrame=CFrame.new(mvLastPos) end
+        end
+        mvLastPos=mvRoot.Position
+    end
+end)
+
+-- ══ ROW BUILDER ══
+local function mkMvRow(emoji,name,defVal,onToggle,onVal)
+    local row=Instance.new("Frame"); row.Size=UDim2.new(1,-8,0,44)
+    row.BackgroundColor3=Color3.fromRGB(18,18,28); row.BorderSizePixel=0; row.Parent=MvScr
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,6)
+
+    -- emoji + name label
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(0,120,1,0); lbl.Position=UDim2.new(0,8,0,0)
+    lbl.BackgroundTransparency=1; lbl.Text=emoji.." "..name
+    lbl.TextColor3=Color3.fromRGB(200,200,255); lbl.TextSize=10; lbl.Font=Enum.Font.GothamBold
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.Parent=row
+
+    -- toggle button
+    local tog=mkBtn(row,"OFF",UDim2.new(0,44,0,26),UDim2.new(0,130,0.5,-13),
+        Color3.fromRGB(140,30,30),Color3.fromRGB(255,200,200),10)
+    local on=false
+    tog.Activated:Connect(function()
+        on=not on; tog.Text=on and "ON" or "OFF"
+        tog.BackgroundColor3=on and Color3.fromRGB(25,90,25) or Color3.fromRGB(140,30,30)
+        tog.TextColor3=on and Color3.fromRGB(180,255,180) or Color3.fromRGB(255,200,200)
+        onToggle(on)
+    end)
+
+    -- value box (숨긴다 ถ้า defVal==-1)
+    if defVal ~= -1 then
+        local box=mkInp(row,defVal,UDim2.new(0,58,0,26),UDim2.new(1,-66,0.5,-13))
+        box.FocusLost:Connect(function()
+            local v=tonumber(box.Text); if v then onVal(v) else box.Text=tostring(defVal) end
+        end)
+    end
+    return tog
+end
+
+mkMvRow("🏃","WalkSpeed", 16,  function(v) mvState.enableSpeed=v end,    function(v) mvState.walkSpeed=v end)
+mkMvRow("🦘","JumpPower",  50,  function(v) mvState.enableJump=v end,     function(v) mvState.jumpPower=v end)
+mkMvRow("🔁","MultiJump",  5,   function(v) mvState.enableMultiJump=v end,function(v) mvState.multiJump=v end)
+mkMvRow("🕊️","FlySpeed",  60,  function(v) mvState.enableFly=v; if v then mvStartFly() else mvStopFly() end end, function(v) mvState.flySpeed=v end)
+mkMvRow("📏","HeightLock", 0,   function(v) mvState.enableHeight=v end,   function(v) mvState.heightLock=v end)
+mkMvRow("🧱","Noclip",     -1,  function(v) mvState.enableNoclip=v end,   function() end)
+mkMvRow("🛡️","AntiTP",    -1,  function(v) mvState.enableAntiTP=v end,   function() end)
 
 -- ══════════════════════════════════════════════
 --   CORE LOGIC HELPERS
@@ -613,6 +773,7 @@ RunService.Heartbeat:Connect(function(dt)
         if (root.Position-lockPos).Magnitude>10 then root.CFrame=CFrame.new(lockPos+Vector3.new(0,3,0)) end
     end
 end)
+
 -- ══ CAMERA SYSTEM (RenderStepped — Camera.CFrame ต้องอยู่นี่) ══
 RunService.RenderStepped:Connect(function(dt)
     if camLocked and not camFreecam then
@@ -896,6 +1057,24 @@ end)
 
 -- ══ INIT ══
 if Settings.NearestMode then BtnNear.Text="📍 Nearest : ON"; BtnNear.BackgroundColor3=Color3.fromRGB(20,58,20) end
+
+-- ══ MOVEMENT PANEL CONNECTIONS ══
+local mvVis=false
+BtnMove.Activated:Connect(function()
+    mvVis=not mvVis; MvF.Visible=mvVis
+    BtnMove.BackgroundColor3=mvVis and Color3.fromRGB(20,70,25) or Color3.fromRGB(24,24,40)
+end)
+
+local mvMin=false
+BtnMvMin.Activated:Connect(function()
+    mvMin=not mvMin; MvScr.Visible=not mvMin
+    MvF.Size=mvMin and UDim2.new(0,260,0,30) or UDim2.new(0,260,0,360)
+end)
+
+BtnMvClose.Activated:Connect(function()
+    mvVis=false; MvF.Visible=false
+    BtnMove.BackgroundColor3=Color3.fromRGB(24,24,40)
+end)
 
 
 BtnTPScan.Activated:Connect(function()
