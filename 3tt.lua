@@ -3,93 +3,134 @@ local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
+--// PLAYER
 local player = Players.LocalPlayer
-local mouse = player:GetMouse()
+local character, humanoid, root, camera
 
 --// STATE
-local saves = {}
-local selectedIndex = nil
-local clickTP = false
-local lockPos = nil
+local state = {
+    walkSpeed = 16,
+    jumpPower = 50,
+    multiJump = 1,
+    flySpeed = 60,
+
+    enableSpeed = false,
+    enableJump = false,
+    enableMultiJump = false,
+    enableFly = false
+}
+
+local jumpCount = 0
+local flying = false
+local flyBV, flyBG
+
+--// CHARACTER SETUP
+local function setupCharacter(char)
+    character = char
+    humanoid = char:WaitForChild("Humanoid")
+    root = char:WaitForChild("HumanoidRootPart")
+    camera = workspace.CurrentCamera
+
+    jumpCount = 0
+
+    humanoid.StateChanged:Connect(function(_, new)
+        if new == Enum.HumanoidStateType.Landed then
+            jumpCount = 0
+        end
+    end)
+end
+
+if player.Character then setupCharacter(player.Character) end
+player.CharacterAdded:Connect(setupCharacter)
+
+--// MULTI JUMP
+UIS.JumpRequest:Connect(function()
+    if state.enableMultiJump and humanoid then
+        if jumpCount < state.multiJump then
+            jumpCount += 1
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+--// FLY SYSTEM
+local function startFly()
+    if not root then return end
+
+    flying = true
+
+    flyBV = Instance.new("BodyVelocity")
+    flyBV.MaxForce = Vector3.new(1e5,1e5,1e5)
+    flyBV.Velocity = Vector3.zero
+    flyBV.Parent = root
+
+    flyBG = Instance.new("BodyGyro")
+    flyBG.MaxTorque = Vector3.new(1e5,1e5,1e5)
+    flyBG.CFrame = root.CFrame
+    flyBG.Parent = root
+end
+
+local function stopFly()
+    flying = false
+    if flyBV then flyBV:Destroy() flyBV = nil end
+    if flyBG then flyBG:Destroy() flyBG = nil end
+end
+
+--// MOVEMENT LOOP
+RunService.RenderStepped:Connect(function()
+    if humanoid then
+        if state.enableSpeed then
+            humanoid.WalkSpeed = state.walkSpeed
+        end
+
+        if state.enableJump then
+            humanoid.JumpPower = state.jumpPower
+        end
+    end
+
+    if state.enableFly and flying and root then
+        local moveDir = humanoid.MoveDirection
+        local camCF = camera.CFrame
+
+        local direction = (camCF.LookVector * moveDir.Z + camCF.RightVector * moveDir.X)
+        flyBV.Velocity = direction * state.flySpeed
+        flyBG.CFrame = CFrame.new(root.Position, root.Position + camCF.LookVector)
+    end
+end)
 
 --// UI
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "TP_Save_UI"
+local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+gui.ResetOnSpawn = false
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 200, 0, 240)
-frame.Position = UDim2.new(0.02, 0, 0.3, 0)
-frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+frame.Size = UDim2.new(0,220,0,260)
+frame.Position = UDim2.new(0.02,0,0.2,0)
+frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+frame.BorderSizePixel = 0
 
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1, -60, 0, 25)
-title.Position = UDim2.new(0, 5, 0, 0)
-title.Text = "Teleport Save"
-title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-title.TextXAlignment = Enum.TextXAlignment.Left
+local uiCorner = Instance.new("UICorner", frame)
+uiCorner.CornerRadius = UDim.new(0,8)
 
-local close = Instance.new("TextButton", frame)
-close.Size = UDim2.new(0,25,0,25)
-close.Position = UDim2.new(1,-25,0,0)
-close.Text = "X"
-close.BackgroundColor3 = Color3.fromRGB(120,0,0)
-
-local mini = Instance.new("TextButton", frame)
-mini.Size = UDim2.new(0,25,0,25)
-mini.Position = UDim2.new(1,-50,0,0)
-mini.Text = "-"
-mini.BackgroundColor3 = Color3.fromRGB(60,60,60)
-
--- ปุ่ม Save
-local saveBtn = Instance.new("TextButton", frame)
-saveBtn.Size = UDim2.new(0.33,-5,0,30)
-saveBtn.Position = UDim2.new(0,5,0,30)
-saveBtn.Text = "+ Save"
-saveBtn.BackgroundColor3 = Color3.fromRGB(40,120,40)
-
--- 🔥 ปุ่ม Click TP (กลาง)
-local clickBtn = Instance.new("TextButton", frame)
-clickBtn.Size = UDim2.new(0.33,-5,0,30)
-clickBtn.Position = UDim2.new(0.33,0,0,30)
-clickBtn.Text = "Click TP OFF"
-clickBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-
--- ปุ่ม Delete
-local deleteBtn = Instance.new("TextButton", frame)
-deleteBtn.Size = UDim2.new(0.33,-5,0,30)
-deleteBtn.Position = UDim2.new(0.66,0,0,30)
-deleteBtn.Text = "Delete"
-deleteBtn.BackgroundColor3 = Color3.fromRGB(120,40,40)
-
-local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Size = UDim2.new(1,-10,1,-70)
-scroll.Position = UDim2.new(0,5,0,65)
-scroll.CanvasSize = UDim2.new(0,0,0,0)
-scroll.BackgroundColor3 = Color3.fromRGB(20,20,20)
-
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0,4)
-layout.Parent = scroll
-
---// DRAG
-local dragging = false
-local dragStart, startPos
+-- DRAG
+local dragging, dragInput, dragStart, startPos
 
 frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 
-    or input.UserInputType == Enum.UserInputType.Touch then
-        
+    if input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = frame.Position
     end
 end)
 
-UIS.InputChanged:Connect(function(input)
-    if dragging then
-        local delta = input.Position - dragStart
+frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
 
+UIS.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
         frame.Position = UDim2.new(
             startPos.X.Scale,
             startPos.X.Offset + delta.X,
@@ -99,136 +140,62 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
-UIS.InputEnded:Connect(function()
-    dragging = false
-end)
-
---// CLOSE / MINI
-close.MouseButton1Click:Connect(function()
-    gui:Destroy()
-end)
-
-local minimized = false
-mini.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    scroll.Visible = not minimized
-    saveBtn.Visible = not minimized
-    deleteBtn.Visible = not minimized
-    clickBtn.Visible = not minimized
-    frame.Size = minimized and UDim2.new(0,200,0,30) or UDim2.new(0,200,0,240)
-end)
-
---// CLEAR
-local function clearButtons()
-    for _,v in pairs(scroll:GetChildren()) do
-        if not v:IsA("UIListLayout") then
-            v:Destroy()
-        end
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
     end
-end
+end)
 
---// CREATE BUTTON
-local function createButton(i, pos)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1,-5,0,25)
-    btn.Text = "Save "..i
-    btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.Parent = scroll
+-- UI ELEMENT CREATOR
+local function createToggle(name, posY, callback)
+    local btn = Instance.new("TextButton", frame)
+    btn.Size = UDim2.new(0.9,0,0,28)
+    btn.Position = UDim2.new(0.05,0,0,posY)
+    btn.Text = name.." : OFF"
+    btn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    btn.TextColor3 = Color3.white
+    Instance.new("UICorner", btn)
+
+    local stateLocal = false
 
     btn.MouseButton1Click:Connect(function()
-        selectedIndex = i
+        stateLocal = not stateLocal
+        btn.Text = name.." : "..(stateLocal and "ON" or "OFF")
+        callback(stateLocal)
+    end)
+end
 
-        local char = player.Character or player.CharacterAdded:Wait()
-        local root = char:FindFirstChild("HumanoidRootPart")
+local function createBox(name, posY, default, callback)
+    local box = Instance.new("TextBox", frame)
+    box.Size = UDim2.new(0.9,0,0,28)
+    box.Position = UDim2.new(0.05,0,0,posY)
+    box.Text = name..": "..default
+    box.BackgroundColor3 = Color3.fromRGB(35,35,35)
+    box.TextColor3 = Color3.white
+    Instance.new("UICorner", box)
 
-        if root then
-            root.CFrame = CFrame.new(pos.x, pos.y, pos.z)
+    box.FocusLost:Connect(function()
+        local val = tonumber(box.Text:match("%d+"))
+        if val then
+            callback(val)
         end
     end)
 end
 
---// REFRESH
-local function refresh()
-    clearButtons()
-    for i, pos in ipairs(saves) do
-        createButton(i, pos)
-    end
-    scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
-end
+--// UI BUILD
 
---// SAVE
-saveBtn.MouseButton1Click:Connect(function()
-    local char = player.Character or player.CharacterAdded:Wait()
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
+createToggle("Speed",10,function(v) state.enableSpeed = v end)
+createBox("WalkSpeed",45,state.walkSpeed,function(v) state.walkSpeed = v end)
 
-    local pos = {
-        x = root.Position.X,
-        y = root.Position.Y,
-        z = root.Position.Z
-    }
+createToggle("Jump",80,function(v) state.enableJump = v end)
+createBox("JumpPower",115,state.jumpPower,function(v) state.jumpPower = v end)
 
-    table.insert(saves, pos)
-    createButton(#saves, pos)
-    scroll.CanvasSize = UDim2.new(0,0,0,#saves * 30)
+createToggle("MultiJump",150,function(v) state.enableMultiJump = v end)
+createBox("JumpCount",185,state.multiJump,function(v) state.multiJump = v end)
+
+createToggle("Fly",220,function(v)
+    state.enableFly = v
+    if v then startFly() else stopFly() end
 end)
 
---// DELETE
-deleteBtn.MouseButton1Click:Connect(function()
-    if selectedIndex then
-        table.remove(saves, selectedIndex)
-        selectedIndex = nil
-        refresh()
-    end
-end)
-
---// 🔥 CLICK TP (FIXED)
-clickBtn.MouseButton1Click:Connect(function()
-    clickTP = not clickTP
-
-    -- 🔥 ปิด = ล้างตำแหน่ง
-    if not clickTP then
-        lockPos = nil
-    end
-
-    clickBtn.Text = clickTP and "Click TP ON" or "Click TP OFF"
-    clickBtn.BackgroundColor3 = clickTP and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-end)
-
--- 🔥 คลิกวาป (กันบัค)
-mouse.Button1Down:Connect(function()
-    if not clickTP then return end
-
-    lockPos = nil -- 🔥 เคลียร์ก่อนทุกครั้ง
-
-    local char = player.Character
-    if not char then return end
-
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-
-    local hit = mouse.Hit
-    if hit then
-        lockPos = hit.Position
-        root.CFrame = CFrame.new(lockPos + Vector3.new(0,3,0))
-    end
-end)
-
--- 🔥 กันโดนวาปกลับ
-RunService.RenderStepped:Connect(function()
-    if clickTP and lockPos then
-        local char = player.Character
-        if not char then return end
-
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-
-        if (root.Position - lockPos).Magnitude > 10 then
-            root.CFrame = CFrame.new(lockPos + Vector3.new(0,3,0))
-        end
-    end
-end)
-
--- INIT
-refresh()
+createBox("FlySpeed",255,state.flySpeed,function(v) state.flySpeed = v end)
