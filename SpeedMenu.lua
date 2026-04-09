@@ -21,7 +21,8 @@ local Settings = {
     ExcludeColors = {},
     MouseLock     = false,  -- redirect Mouse.Hit → เป้าล็อค
 }
-local AIM_OFFSET   = _S.AIM_OFFSET   or 0    -- ขึ้นลงของเป้า (0=กลาง)
+local AIM_OFFSET   = _S.AIM_OFFSET   or 0    -- ขึ้นลง (0=กลาง)
+local AIM_SIDE     = _S.AIM_SIDE     or 0    -- ซ้ายขวา (0=กลาง)
 local CAM_DISTANCE = _S.CAM_DISTANCE or 0    -- ระยะกล้อง
 local CAM_HEIGHT   = 3
 
@@ -32,6 +33,7 @@ local function SaveSettings()
         Mode         = Settings.Mode,
         NearestMode  = Settings.NearestMode,
         AIM_OFFSET   = AIM_OFFSET,
+        AIM_SIDE     = AIM_SIDE,
         CAM_DISTANCE = CAM_DISTANCE,
     }
 end
@@ -286,46 +288,54 @@ local InpRange=mkInp(Con,Settings.LockRange,UDim2.new(1,-16,0,24),UDim2.new(0,8,
 
 mkDiv(Con,100)
 
--- AIM OFFSET + CAM DIST (ค่า 3=AimOffset, ค่า 4=CamDist ค่า default 0 ทั้งคู่)
-mkLbl(Con,"⬆ Aim Offset องศา (0=กลาง ↑บน ↓ล่าง)", UDim2.new(1,-16,0,13),UDim2.new(0,8,0,104),9)
-mkLbl(Con,"📷 Cam Dist",UDim2.new(0,95,0,13),UDim2.new(0,120,0,118),9)
-local InpAim    =mkInp(Con,AIM_OFFSET,  UDim2.new(0,96,0,24),UDim2.new(0,8,0,117))
-local InpCamDst =mkInp(Con,CAM_DISTANCE,UDim2.new(0,96,0,24),UDim2.new(0,120,0,131))
+-- AIM OFFSET (ขึ้นลง) + AIM SIDE (ซ้ายขวา)
+mkLbl(Con,"⬆ Aim ขึ้น/ลง (0=กลาง)",UDim2.new(0,110,0,13),UDim2.new(0,8,0,104),9)
+mkLbl(Con,"↔ Aim ซ้าย/ขวา",        UDim2.new(0,100,0,13),UDim2.new(0,120,0,104),9)
+local InpAim    =mkInp(Con,AIM_OFFSET,UDim2.new(0,84,0,24),UDim2.new(0,8,0,117))
+local InpAimSide=mkInp(Con,AIM_SIDE,  UDim2.new(0,84,0,24),UDim2.new(0,120,0,117))
+local BtnAimUp  =mkBtn(Con,"+",UDim2.new(0,22,0,22),UDim2.new(0,94,0,117),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),12)
+local BtnAimDn  =mkBtn(Con,"–",UDim2.new(0,22,0,22),UDim2.new(0,94,0,141),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),12)
+local BtnSideL  =mkBtn(Con,"–",UDim2.new(0,22,0,22),UDim2.new(0,206,0,117),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),12)
+local BtnSideR  =mkBtn(Con,"+",UDim2.new(0,22,0,22),UDim2.new(0,206,0,141),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),12)
 
--- +/- buttons สำหรับ AimOffset
-local BtnAimUp  =mkBtn(Con,"+",UDim2.new(0,26,0,22),UDim2.new(0,106,0,117),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),12)
-local BtnAimDn  =mkBtn(Con,"–",UDim2.new(0,26,0,22),UDim2.new(0,106,0,141),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),12)
+-- CAM DIST แถวถัดไป
+mkLbl(Con,"📷 Cam Dist",UDim2.new(1,-16,0,13),UDim2.new(0,8,0,149),9)
+local InpCamDst=mkInp(Con,CAM_DISTANCE,UDim2.new(0,96,0,24),UDim2.new(0,8,0,162))
 
-mkDiv(Con,161)
+mkDiv(Con,192)
 
 -- LOCK BUTTON
-local BtnLock=mkBtn(Con,"🔓 Lock : OFF",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,167),Color3.fromRGB(24,24,40),Color3.fromRGB(175,175,255),12)
-local BtnNear=mkBtn(Con,"📍 Nearest : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,201),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),11)
+local BtnLock=mkBtn(Con,"🔓 Lock : OFF",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,198),Color3.fromRGB(24,24,40),Color3.fromRGB(175,175,255),12)
+local BtnNear=mkBtn(Con,"📍 Nearest : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,232),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),11)
 
 -- PREV/TARGET/NEXT
-local BtnPrev=mkBtn(Con,"◀",UDim2.new(0,38,0,26),UDim2.new(0,8,0,233),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
-local TgtLbl=Instance.new("TextLabel"); TgtLbl.Size=UDim2.new(0,122,0,26); TgtLbl.Position=UDim2.new(0,50,0,233)
+local BtnPrev=mkBtn(Con,"◀",UDim2.new(0,38,0,26),UDim2.new(0,8,0,264),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
+local TgtLbl=Instance.new("TextLabel"); TgtLbl.Size=UDim2.new(0,122,0,26); TgtLbl.Position=UDim2.new(0,50,0,264)
 TgtLbl.BackgroundColor3=Color3.fromRGB(15,15,26); TgtLbl.BorderSizePixel=0; TgtLbl.Text="No Target"
 TgtLbl.TextColor3=Color3.fromRGB(130,170,255); TgtLbl.TextSize=10; TgtLbl.Font=Enum.Font.GothamBold
 TgtLbl.TextTruncate=Enum.TextTruncate.AtEnd; TgtLbl.Parent=Con
 Instance.new("UICorner",TgtLbl).CornerRadius=UDim.new(0,5)
-local BtnNext=mkBtn(Con,"▶",UDim2.new(0,38,0,26),UDim2.new(0,176,0,233),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
+local BtnNext=mkBtn(Con,"▶",UDim2.new(0,38,0,26),UDim2.new(0,176,0,264),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
 
-mkDiv(Con,265)
+mkDiv(Con,296)
 
 -- FEATURE ROW
-local BtnESP   =mkBtn(Con,"👁 ESP",  UDim2.new(0,42,0,26),UDim2.new(0,8,0,271),  Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnScan  =mkBtn(Con,"🔍 Scan", UDim2.new(0,42,0,26),UDim2.new(0,54,0,271), Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,42,0,26),UDim2.new(0,100,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,38,0,26),UDim2.new(0,146,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnMove  =mkBtn(Con,"🏃 Move", UDim2.new(0,42,0,26),UDim2.new(0,188,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnESP   =mkBtn(Con,"👁 ESP",  UDim2.new(0,42,0,26),UDim2.new(0,8,0,302),  Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnScan  =mkBtn(Con,"🔍 Scan", UDim2.new(0,42,0,26),UDim2.new(0,54,0,302), Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,42,0,26),UDim2.new(0,100,0,302),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,38,0,26),UDim2.new(0,146,0,302),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnMove  =mkBtn(Con,"🏃 Move", UDim2.new(0,42,0,26),UDim2.new(0,188,0,302),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
 
 -- MOUSE LOCK ROW
-mkDiv(Con,303)
-local BtnMouseLock=mkBtn(Con,"🖱️ Mouse Lock : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,309),Color3.fromRGB(24,24,40),Color3.fromRGB(200,160,255),11)
+mkDiv(Con,334)
+local BtnMouseLock=mkBtn(Con,"🖱️ Mouse Lock : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,340),Color3.fromRGB(24,24,40),Color3.fromRGB(200,160,255),11)
 
-mkDiv(Con,341)
-local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,346),10,Color3.fromRGB(60,60,90))
+mkDiv(Con,372)
+local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,377),10,Color3.fromRGB(60,60,90))
+
+-- ══ sub-menu lock states ══
+local scanLocked=false; local camFLocked=false
+local tfLocked=false;   local mvFLocked=false
 
 -- ══════════════════════════════════════════════
 --   SCAN FRAME
@@ -333,12 +343,13 @@ local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,346),
 local SF=mkFrame(SG,UDim2.new(0,220,0,340),UDim2.new(0.5,126,0.5,-170),Color3.fromRGB(11,11,17),true)
 SF.Visible=false
 local STB=mkFrame(SF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8); mkAccent(STB)
-mkDrag(SF,STB,nil)
+mkDrag(SF,STB,function() return scanLocked end)
 mkLbl(STB,"🔍 Scan",UDim2.new(1,-108,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(STB,SF,160,320,200,500)
-local BtnTPScan=mkBtn(STB,"🚀",UDim2.new(0,22,0,22),UDim2.new(1,-116,0.5,-11),Color3.fromRGB(30,80,30))
-local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-92,0.5,-11),Color3.fromRGB(48,48,160))
-local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-68,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
+local BtnTPScan =mkBtn(STB,"🚀",UDim2.new(0,22,0,22),UDim2.new(1,-138,0.5,-11),Color3.fromRGB(30,80,30))
+local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-114,0.5,-11),Color3.fromRGB(48,48,160))
+local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-90,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
+local BtnSLock  =mkBtn(STB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-66,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),11)
 local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-44,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
 local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
 
@@ -461,9 +472,10 @@ local CamF=mkFrame(SG,UDim2.new(0,190,0,200),UDim2.new(0.5,-340,0.5,-100),Color3
 CamF.Visible=false
 local CamTB=mkFrame(CamF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 mkAccent(CamTB,Color3.fromRGB(245,150,50))
-mkDrag(CamF,CamTB,nil)
+mkDrag(CamF,CamTB,function() return camFLocked end)
 mkLbl(CamTB,"📷 Camera System",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(CamTB,CamF,160,280,160,320)
+local BtnCamLockMenu=mkBtn(CamTB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-70,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),11)
 local BtnCamMin  =mkBtn(CamTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnCamClose=mkBtn(CamTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 
@@ -511,9 +523,10 @@ local TF=mkFrame(SG,UDim2.new(0,210,0,260),UDim2.new(0.5,-340,0.5,110),Color3.fr
 TF.Visible=false
 local TFTB=mkFrame(TF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 mkAccent(TFTB,Color3.fromRGB(50,190,110))
-mkDrag(TF,TFTB,nil)
+mkDrag(TF,TFTB,function() return tfLocked end)
 mkLbl(TFTB,"🚀 Teleport Save",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(TFTB,TF,160,320,200,400)
+local BtnTFLockMenu=mkBtn(TFTB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-70,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),11)
 local BtnTFMin  =mkBtn(TFTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnTFClose=mkBtn(TFTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 local BtnTPSave =mkBtn(TF,"+ Save",    UDim2.new(0,60,0,26),UDim2.new(0,5,0,34),  Color3.fromRGB(20,68,20),Color3.fromRGB(170,255,170),11)
@@ -534,9 +547,10 @@ MvF.Visible=false
 local MvTB=mkFrame(MvF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 do local a=Instance.new("Frame"); a.Size=UDim2.new(1,0,0,2); a.Position=UDim2.new(0,0,1,-2)
    a.BackgroundColor3=Color3.fromRGB(80,200,100); a.BorderSizePixel=0; a.Parent=MvTB end
-mkDrag(MvF,MvTB,nil)
+mkDrag(MvF,MvTB,function() return mvFLocked end)
 mkLbl(MvTB,"🏃 Movement Panel",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(MvTB,MvF,180,340,200,500)
+local BtnMvLockMenu=mkBtn(MvTB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-70,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),11)
 local BtnMvMin  =mkBtn(MvTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnMvClose=mkBtn(MvTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 
@@ -864,9 +878,6 @@ local function StartLock()
     if lockConn then lockConn:Disconnect(); lockConn=nil end
     local timer=0
 
-    -- Lock กล้องไม่ให้หลุดจากตัวละคร
-    Camera.CameraType = Enum.CameraType.Scriptable
-
     -- เปิด crosshair
     SetCrosshair(true)
 
@@ -897,23 +908,7 @@ local function StartLock()
             end
         end
 
-        -- ══ กล้องติดตัวละครเสมอ (ไม่หลุด) ══
-        -- ดึง CFrame กล้องปัจจุบันมาเพื่อเอา offset ระยะ+มุม
-        local camCF = Camera.CFrame
-        local charCF = myHRP.CFrame
-        -- คำนวณ offset กล้องจาก HRP (เก็บ look direction ไว้)
-        local camOffset = charCF:ToObjectSpace(camCF)
-        -- ระยะกล้องจาก HRP (clamp ไม่ให้ไกลเกิน)
-        local camToHRP = (myHRP.Position - camCF.Position)
-        local camDist2 = math.clamp(camToHRP.Magnitude, 5, 50)
-
-        if not currentTarget then
-            -- ไม่มีเป้า: กล้องติด HRP แต่ผู้เล่นหมุนเองได้
-            local lookVec = camCF.LookVector
-            local anchorPos = myHRP.Position + Vector3.new(0, 1.5, 0) - lookVec * camDist2
-            Camera.CFrame = CFrame.new(anchorPos, myHRP.Position + Vector3.new(0,1.5,0))
-            return
-        end
+        if not currentTarget then return end
 
         local hrp=GetRoot(currentTarget)
         local hum=currentTarget:FindFirstChildOfClass("Humanoid")
@@ -921,28 +916,37 @@ local function StartLock()
             SetTarget(nil); forceRescan=true; return
         end
 
-        local myPos = myHRP.Position
+        local myPos    = myHRP.Position
+        local alpha    = 1 - (1-str)^(math.min(dt,0.05)*60)
 
-        -- หาตำแหน่งเป้าหมาย (ใช้ Head ถ้ามี ไม่งั้นใช้ HRP)
-        local head = currentTarget:FindFirstChild("Head")
+        -- หาตำแหน่งเป้า (Head ถ้ามี ไม่งั้น HRP)
+        local head      = currentTarget:FindFirstChild("Head")
         local targetPos = head and head.Position or hrp.Position
 
-        -- ตำแหน่งกล้อง: อยู่หลัง HRP ในทิศที่หันไปหาเป้า
-        local dirToTarget = (targetPos - myHRP.Position)
-        local dirFlat = Vector3.new(dirToTarget.X, 0, dirToTarget.Z)
-        local camBehind = myHRP.Position + Vector3.new(0, 1.5, 0)
-            - (dirFlat.Magnitude > 0.1 and dirFlat.Unit or Vector3.new(0,0,1)) * camDist2
+        -- ══════════════════════════════════════════════
+        -- กล้อง: ใช้ position กล้องปัจจุบันของ Roblox
+        -- ไม่ set CameraType → กล้องยังติดตามตัวละครตามปกติ
+        -- หมุนแค่ rotation (look direction) ไปหาเป้า
+        -- ══════════════════════════════════════════════
+        local camPos   = Camera.CFrame.Position
+        local toTarget = (targetPos - camPos)
+        if toTarget.Magnitude < 0.1 then return end
 
-        -- หมุนกล้องชี้ไปที่เป้า + AIM_OFFSET
-        local baseCF = CFrame.lookAt(camBehind, targetPos + Vector3.new(0, AIM_OFFSET * 0.1, 0))
-        local alpha = 1 - (1 - str)^(math.min(dt,0.05)*60)
-        Camera.CFrame = Camera.CFrame:Lerp(baseCF, alpha)
+        -- baseCF = มองตรงไปที่เป้า (ไม่มี offset)
+        local baseCF   = CFrame.lookAt(camPos, targetPos)
+        -- pitch offset (ขึ้น/ลง) → screen-space: ไม่ขึ้นกับระยะ
+        -- side offset (ซ้าย/ขวา) → หมุน yaw เพิ่ม
+        local pitchRad = math.rad(-AIM_OFFSET)
+        local sideRad  = math.rad(-AIM_SIDE)
+        local offsetCF = baseCF * CFrame.Angles(pitchRad, sideRad, 0)
 
-        -- หมุนตัวละครหันหน้าตามเป้า (XZ plane เท่านั้น)
-        local lookDir = Vector3.new(targetPos.X - myPos.X, 0, targetPos.Z - myPos.Z)
+        Camera.CFrame  = Camera.CFrame:Lerp(offsetCF, alpha)
+
+        -- หมุนตัวละครหันหน้าตามเป้า (XZ เท่านั้น ไม่กระตุก)
+        local lookDir  = Vector3.new(targetPos.X-myPos.X, 0, targetPos.Z-myPos.Z)
         if lookDir.Magnitude > 0.1 then
-            local bodyCF = CFrame.new(myPos, myPos + lookDir.Unit)
-            myHRP.CFrame = myHRP.CFrame:Lerp(bodyCF, alpha)
+            local bodyGoal = CFrame.new(myPos, myPos+lookDir.Unit)
+            myHRP.CFrame   = myHRP.CFrame:Lerp(bodyGoal, alpha)
         end
     end)
 end
@@ -950,8 +954,6 @@ end
 local function StopLock()
     if lockConn then lockConn:Disconnect(); lockConn=nil end
     SetTarget(nil)
-    -- คืน Camera กลับให้ Roblox ควบคุม
-    Camera.CameraType = Enum.CameraType.Custom
     -- ปิด crosshair
     SetCrosshair(false)
 end
@@ -974,10 +976,12 @@ RunService.Heartbeat:Connect(function(dt)
         if hrp and hrp.Parent then
             local basePos = head and head.Position or hrp.Position
             -- ปรับ Y ตาม AIM_OFFSET (องศา)
-            local dist = (Camera.CFrame.Position - basePos).Magnitude
-            local offsetY = math.tan(math.rad(AIM_OFFSET)) * math.max(dist, 1)
-            local aimPos = basePos + Vector3.new(0, offsetY, 0)
-            -- override Mouse.Hit → CFrame ชี้ไปที่เป้า
+            local dist    = (Camera.CFrame.Position - basePos).Magnitude
+            local offsetY = math.tan(math.rad(AIM_OFFSET)) * math.max(dist,1)
+            local offsetX = math.tan(math.rad(AIM_SIDE))   * math.max(dist,1)
+            -- หา right vector ของกล้องเพื่อ offset ซ้ายขวา
+            local camRight = Camera.CFrame.RightVector
+            local aimPos  = basePos + Vector3.new(0,offsetY,0) + camRight*offsetX
             pcall(function()
                 Mouse.Hit = CFrame.new(aimPos)
             end)
@@ -1040,10 +1044,8 @@ end
 -- ══ RESPAWN ══
 LocalPlayer.CharacterAdded:Connect(function(c)
     Character=c; c:WaitForChild("HumanoidRootPart"); currentTarget=nil; ClearESP()
-    Camera.CameraType = Enum.CameraType.Custom
     if Settings.Enabled then
         task.wait(0.5)
-        Camera.CameraType = Enum.CameraType.Scriptable
         StartLock()
     end
 end)
@@ -1071,6 +1073,17 @@ end)
 
 BtnAimUp.Activated:Connect(function()
     AIM_OFFSET=AIM_OFFSET+0.5; InpAim.Text=tostring(AIM_OFFSET); SaveSettings()
+end)
+BtnSideR.Activated:Connect(function()
+    AIM_SIDE=AIM_SIDE+0.5; InpAimSide.Text=tostring(AIM_SIDE); SaveSettings()
+end)
+BtnSideL.Activated:Connect(function()
+    AIM_SIDE=AIM_SIDE-0.5; InpAimSide.Text=tostring(AIM_SIDE); SaveSettings()
+end)
+InpAimSide.FocusLost:Connect(function()
+    local v=tonumber(InpAimSide.Text)
+    if v then AIM_SIDE=v; InpAimSide.Text=tostring(v); SaveSettings()
+    else InpAimSide.Text=tostring(AIM_SIDE) end
 end)
 BtnAimDn.Activated:Connect(function()
     AIM_OFFSET=AIM_OFFSET-0.5; InpAim.Text=tostring(AIM_OFFSET); SaveSettings()
@@ -1288,6 +1301,20 @@ end)
 
 -- ══ INIT ══
 if Settings.NearestMode then BtnNear.Text="📍 Nearest : ON"; BtnNear.BackgroundColor3=Color3.fromRGB(20,58,20) end
+
+-- ══ SUB-MENU LOCK CONNECTIONS ══
+local function applyLock(btn, lockRef, setter)
+    btn.Activated:Connect(function()
+        setter(not lockRef())
+        btn.Text = lockRef() and "🔒" or "🔓"
+        btn.BackgroundColor3 = lockRef() and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
+    end)
+end
+
+applyLock(BtnSLock,      function() return scanLocked  end, function(v) scanLocked=v  end)
+applyLock(BtnCamLockMenu,function() return camFLocked  end, function(v) camFLocked=v  end)
+applyLock(BtnTFLockMenu, function() return tfLocked    end, function(v) tfLocked=v    end)
+applyLock(BtnMvLockMenu, function() return mvFLocked   end, function(v) mvFLocked=v   end)
 
 -- ══ MOVEMENT PANEL CONNECTIONS ══
 local mvVis=false
