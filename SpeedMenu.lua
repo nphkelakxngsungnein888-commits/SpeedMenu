@@ -19,6 +19,7 @@ local Settings = {
     FilterColor   = nil,
     ESPEnabled    = false,
     ExcludeColors = {},
+    MouseLock     = false,  -- redirect Mouse.Hit → เป้าล็อค
 }
 local AIM_OFFSET   = _S.AIM_OFFSET   or 0    -- ขึ้นลงของเป้า (0=กลาง)
 local CAM_DISTANCE = _S.CAM_DISTANCE or 0    -- ระยะกล้อง
@@ -77,13 +78,18 @@ local SG = Instance.new("ScreenGui")
 SG.Name="LM_v16"; SG.ResetOnSpawn=false
 SG.DisplayOrder=999; SG.IgnoreGuiInset=true
 SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
--- ลอง CoreGui ก่อน (บางเกม block PlayerGui) → fallback PlayerGui
-local guiOK = pcall(function()
-    SG.Parent = game:GetService("CoreGui")
+-- Force CoreGui (รองรับเกมที่บล็อก PlayerGui เช่น การแหกคุก)
+local CoreGui = game:GetService("CoreGui")
+SG.Parent = CoreGui
+
+-- Keepalive: ถ้า SG หลุดจาก CoreGui ให้ parent กลับอัตโนมัติ
+task.spawn(function()
+    while task.wait(1) do
+        if not SG.Parent then
+            SG.Parent = CoreGui
+        end
+    end
 end)
-if not guiOK then
-    SG.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
 
 -- ══ UI FACTORY ══
 local function Hex(c)
@@ -183,7 +189,7 @@ local function mkResize(titleBar, frame, minW, maxW, minH, maxH)
 end
 
 local menuLocked=false
-local MF=mkFrame(SG,UDim2.new(0,232,0,370),UDim2.new(0.5,-116,0.5,-185),Color3.fromRGB(11,11,17),true)
+local MF=mkFrame(SG,UDim2.new(0,232,0,410),UDim2.new(0.5,-116,0.5,-205),Color3.fromRGB(11,11,17),true)
 
 local TB=mkFrame(MF,UDim2.new(1,0,0,32),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 TB.ClipsDescendants=false; mkAccent(TB)
@@ -254,8 +260,12 @@ local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,42,0,26),UDim2.new(0,100,0,27
 local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,38,0,26),UDim2.new(0,146,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
 local BtnMove  =mkBtn(Con,"🏃 Move", UDim2.new(0,42,0,26),UDim2.new(0,188,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
 
+-- MOUSE LOCK ROW
 mkDiv(Con,303)
-local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,308),10,Color3.fromRGB(60,60,90))
+local BtnMouseLock=mkBtn(Con,"🖱️ Mouse Lock : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,309),Color3.fromRGB(24,24,40),Color3.fromRGB(200,160,255),11)
+
+mkDiv(Con,341)
+local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,346),10,Color3.fromRGB(60,60,90))
 
 -- ══════════════════════════════════════════════
 --   SCAN FRAME
@@ -876,6 +886,26 @@ RunService.Heartbeat:Connect(function(dt)
         local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
         if (root.Position-lockPos).Magnitude>10 then root.CFrame=CFrame.new(lockPos+Vector3.new(0,3,0)) end
     end
+    -- ══ MOUSE LOCK: redirect Mouse.Hit → ตำแหน่งเป้าล็อค ══
+    if Settings.MouseLock and Settings.Enabled and currentTarget then
+        local hrp = GetRoot(currentTarget)
+        local head = currentTarget:FindFirstChild("Head")
+        if hrp and hrp.Parent then
+            local basePos = head and head.Position or hrp.Position
+            -- ปรับ Y ตาม AIM_OFFSET (องศา)
+            local dist = (Camera.CFrame.Position - basePos).Magnitude
+            local offsetY = math.tan(math.rad(AIM_OFFSET)) * math.max(dist, 1)
+            local aimPos = basePos + Vector3.new(0, offsetY, 0)
+            -- override Mouse.Hit → CFrame ชี้ไปที่เป้า
+            pcall(function()
+                Mouse.Hit = CFrame.new(aimPos)
+            end)
+            -- override Mouse.Target → part ของเป้า (บางเกมใช้ Target แทน Hit)
+            pcall(function()
+                Mouse.Target = head or hrp
+            end)
+        end
+    end
 end)
 
 -- ══ CAMERA SYSTEM (RenderStepped — Camera.CFrame ต้องอยู่นี่) ══
@@ -1007,6 +1037,14 @@ BtnESP.Activated:Connect(function()
     if not Settings.ESPEnabled then ClearESP() end
 end)
 
+-- Mouse Lock
+BtnMouseLock.Activated:Connect(function()
+    Settings.MouseLock = not Settings.MouseLock
+    BtnMouseLock.Text = Settings.MouseLock and "🖱️ Mouse Lock : ON" or "🖱️ Mouse Lock : OFF"
+    BtnMouseLock.BackgroundColor3 = Settings.MouseLock and Color3.fromRGB(64,20,90) or Color3.fromRGB(24,24,40)
+    BtnMouseLock.TextColor3 = Settings.MouseLock and Color3.fromRGB(230,180,255) or Color3.fromRGB(200,160,255)
+end)
+
 -- Menu Lock
 BtnLockMenu.Activated:Connect(function()
     menuLocked=not menuLocked
@@ -1018,7 +1056,7 @@ end)
 local minimized=false
 BtnMin.Activated:Connect(function()
     minimized=not minimized; Con.Visible=not minimized
-    MF.Size=minimized and UDim2.new(0,232,0,32) or UDim2.new(0,232,0,370)
+    MF.Size=minimized and UDim2.new(0,232,0,32) or UDim2.new(0,232,0,410)
 end)
 BtnClose.Activated:Connect(function() StopLock(); ClearESP(); SG:Destroy() end)
 
