@@ -68,30 +68,90 @@ local camMove     = Vector3.new()
 local camFreePos  = Vector3.new()
 
 -- ══ GUI CLEANUP ══
+local CoreGui = game:GetService("CoreGui")
 pcall(function()
-    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if pg then local o=pg:FindFirstChild("LM_v16") if o then o:Destroy() end end
-    local cg = game:GetService("CoreGui")
-    if cg then local o=cg:FindFirstChild("LM_v16") if o then o:Destroy() end end
+    for _,name in ipairs({"LM_v16","LM_v17","LM_v18"}) do
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then local o=pg:FindFirstChild(name) if o then o:Destroy() end end
+        local o=CoreGui:FindFirstChild(name) if o then o:Destroy() end
+    end
 end)
 local SG = Instance.new("ScreenGui")
-SG.Name="LM_v16"; SG.ResetOnSpawn=false
+SG.Name="LM_v18"; SG.ResetOnSpawn=false
 SG.DisplayOrder=999; SG.IgnoreGuiInset=true
 SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
--- Force CoreGui (รองรับเกมที่บล็อก PlayerGui เช่น การแหกคุก)
-local CoreGui = game:GetService("CoreGui")
-SG.Parent = CoreGui
 
--- Keepalive: ถ้า SG หลุดจาก CoreGui ให้ parent กลับอัตโนมัติ
+-- Force parent: ลอง CoreGui → fallback PlayerGui → retry loop
+local function tryParentSG()
+    local ok = pcall(function() SG.Parent = CoreGui end)
+    if not ok or not SG.Parent then
+        local pg = LocalPlayer:WaitForChild("PlayerGui",5)
+        if pg then SG.Parent = pg end
+    end
+end
+tryParentSG()
+
+-- Keepalive: ถ้า SG หลุดให้ดึงกลับทุก 1 วินาที
 task.spawn(function()
     while task.wait(1) do
         if not SG.Parent then
-            SG.Parent = CoreGui
+            tryParentSG()
         end
     end
 end)
 
--- ══ UI FACTORY ══
+-- ══ CROSSHAIR UI (ตรงกลางจอเสมอ) ══
+local CrosshairEnabled = false
+
+local CrossSG = Instance.new("ScreenGui")
+CrossSG.Name="LM_v18_Cross"; CrossSG.ResetOnSpawn=false
+CrossSG.DisplayOrder=1000; CrossSG.IgnoreGuiInset=true
+pcall(function() CrossSG.Parent = CoreGui end)
+if not CrossSG.Parent then
+    CrossSG.Parent = LocalPlayer:WaitForChild("PlayerGui",5)
+end
+
+-- วงกลม crosshair ตรงกลาง
+local CrossOuter = Instance.new("Frame")
+CrossOuter.Size = UDim2.new(0,24,0,24)
+CrossOuter.Position = UDim2.new(0.5,-12,0.5,-12)
+CrossOuter.BackgroundTransparency = 1
+CrossOuter.BorderSizePixel = 0
+CrossOuter.Visible = false
+CrossOuter.Parent = CrossSG
+Instance.new("UICorner", CrossOuter).CornerRadius = UDim.new(1,0)
+local CrossRing = Instance.new("UIStroke", CrossOuter)
+CrossRing.Color = Color3.fromRGB(255,80,80)
+CrossRing.Thickness = 2
+
+-- เส้นกาก + (horizontal)
+local CrossH = Instance.new("Frame")
+CrossH.Size = UDim2.new(0,14,0,2)
+CrossH.Position = UDim2.new(0.5,-7,0.5,-1)
+CrossH.BackgroundColor3 = Color3.fromRGB(255,80,80)
+CrossH.BorderSizePixel = 0
+CrossH.Parent = CrossSG
+CrossH.Visible = false
+Instance.new("UICorner",CrossH).CornerRadius = UDim.new(0,1)
+
+-- เส้นกาก + (vertical)
+local CrossV = Instance.new("Frame")
+CrossV.Size = UDim2.new(0,2,0,14)
+CrossV.Position = UDim2.new(0.5,-1,0.5,-7)
+CrossV.BackgroundColor3 = Color3.fromRGB(255,80,80)
+CrossV.BorderSizePixel = 0
+CrossV.Parent = CrossSG
+CrossV.Visible = false
+Instance.new("UICorner",CrossV).CornerRadius = UDim.new(0,1)
+
+local function SetCrosshair(on)
+    CrosshairEnabled = on
+    CrossOuter.Visible = on
+    CrossH.Visible = on
+    CrossV.Visible = on
+end
+
+
 local function Hex(c)
     return string.format("%02X%02X%02X",math.floor(c.R*255),math.floor(c.G*255),math.floor(c.B*255))
 end
@@ -804,6 +864,12 @@ local function StartLock()
     if lockConn then lockConn:Disconnect(); lockConn=nil end
     local timer=0
 
+    -- Lock กล้องไม่ให้หลุดจากตัวละคร
+    Camera.CameraType = Enum.CameraType.Scriptable
+
+    -- เปิด crosshair
+    SetCrosshair(true)
+
     -- *** RenderStepped *** คือสาเหตุที่ Camera.CFrame ทำงาน
     lockConn=RunService.RenderStepped:Connect(function(dt)
         local myHRP=Character and Character:FindFirstChild("HumanoidRootPart")
@@ -831,7 +897,23 @@ local function StartLock()
             end
         end
 
-        if not currentTarget then return end
+        -- ══ กล้องติดตัวละครเสมอ (ไม่หลุด) ══
+        -- ดึง CFrame กล้องปัจจุบันมาเพื่อเอา offset ระยะ+มุม
+        local camCF = Camera.CFrame
+        local charCF = myHRP.CFrame
+        -- คำนวณ offset กล้องจาก HRP (เก็บ look direction ไว้)
+        local camOffset = charCF:ToObjectSpace(camCF)
+        -- ระยะกล้องจาก HRP (clamp ไม่ให้ไกลเกิน)
+        local camToHRP = (myHRP.Position - camCF.Position)
+        local camDist2 = math.clamp(camToHRP.Magnitude, 5, 50)
+
+        if not currentTarget then
+            -- ไม่มีเป้า: กล้องติด HRP แต่ผู้เล่นหมุนเองได้
+            local lookVec = camCF.LookVector
+            local anchorPos = myHRP.Position + Vector3.new(0, 1.5, 0) - lookVec * camDist2
+            Camera.CFrame = CFrame.new(anchorPos, myHRP.Position + Vector3.new(0,1.5,0))
+            return
+        end
 
         local hrp=GetRoot(currentTarget)
         local hum=currentTarget:FindFirstChildOfClass("Humanoid")
@@ -845,22 +927,16 @@ local function StartLock()
         local head = currentTarget:FindFirstChild("Head")
         local targetPos = head and head.Position or hrp.Position
 
-        -- ═══════════════════════════════════════════════════
-        -- FIX: Screen-space offset — ไม่ขึ้นกับระยะ
-        -- วิธี: มองตรงไปที่เป้าก่อน แล้วหมุนกล้องขึ้น/ลง
-        -- ตาม AIM_OFFSET เป็น "องศา" (ไม่ใช่ studs)
-        -- 0 = ตรงเป้า, บวก = เลยขึ้นบน, ลบ = ลงล่าง
-        -- ═══════════════════════════════════════════════════
-        local camPos   = Camera.CFrame.Position
-        -- หา direction ตรงไปที่เป้า
-        local toTarget = (targetPos - camPos)
-        if toTarget.Magnitude < 0.1 then return end
-        local baseCF   = CFrame.lookAt(camPos, targetPos)
-        -- หมุนกล้องขึ้น/ลง ตาม AIM_OFFSET องศา (pitch offset)
-        local offsetCF = baseCF * CFrame.Angles(math.rad(-AIM_OFFSET), 0, 0)
+        -- ตำแหน่งกล้อง: อยู่หลัง HRP ในทิศที่หันไปหาเป้า
+        local dirToTarget = (targetPos - myHRP.Position)
+        local dirFlat = Vector3.new(dirToTarget.X, 0, dirToTarget.Z)
+        local camBehind = myHRP.Position + Vector3.new(0, 1.5, 0)
+            - (dirFlat.Magnitude > 0.1 and dirFlat.Unit or Vector3.new(0,0,1)) * camDist2
 
+        -- หมุนกล้องชี้ไปที่เป้า + AIM_OFFSET
+        local baseCF = CFrame.lookAt(camBehind, targetPos + Vector3.new(0, AIM_OFFSET * 0.1, 0))
         local alpha = 1 - (1 - str)^(math.min(dt,0.05)*60)
-        Camera.CFrame = Camera.CFrame:Lerp(offsetCF, alpha)
+        Camera.CFrame = Camera.CFrame:Lerp(baseCF, alpha)
 
         -- หมุนตัวละครหันหน้าตามเป้า (XZ plane เท่านั้น)
         local lookDir = Vector3.new(targetPos.X - myPos.X, 0, targetPos.Z - myPos.Z)
@@ -872,7 +948,12 @@ local function StartLock()
 end
 
 local function StopLock()
-    if lockConn then lockConn:Disconnect(); lockConn=nil end; SetTarget(nil)
+    if lockConn then lockConn:Disconnect(); lockConn=nil end
+    SetTarget(nil)
+    -- คืน Camera กลับให้ Roblox ควบคุม
+    Camera.CameraType = Enum.CameraType.Custom
+    -- ปิด crosshair
+    SetCrosshair(false)
 end
 
 -- ══ ESP + TP ANCHOR (Heartbeat เท่านั้น ไม่แตะ Camera) ══
@@ -959,7 +1040,12 @@ end
 -- ══ RESPAWN ══
 LocalPlayer.CharacterAdded:Connect(function(c)
     Character=c; c:WaitForChild("HumanoidRootPart"); currentTarget=nil; ClearESP()
-    if Settings.Enabled then task.wait(0.5); StartLock() end
+    Camera.CameraType = Enum.CameraType.Custom
+    if Settings.Enabled then
+        task.wait(0.5)
+        Camera.CameraType = Enum.CameraType.Scriptable
+        StartLock()
+    end
 end)
 
 -- ══════════════════════════════════════════════
@@ -1058,7 +1144,7 @@ BtnMin.Activated:Connect(function()
     minimized=not minimized; Con.Visible=not minimized
     MF.Size=minimized and UDim2.new(0,232,0,32) or UDim2.new(0,232,0,410)
 end)
-BtnClose.Activated:Connect(function() StopLock(); ClearESP(); SG:Destroy() end)
+BtnClose.Activated:Connect(function() StopLock(); ClearESP(); SG:Destroy(); CrossSG:Destroy() end)
 
 -- Scan
 local scanVis=false
