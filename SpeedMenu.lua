@@ -44,6 +44,10 @@ local lockConn      = nil
 local foundColors   = {}
 local forceRescan   = false
 local TPScanEnabled = false
+local scanTPMode    = "single"  -- "single" | "rapid"
+local scanTPRapidHz = 10         -- ครั้ง/วินาที
+local scanTPRapidConn = nil
+local scanTPModeFrame = nil      -- เมนูเลือกโหมด
 local espBoxes      = {}
 local espTimer      = 0
 local ESP_INTERVAL  = 0.3
@@ -66,10 +70,20 @@ local camFreePos  = Vector3.new()
 pcall(function()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     if pg then local o=pg:FindFirstChild("LM_v16") if o then o:Destroy() end end
+    local cg = game:GetService("CoreGui")
+    if cg then local o=cg:FindFirstChild("LM_v16") if o then o:Destroy() end end
 end)
-local PGui = LocalPlayer:WaitForChild("PlayerGui")
-local SG   = Instance.new("ScreenGui")
-SG.Name="LM_v16"; SG.ResetOnSpawn=false; SG.Parent=PGui
+local SG = Instance.new("ScreenGui")
+SG.Name="LM_v16"; SG.ResetOnSpawn=false
+SG.DisplayOrder=999; SG.IgnoreGuiInset=true
+SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+-- ลอง CoreGui ก่อน (บางเกม block PlayerGui) → fallback PlayerGui
+local guiOK = pcall(function()
+    SG.Parent = game:GetService("CoreGui")
+end)
+if not guiOK then
+    SG.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
 
 -- ══ UI FACTORY ══
 local function Hex(c)
@@ -153,13 +167,29 @@ end
 -- ══════════════════════════════════════════════
 --   MAIN FRAME
 -- ══════════════════════════════════════════════
+-- ══ RESIZE HELPER ══
+local function mkResize(titleBar, frame, minW, maxW, minH, maxH)
+    local bS=mkBtn(titleBar,"◀",UDim2.new(0,18,0,18),UDim2.new(0,4,0.5,-9),Color3.fromRGB(28,28,46),Color3.fromRGB(150,150,210),9)
+    local bL=mkBtn(titleBar,"▶",UDim2.new(0,18,0,18),UDim2.new(0,24,0.5,-9),Color3.fromRGB(28,28,46),Color3.fromRGB(150,150,210),9)
+    local step=20
+    bS.Activated:Connect(function()
+        local s=frame.AbsoluteSize
+        frame.Size=UDim2.new(0,math.max(minW,s.X-step),0,math.max(minH,s.Y-step))
+    end)
+    bL.Activated:Connect(function()
+        local s=frame.AbsoluteSize
+        frame.Size=UDim2.new(0,math.min(maxW,s.X+step),0,math.min(maxH,s.Y+step))
+    end)
+end
+
 local menuLocked=false
 local MF=mkFrame(SG,UDim2.new(0,232,0,370),UDim2.new(0.5,-116,0.5,-185),Color3.fromRGB(11,11,17),true)
 
 local TB=mkFrame(MF,UDim2.new(1,0,0,32),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 TB.ClipsDescendants=false; mkAccent(TB)
 mkDrag(MF,TB,function() return menuLocked end)
-mkLbl(TB,"⚔ Lock Menu v16",UDim2.new(1,-112,1,0),UDim2.new(0,10,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(TB,"⚔ Lock Menu v16",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkResize(TB,MF,180,320,300,500)
 local BtnLockMenu=mkBtn(TB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-72,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnMin     =mkBtn(TB,"–", UDim2.new(0,22,0,22),UDim2.new(1,-48,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),14)
 local BtnClose   =mkBtn(TB,"✕", UDim2.new(0,22,0,22),UDim2.new(1,-24,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
@@ -234,7 +264,8 @@ local SF=mkFrame(SG,UDim2.new(0,220,0,340),UDim2.new(0.5,126,0.5,-170),Color3.fr
 SF.Visible=false
 local STB=mkFrame(SF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8); mkAccent(STB)
 mkDrag(SF,STB,nil)
-mkLbl(STB,"🔍 Scan",UDim2.new(1,-108,1,0),UDim2.new(0,8,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(STB,"🔍 Scan",UDim2.new(1,-108,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkResize(STB,SF,160,320,200,500)
 local BtnTPScan=mkBtn(STB,"🚀",UDim2.new(0,22,0,22),UDim2.new(1,-116,0.5,-11),Color3.fromRGB(30,80,30))
 local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-92,0.5,-11),Color3.fromRGB(48,48,160))
 local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-68,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
@@ -283,6 +314,76 @@ EPScr.BackgroundTransparency=1; EPScr.BorderSizePixel=0; EPScr.ScrollBarThicknes
 EPScr.CanvasSize=UDim2.new(0,0,0,0); EPScr.ZIndex=10; EPScr.Parent=EPop
 local EPLayout=Instance.new("UIListLayout"); EPLayout.Padding=UDim.new(0,3); EPLayout.Parent=EPScr
 
+-- ══ TP MODE POPUP (สำหรับ Scan TP) ══
+local TPModePopup=mkFrame(SG,UDim2.new(0,200,0,160),UDim2.new(0.5,126,0.5,175),Color3.fromRGB(12,15,22),true)
+TPModePopup.Visible=false; TPModePopup.ZIndex=12
+local TPMBar=mkFrame(TPModePopup,UDim2.new(1,0,0,28),UDim2.new(0,0,0,0),Color3.fromRGB(18,22,35),false,8)
+TPMBar.ZIndex=12; mkDrag(TPModePopup,TPMBar,nil)
+do local a=Instance.new("Frame"); a.Size=UDim2.new(1,0,0,2); a.Position=UDim2.new(0,0,1,-2)
+   a.BackgroundColor3=Color3.fromRGB(50,200,120); a.BorderSizePixel=0; a.Parent=TPMBar end
+mkLbl(TPMBar,"🚀 TP Mode",UDim2.new(1,-30,1,0),UDim2.new(0,8,0,0),10,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local BtnTPMClose=mkBtn(TPMBar,"✕",UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
+BtnTPMClose.ZIndex=12
+
+-- โหมด 1 = ปกติ, 2 = รัว
+local tpModeSelect=1  -- default โหมด 1
+local tpRapidSpeed=0.05  -- วินาทีระหว่างแต่ละวาป
+
+local BtnTPM1=mkBtn(TPModePopup,"1️⃣ ปกติ (วาปครั้งเดียว)",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,32),
+    Color3.fromRGB(25,75,25),Color3.fromRGB(180,255,180),10)
+BtnTPM1.ZIndex=12; BtnTPM1.TextXAlignment=Enum.TextXAlignment.Left
+
+local BtnTPM2=mkBtn(TPModePopup,"2️⃣ รัว (วาปซ้ำๆ)",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,64),
+    Color3.fromRGB(35,35,55),Color3.fromRGB(155,155,220),10)
+BtnTPM2.ZIndex=12; BtnTPM2.TextXAlignment=Enum.TextXAlignment.Left
+
+mkLbl(TPModePopup,"⚡ ความเร็วรัว (วิ/วาป)",UDim2.new(1,-16,0,14),UDim2.new(0,8,0,96),9,Color3.fromRGB(120,120,170))
+local InpTPSpeed=mkInp(TPModePopup,tpRapidSpeed,UDim2.new(1,-16,0,24),UDim2.new(0,8,0,112))
+InpTPSpeed.ZIndex=12
+
+local function UpdateTPModeUI()
+    BtnTPM1.BackgroundColor3=tpModeSelect==1 and Color3.fromRGB(25,100,25) or Color3.fromRGB(25,45,25)
+    BtnTPM1.TextColor3=tpModeSelect==1 and Color3.fromRGB(200,255,200) or Color3.fromRGB(130,180,130)
+    BtnTPM2.BackgroundColor3=tpModeSelect==2 and Color3.fromRGB(60,40,100) or Color3.fromRGB(35,35,55)
+    BtnTPM2.TextColor3=tpModeSelect==2 and Color3.fromRGB(220,180,255) or Color3.fromRGB(155,155,220)
+end; UpdateTPModeUI()
+
+BtnTPM1.Activated:Connect(function() tpModeSelect=1; UpdateTPModeUI() end)
+BtnTPM2.Activated:Connect(function() tpModeSelect=2; UpdateTPModeUI() end)
+BtnTPMClose.Activated:Connect(function() TPModePopup.Visible=false end)
+InpTPSpeed.FocusLost:Connect(function()
+    local v=tonumber(InpTPSpeed.Text)
+    if v and v>0 then tpRapidSpeed=v else InpTPSpeed.Text=tostring(tpRapidSpeed) end
+end)
+
+-- rapid TP state
+local rapidTPConn=nil
+local rapidTPTarget=nil
+
+local function doTP(hrp)
+    local char=LocalPlayer.Character; if not char then return end
+    local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
+    root.CFrame=hrp.CFrame+Vector3.new(0,3,0)
+end
+
+local function startRapidTP(hrp)
+    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end
+    rapidTPTarget=hrp
+    rapidTPConn=RunService.Heartbeat:Connect(function()
+        if not TPScanEnabled or not rapidTPTarget or not rapidTPTarget.Parent then
+            if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end
+            return
+        end
+        doTP(rapidTPTarget)
+        task.wait(tpRapidSpeed)
+    end)
+end
+
+local function stopRapidTP()
+    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end
+    rapidTPTarget=nil
+end
+
 -- ══════════════════════════════════════════════
 --   CAMERA SYSTEM FRAME
 -- ══════════════════════════════════════════════
@@ -291,7 +392,8 @@ CamF.Visible=false
 local CamTB=mkFrame(CamF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 mkAccent(CamTB,Color3.fromRGB(245,150,50))
 mkDrag(CamF,CamTB,nil)
-mkLbl(CamTB,"📷 Camera System",UDim2.new(1,-55,1,0),UDim2.new(0,8,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(CamTB,"📷 Camera System",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkResize(CamTB,CamF,160,280,160,320)
 local BtnCamMin  =mkBtn(CamTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnCamClose=mkBtn(CamTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 
@@ -340,7 +442,8 @@ TF.Visible=false
 local TFTB=mkFrame(TF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 mkAccent(TFTB,Color3.fromRGB(50,190,110))
 mkDrag(TF,TFTB,nil)
-mkLbl(TFTB,"🚀 Teleport Save",UDim2.new(1,-55,1,0),UDim2.new(0,8,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(TFTB,"🚀 Teleport Save",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkResize(TFTB,TF,160,320,200,400)
 local BtnTFMin  =mkBtn(TFTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnTFClose=mkBtn(TFTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 local BtnTPSave =mkBtn(TF,"+ Save",    UDim2.new(0,60,0,26),UDim2.new(0,5,0,34),  Color3.fromRGB(20,68,20),Color3.fromRGB(170,255,170),11)
@@ -362,7 +465,8 @@ local MvTB=mkFrame(MvF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,
 do local a=Instance.new("Frame"); a.Size=UDim2.new(1,0,0,2); a.Position=UDim2.new(0,0,1,-2)
    a.BackgroundColor3=Color3.fromRGB(80,200,100); a.BorderSizePixel=0; a.Parent=MvTB end
 mkDrag(MvF,MvTB,nil)
-mkLbl(MvTB,"🏃 Movement Panel",UDim2.new(1,-55,1,0),UDim2.new(0,8,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(MvTB,"🏃 Movement Panel",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkResize(MvTB,MvF,180,340,200,500)
 local BtnMvMin  =mkBtn(MvTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnMvClose=mkBtn(MvTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 
@@ -952,12 +1056,15 @@ BtnDoScan.Activated:Connect(function()
             targetIndex=i
             SetTarget(e.model)
             if TPScanEnabled then
-                local char=LocalPlayer.Character
-                if char then
-                    local root=char:FindFirstChild("HumanoidRootPart")
-                    local hrp=GetRoot(e.model)
-                    if root and hrp then
-                        root.CFrame = hrp.CFrame + Vector3.new(0,3,0)
+                local hrp=GetRoot(e.model)
+                if hrp then
+                    if tpModeSelect==1 then
+                        -- โหมด 1: วาปครั้งเดียว
+                        stopRapidTP()
+                        doTP(hrp)
+                    else
+                        -- โหมด 2: รัว
+                        startRapidTP(hrp)
                     end
                 end
             end
@@ -1079,5 +1186,12 @@ end)
 
 BtnTPScan.Activated:Connect(function()
     TPScanEnabled = not TPScanEnabled
-    BtnTPScan.BackgroundColor3 = TPScanEnabled and Color3.fromRGB(20,120,20) or Color3.fromRGB(30,80,30)
+    if TPScanEnabled then
+        BtnTPScan.BackgroundColor3=Color3.fromRGB(20,120,20)
+        TPModePopup.Visible=true
+    else
+        BtnTPScan.BackgroundColor3=Color3.fromRGB(30,80,30)
+        TPModePopup.Visible=false
+        stopRapidTP()
+    end
 end)
