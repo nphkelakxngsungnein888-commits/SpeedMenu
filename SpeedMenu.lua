@@ -622,8 +622,11 @@ UserInputService.InputBegan:Connect(function(input,gp)
 end)
 
 -- Fly
-local PlayerModule2=require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
-local mvControls=PlayerModule2:GetControls()
+local mvControls = nil
+pcall(function()
+    local PlayerModule2 = require(LocalPlayer:WaitForChild("PlayerScripts",3):WaitForChild("PlayerModule",3))
+    mvControls = PlayerModule2:GetControls()
+end)
 
 local function mvStartFly()
     if not mvRoot then return end; mvFlying=true
@@ -638,14 +641,14 @@ local function mvStopFly()
     if mvHumanoid then mvHumanoid.AutoRotate=true end
 end
 
-local mvRayParams=RaycastParams.new(); mvRayParams.FilterType=Enum.RaycastFilterType.Blacklist
+local mvRayParams=RaycastParams.new(); mvRayParams.FilterType=Enum.RaycastFilterType.Exclude
 
 -- Main Loop
 RunService.RenderStepped:Connect(function()
     if not mvHumanoid or not mvRoot then return end
     mvHumanoid.WalkSpeed = mvState.enableSpeed and mvState.walkSpeed or 16
     mvHumanoid.JumpPower = mvState.enableJump  and mvState.jumpPower  or 50
-    if mvState.enableFly and mvFlying and mvFlyBV and mvFlyBG then
+    if mvState.enableFly and mvFlying and mvFlyBV and mvFlyBG and mvControls then
         local cf=Camera.CFrame; local mv=mvControls:GetMoveVector()
         local dir=(cf.LookVector*-mv.Z)+(cf.RightVector*mv.X)+(cf.UpVector*-mv.Y)
         mvFlyBV.Velocity=dir*mvState.flySpeed
