@@ -5,10 +5,24 @@
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local CoreGui          = game:GetService("CoreGui")
 local LocalPlayer      = Players.LocalPlayer
 local Camera           = workspace.CurrentCamera
-local Mouse            = LocalPlayer:GetMouse()
+local Mouse            = nil
+pcall(function() Mouse = LocalPlayer:GetMouse() end)
+
+-- Cobex mobile: CoreGui อาจ block → fallback PlayerGui
+local CoreGui = nil
+local GuiParent = nil
+pcall(function() CoreGui = game:GetService("CoreGui") end)
+if CoreGui then
+    local ok = pcall(function()
+        local t = Instance.new("ScreenGui"); t.Parent = CoreGui; t:Destroy()
+    end)
+    if ok then GuiParent = CoreGui end
+end
+if not GuiParent then
+    GuiParent = LocalPlayer:WaitForChild("PlayerGui")
+end
 
 -- ══ SAVE / LOAD ══
 local _S = _G.LockMenuSave or {}
@@ -73,36 +87,45 @@ local camFreePos  = Vector3.new()
 
 -- ══ GUI CLEANUP ══
 pcall(function()
-    for _, n in ipairs({"LM_v16","LM_v17","LM_v18","LM_v19","LM_v19_Cross"}) do
+    for _, n in ipairs({"LM_v16","LM_v17","LM_v18","LM_v19","LM_v19_Cross","LM_v20","LM_v20_Cross"}) do
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
         if pg and pg:FindFirstChild(n) then pg:FindFirstChild(n):Destroy() end
-        if CoreGui:FindFirstChild(n) then CoreGui:FindFirstChild(n):Destroy() end
+        pcall(function()
+            if CoreGui and CoreGui:FindFirstChild(n) then CoreGui:FindFirstChild(n):Destroy() end
+        end)
+        if GuiParent and GuiParent:FindFirstChild(n) then GuiParent:FindFirstChild(n):Destroy() end
     end
 end)
 
 -- ══ MAIN GUI ══
 local SG = Instance.new("ScreenGui")
-SG.Name = "LM_v19"
+SG.Name = "LM_v20"
 SG.ResetOnSpawn = false
 SG.IgnoreGuiInset = true
 SG.DisplayOrder = 999
 SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-SG.Parent = CoreGui
+pcall(function() SG.Parent = GuiParent end)
+if not SG.Parent then SG.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 -- Keepalive
 task.spawn(function()
     while task.wait(1) do
-        if not SG or not SG.Parent then SG.Parent = CoreGui end
+        pcall(function()
+            if not SG or not SG.Parent then
+                SG.Parent = GuiParent or LocalPlayer:WaitForChild("PlayerGui")
+            end
+        end)
     end
 end)
 
 -- ══ CROSSHAIR GUI ══
 local CrossSG = Instance.new("ScreenGui")
-CrossSG.Name = "LM_v19_Cross"
+CrossSG.Name = "LM_v20_Cross"
 CrossSG.ResetOnSpawn = false
 CrossSG.IgnoreGuiInset = true
 CrossSG.DisplayOrder = 1000
-CrossSG.Parent = CoreGui
+pcall(function() CrossSG.Parent = GuiParent end)
+if not CrossSG.Parent then CrossSG.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 local CrossOuter = Instance.new("Frame")
 CrossOuter.Size = UDim2.new(0,22,0,22)
@@ -564,11 +587,15 @@ UserInputService.InputBegan:Connect(function(input,gp)
     end
 end)
 
--- Fly (pcall กัน error ถ้าบางแมพบล็อก)
+-- Fly (pcall กัน error ถ้าบางแมพบล็อก หรือ Cobex block require)
 local mvControls = nil
 pcall(function()
-    local pm = require(LocalPlayer:WaitForChild("PlayerScripts",5):WaitForChild("PlayerModule",5))
-    mvControls = pm:GetControls()
+    local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+    if not ps then return end
+    local pm_mod = ps:FindFirstChild("PlayerModule")
+    if not pm_mod then return end
+    local pm = require(pm_mod)
+    if pm and pm.GetControls then mvControls = pm:GetControls() end
 end)
 
 local function mvStartFly()
@@ -898,7 +925,7 @@ local function StartLock()
         Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(camPos, aimPoint), alpha)
 
         -- redirect Mouse.Hit → aimPoint (สำหรับยิง)
-        if Settings.MouseLock then
+        if Settings.MouseLock and Mouse then
             pcall(function() Mouse.Hit = CFrame.new(aimPoint) end)
         end
 
@@ -986,7 +1013,6 @@ local function doTP(hrp)
     local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
     if hrp and hrp.Parent then root.CFrame=hrp.CFrame*CFrame.new(0,0,-2) end
 end
--- ประกาศก่อน startRapidTP เพื่อกัน forward reference error
 local function stopRapidTP()
     if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
 end
@@ -1113,6 +1139,7 @@ BtnClose.Activated:Connect(function()
     StopLock(); ClearESP()
     pcall(function() SG:Destroy() end)
     pcall(function() CrossSG:Destroy() end)
+    stopRapidTP()
 end)
 
 -- Scan
@@ -1238,6 +1265,7 @@ BtnTPClic.Activated:Connect(function()
     BtnTPClic.Text=clickTP and "Click TP ON" or "Click TP OFF"
     BtnTPClic.BackgroundColor3=clickTP and Color3.fromRGB(20,92,40) or Color3.fromRGB(130,32,32)
 end)
+if Mouse then
 Mouse.Button1Down:Connect(function()
     if not clickTP then return end
     local char=LocalPlayer.Character; if not char then return end
@@ -1245,6 +1273,7 @@ Mouse.Button1Down:Connect(function()
     local hit=Mouse.Hit
     if hit then lockPos=hit.Position; root.CFrame=CFrame.new(lockPos+Vector3.new(0,3,0)) end
 end)
+end
 
 -- TP Mode Popup
 BtnTPMClose.Activated:Connect(function() TPModePopup.Visible=false end)
