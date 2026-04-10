@@ -986,19 +986,18 @@ local function doTP(hrp)
     local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
     if hrp and hrp.Parent then root.CFrame=hrp.CFrame*CFrame.new(0,0,-2) end
 end
+-- ประกาศก่อน startRapidTP เพื่อกัน forward reference error
+local function stopRapidTP()
+    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
+end
 local function startRapidTP(hrp)
-    stopRapidTP = function()
-        if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
-    end
+    stopRapidTP()
     rapidTPTarget=hrp
     rapidTPConn=RunService.Heartbeat:Connect(function()
         if not rapidTPTarget or not rapidTPTarget.Parent then stopRapidTP(); return end
         doTP(rapidTPTarget)
         task.wait(tpRapidSpeed)
     end)
-end
-local function stopRapidTP()
-    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
 end
 
 -- ══ RESPAWN ══
