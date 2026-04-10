@@ -1,28 +1,14 @@
--- Lock Menu v22 | Cobex Mobile Fix + PlayerGui fallback
+-- Lock Menu v19 | Based on v17 (stable) + Crosshair + AimX + SubLock + NoCamZoom
 -- CoreGui parent + keepalive
 
 --// SERVICES
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local CoreGui          = game:GetService("CoreGui")
 local LocalPlayer      = Players.LocalPlayer
 local Camera           = workspace.CurrentCamera
-local Mouse            = nil
-pcall(function() Mouse = LocalPlayer:GetMouse() end)
-
--- Cobex mobile: CoreGui อาจ block → fallback PlayerGui
-local CoreGui = nil
-local GuiParent = nil
-pcall(function() CoreGui = game:GetService("CoreGui") end)
-if CoreGui then
-    local ok = pcall(function()
-        local t = Instance.new("ScreenGui"); t.Parent = CoreGui; t:Destroy()
-    end)
-    if ok then GuiParent = CoreGui end
-end
-if not GuiParent then
-    GuiParent = LocalPlayer:WaitForChild("PlayerGui")
-end
+local Mouse            = LocalPlayer:GetMouse()
 
 -- ══ SAVE / LOAD ══
 local _S = _G.LockMenuSave or {}
@@ -56,12 +42,7 @@ local function SaveSettings()
 end
 
 -- ══ STATE ══
-local Character = LocalPlayer.Character
-if not Character then
-    task.spawn(function()
-        Character = LocalPlayer.CharacterAdded:Wait()
-    end)
-end
+local Character     = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local currentTarget = nil
 local targetList    = {}
 local targetIndex   = 1
@@ -92,45 +73,48 @@ local camFreePos  = Vector3.new()
 
 -- ══ GUI CLEANUP ══
 pcall(function()
-    for _, n in ipairs({"LM_v16","LM_v17","LM_v18","LM_v19","LM_v19_Cross","LM_v20","LM_v20_Cross","LM_v21","LM_v21_Cross","LM_v22","LM_v22_Cross"}) do
+    for _, n in ipairs({"LM_v16","LM_v17","LM_v18","LM_v19","LM_v19_Cross"}) do
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
         if pg and pg:FindFirstChild(n) then pg:FindFirstChild(n):Destroy() end
-        pcall(function()
-            if CoreGui and CoreGui:FindFirstChild(n) then CoreGui:FindFirstChild(n):Destroy() end
-        end)
-        if GuiParent and GuiParent:FindFirstChild(n) then GuiParent:FindFirstChild(n):Destroy() end
+        if CoreGui:FindFirstChild(n) then CoreGui:FindFirstChild(n):Destroy() end
     end
 end)
 
 -- ══ MAIN GUI ══
 local SG = Instance.new("ScreenGui")
-SG.Name = "LM_v22"
+SG.Name = "LM_v19"
 SG.ResetOnSpawn = false
-SG.IgnoreGuiInset = false
+SG.IgnoreGuiInset = true
 SG.DisplayOrder = 999
 SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-pcall(function() SG.Parent = GuiParent end)
-if not SG.Parent then SG.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+-- pcall CoreGui ก่อน → fallback PlayerGui (แบบเดียวกับ v17 ที่รันได้)
+local guiOK = pcall(function() SG.Parent = CoreGui end)
+if not guiOK or not SG.Parent then
+    SG.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
 
 -- Keepalive
 task.spawn(function()
     while task.wait(1) do
-        pcall(function()
-            if not SG or not SG.Parent then
-                SG.Parent = GuiParent or LocalPlayer:WaitForChild("PlayerGui")
+        if not SG or not SG.Parent then
+            local ok = pcall(function() SG.Parent = CoreGui end)
+            if not ok or not SG.Parent then
+                pcall(function() SG.Parent = LocalPlayer.PlayerGui end)
             end
-        end)
+        end
     end
 end)
 
 -- ══ CROSSHAIR GUI ══
 local CrossSG = Instance.new("ScreenGui")
-CrossSG.Name = "LM_v22_Cross"
+CrossSG.Name = "LM_v19_Cross"
 CrossSG.ResetOnSpawn = false
-CrossSG.IgnoreGuiInset = false
+CrossSG.IgnoreGuiInset = true
 CrossSG.DisplayOrder = 1000
-pcall(function() CrossSG.Parent = GuiParent end)
-if not CrossSG.Parent then CrossSG.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+local cOK = pcall(function() CrossSG.Parent = CoreGui end)
+if not cOK or not CrossSG.Parent then
+    CrossSG.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
 
 local CrossOuter = Instance.new("Frame")
 CrossOuter.Size = UDim2.new(0,22,0,22)
@@ -288,13 +272,13 @@ end
 --   MAIN FRAME
 -- ══════════════════════════════════════════════
 local menuLocked = false
--- Position มุมซ้ายบน ชัวร์อยู่ในจอมือถือทุกขนาด
-local MF = mkFrame(SG, UDim2.new(0,232,0,440), UDim2.new(0,8,0,48), Color3.fromRGB(11,11,17), true)
+-- ขนาดสูงขึ้นจากเดิม 370 → 440 เพื่อรองรับ AimX + MouseLock
+local MF = mkFrame(SG, UDim2.new(0,232,0,440), UDim2.new(0.5,-116,0.5,-220), Color3.fromRGB(11,11,17), true)
 
 local TB = mkFrame(MF, UDim2.new(1,0,0,32), UDim2.new(0,0,0,0), Color3.fromRGB(17,17,28), false, 8)
 TB.ClipsDescendants=false; mkAccent(TB)
 mkDrag(MF, TB, function() return menuLocked end)
-mkLbl(TB,"⚔ Lock Menu v22",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(TB,"⚔ Lock Menu v19",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(TB, MF, 180, 320, 300, 500)
 local BtnLockMenu = mkBtn(TB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-72,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnMin      = mkBtn(TB,"–", UDim2.new(0,22,0,22),UDim2.new(1,-48,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),14)
@@ -592,15 +576,11 @@ UserInputService.InputBegan:Connect(function(input,gp)
     end
 end)
 
--- Fly (pcall กัน error ถ้าบางแมพบล็อก หรือ Cobex block require)
+-- Fly (pcall กัน error ถ้าบางแมพบล็อก)
 local mvControls = nil
 pcall(function()
-    local ps = LocalPlayer:FindFirstChild("PlayerScripts")
-    if not ps then return end
-    local pm_mod = ps:FindFirstChild("PlayerModule")
-    if not pm_mod then return end
-    local pm = require(pm_mod)
-    if pm and pm.GetControls then mvControls = pm:GetControls() end
+    local pm = require(LocalPlayer:WaitForChild("PlayerScripts",5):WaitForChild("PlayerModule",5))
+    mvControls = pm:GetControls()
 end)
 
 local function mvStartFly()
@@ -930,7 +910,7 @@ local function StartLock()
         Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(camPos, aimPoint), alpha)
 
         -- redirect Mouse.Hit → aimPoint (สำหรับยิง)
-        if Settings.MouseLock and Mouse then
+        if Settings.MouseLock then
             pcall(function() Mouse.Hit = CFrame.new(aimPoint) end)
         end
 
@@ -998,7 +978,7 @@ local function TPRefresh()
         Instance.new("UIPadding",b).PaddingLeft=UDim.new(0,8)
         b.Activated:Connect(function()
             tpSelected=i
-            local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait(5)
+            local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             local root=char:FindFirstChild("HumanoidRootPart")
             if root then root.CFrame=CFrame.new(pos.x,pos.y,pos.z) end
             for _,c2 in ipairs(TPScr:GetChildren()) do
@@ -1018,17 +998,19 @@ local function doTP(hrp)
     local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
     if hrp and hrp.Parent then root.CFrame=hrp.CFrame*CFrame.new(0,0,-2) end
 end
-local function stopRapidTP()
-    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
-end
 local function startRapidTP(hrp)
-    stopRapidTP()
+    stopRapidTP = function()
+        if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
+    end
     rapidTPTarget=hrp
     rapidTPConn=RunService.Heartbeat:Connect(function()
         if not rapidTPTarget or not rapidTPTarget.Parent then stopRapidTP(); return end
         doTP(rapidTPTarget)
         task.wait(tpRapidSpeed)
     end)
+end
+local function stopRapidTP()
+    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
 end
 
 -- ══ RESPAWN ══
@@ -1144,7 +1126,6 @@ BtnClose.Activated:Connect(function()
     StopLock(); ClearESP()
     pcall(function() SG:Destroy() end)
     pcall(function() CrossSG:Destroy() end)
-    stopRapidTP()
 end)
 
 -- Scan
@@ -1258,7 +1239,7 @@ BtnTFMin.Activated:Connect(function()
 end)
 BtnTFClose.Activated:Connect(function() tpVis=false; TF.Visible=false; BtnTP.BackgroundColor3=Color3.fromRGB(24,24,40) end)
 BtnTPSave.Activated:Connect(function()
-    local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait(5)
+    local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
     table.insert(tpSaves,{x=root.Position.X,y=root.Position.Y,z=root.Position.Z}); TPRefresh()
 end)
@@ -1270,7 +1251,6 @@ BtnTPClic.Activated:Connect(function()
     BtnTPClic.Text=clickTP and "Click TP ON" or "Click TP OFF"
     BtnTPClic.BackgroundColor3=clickTP and Color3.fromRGB(20,92,40) or Color3.fromRGB(130,32,32)
 end)
-if Mouse then
 Mouse.Button1Down:Connect(function()
     if not clickTP then return end
     local char=LocalPlayer.Character; if not char then return end
@@ -1278,7 +1258,6 @@ Mouse.Button1Down:Connect(function()
     local hit=Mouse.Hit
     if hit then lockPos=hit.Position; root.CFrame=CFrame.new(lockPos+Vector3.new(0,3,0)) end
 end)
-end
 
 -- TP Mode Popup
 BtnTPMClose.Activated:Connect(function() TPModePopup.Visible=false end)
