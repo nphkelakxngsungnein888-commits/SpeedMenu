@@ -1,4 +1,4 @@
--- Lock Menu v19 | Based on v17 (stable) + Crosshair + AimX + SubLock + NoCamZoom
+-- Lock Menu v21 | Cobex Mobile Fix + PlayerGui fallback
 -- CoreGui parent + keepalive
 
 --// SERVICES
@@ -87,7 +87,7 @@ local camFreePos  = Vector3.new()
 
 -- ══ GUI CLEANUP ══
 pcall(function()
-    for _, n in ipairs({"LM_v16","LM_v17","LM_v18","LM_v19","LM_v19_Cross","LM_v20","LM_v20_Cross"}) do
+    for _, n in ipairs({"LM_v16","LM_v17","LM_v18","LM_v19","LM_v19_Cross","LM_v20","LM_v20_Cross","LM_v21","LM_v21_Cross"}) do
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
         if pg and pg:FindFirstChild(n) then pg:FindFirstChild(n):Destroy() end
         pcall(function()
@@ -99,7 +99,7 @@ end)
 
 -- ══ MAIN GUI ══
 local SG = Instance.new("ScreenGui")
-SG.Name = "LM_v20"
+SG.Name = "LM_v21"
 SG.ResetOnSpawn = false
 SG.IgnoreGuiInset = false
 SG.DisplayOrder = 999
@@ -120,7 +120,7 @@ end)
 
 -- ══ CROSSHAIR GUI ══
 local CrossSG = Instance.new("ScreenGui")
-CrossSG.Name = "LM_v20_Cross"
+CrossSG.Name = "LM_v21_Cross"
 CrossSG.ResetOnSpawn = false
 CrossSG.IgnoreGuiInset = false
 CrossSG.DisplayOrder = 1000
@@ -289,7 +289,7 @@ local MF = mkFrame(SG, UDim2.new(0,232,0,440), UDim2.new(0,8,0,48), Color3.fromR
 local TB = mkFrame(MF, UDim2.new(1,0,0,32), UDim2.new(0,0,0,0), Color3.fromRGB(17,17,28), false, 8)
 TB.ClipsDescendants=false; mkAccent(TB)
 mkDrag(MF, TB, function() return menuLocked end)
-mkLbl(TB,"⚔ Lock Menu v19",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(TB,"⚔ Lock Menu v21",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(TB, MF, 180, 320, 300, 500)
 local BtnLockMenu = mkBtn(TB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-72,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnMin      = mkBtn(TB,"–", UDim2.new(0,22,0,22),UDim2.new(1,-48,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),14)
