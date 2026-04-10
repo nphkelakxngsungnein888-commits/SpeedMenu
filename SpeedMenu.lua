@@ -774,45 +774,46 @@ local function GetRoot(model)
 end
 
 local function GetTargetList()
-    local myHRP=Character and Character:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return {} end
-    local list={}
-    local range=tonumber(InpRange.Text) or Settings.LockRange
-    if Settings.Mode=="Player" then
-        for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LocalPlayer and p.Character then
-                local hrp=p.Character:FindFirstChild("HumanoidRootPart")
-                local hum=p.Character:FindFirstChild("Humanoid")
-                if hrp and hum and hum.Health>0 then
-                    local dist=(hrp.Position-myHRP.Position).Magnitude
-                    if dist<=range then
+    local myHRP=Character and Character:FindFirstChild( "HumanoidRootPart" )
+    ถ้า ไม่ใช่ myHRP ให้ ส่งคืน {} จบ
+    รายการท้องถิ่น = {}
+    ช่วง ท้องถิ่น = ตัวเลข (InpRange.Text) หรือการตั้งค่า.ล็อคช่วง
+    ถ้า Settings.Mode == "Player"  แล้ว
+        สำหรับ _,p ใน ipairs(Players:GetPlayers()) ทำ
+            ถ้า p ≠ LocalPlayer และ p เป็น Character แล้ว
+                local hrp=p.Character:FindFirstChild( "HumanoidRootPart" )
+                local hum=p.Character:FindFirstChild( "Humanoid" )
+                ถ้า hrp และ hum และ hum.Health > 0  แล้ว
+                    ระยะห่าง ภายใน = (ตำแหน่ง hrp - ตำแหน่ง myHRP)
+                    ถ้า dist <= range แล้ว
                         local col=GetTeamColor(p.Character)
-                        if not IsExcluded(col) then
+                        ถ้า ไม่ใช่ IsExcluded(col) แล้ว
                             table.insert(list,{model=p.Character,name=p.Name,dist=dist,color=col})
-                        end
-                    end
-                end
-            end
-        end
-    else
-        for _,obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj~=Character and not Players:GetPlayerFromCharacter(obj) then
-                local hum=obj:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health>0 then
+                        จบ
+                    จบ
+                จบ
+            จบ
+        จบ
+    อื่น
+        สำหรับ _,obj ใน ipairs(workspace:GetDescendants()) ทำ
+            ถ้า obj:IsA( "Model" ) และ obj~=Character และ ไม่ใช่ Players:GetPlayerFromCharacter(obj) แล้ว
+                local hum=obj:FindFirstChildOfClass( "Humanoid" )
+                ถ้า hum และ hum.Health > 0  แล้ว
                     local hrp=GetRoot(obj)
-                    if hrp then
-                        local dist=(hrp.Position-myHRP.Position).Magnitude
-                        if dist<=range then
+                    ถ้า hrp แล้ว
+                        ระยะห่าง ภายใน = (ตำแหน่ง hrp - ตำแหน่ง myHRP)
+                        ถ้า dist <= range แล้ว
                             local col=GetTeamColor(obj)
-                            if not IsExcluded(col) then
+                            ถ้า ไม่ใช่ IsExcluded(col) แล้ว
                                 table.insert(list,{model=obj,name=obj.Name,dist=dist,color=col})
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
+                            จบ
+                        จบ
+                    จบ
+                จบ
+            จบ
+        จบ
+    จบend
+
     table.sort(list,function(a,b) return a.dist<b.dist end)
     return list
 end
