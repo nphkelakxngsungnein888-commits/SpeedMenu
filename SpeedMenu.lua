@@ -87,22 +87,21 @@ SG.ResetOnSpawn = false
 SG.IgnoreGuiInset = true
 SG.DisplayOrder = 999
 SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
--- pcall CoreGui ก่อน → fallback PlayerGui (แบบเดียวกับ v17 ที่รันได้)
-local guiOK = pcall(function() SG.Parent = CoreGui end)
-if not guiOK or not SG.Parent then
-    SG.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
+SG.Parent = CoreGui
 
--- Keepalive
+-- กันโดนลบ
 task.spawn(function()
     while task.wait(1) do
         if not SG or not SG.Parent then
-            local ok = pcall(function() SG.Parent = CoreGui end)
-            if not ok or not SG.Parent then
-                pcall(function() SG.Parent = LocalPlayer.PlayerGui end)
-            end
+            SG.Parent = CoreGui
         end
     end
+end)
+
+-- กันหายตอนตาย
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    if not SG.Parent then SG.Parent = CoreGui end
 end)
 
 -- ══ CROSSHAIR GUI ══
@@ -111,10 +110,7 @@ CrossSG.Name = "LM_v19_Cross"
 CrossSG.ResetOnSpawn = false
 CrossSG.IgnoreGuiInset = true
 CrossSG.DisplayOrder = 1000
-local cOK = pcall(function() CrossSG.Parent = CoreGui end)
-if not cOK or not CrossSG.Parent then
-    CrossSG.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
+CrossSG.Parent = CoreGui
 
 local CrossOuter = Instance.new("Frame")
 CrossOuter.Size = UDim2.new(0,22,0,22)
@@ -733,7 +729,7 @@ local function GetTargetList()
     end
     table.sort(list,function(a,b) return a.dist<b.dist end)
     return list
-end
+ end
 
 local function FilterList(list)
     if not Settings.FilterColor then return list end
@@ -993,24 +989,28 @@ end
 -- Rapid TP
 local rapidTPConn = nil
 local rapidTPTarget = nil
+
 local function doTP(hrp)
     local char=LocalPlayer.Character; if not char then return end
     local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
-    if hrp and hrp.Parent then root.CFrame=hrp.CFrame*CFrame.new(0,0,-2) end
+    if hrp and hrp.Parent then root.CFrame=hrp.CFrame+Vector3.new(0,3,0) end
 end
+
+local function stopRapidTP()
+    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end
+    rapidTPTarget=nil
+end
+
 local function startRapidTP(hrp)
-    stopRapidTP = function()
-        if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
-    end
+    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end
     rapidTPTarget=hrp
     rapidTPConn=RunService.Heartbeat:Connect(function()
-        if not rapidTPTarget or not rapidTPTarget.Parent then stopRapidTP(); return end
+        if not TPScanEnabled or not rapidTPTarget or not rapidTPTarget.Parent then
+            stopRapidTP(); return
+        end
         doTP(rapidTPTarget)
         task.wait(tpRapidSpeed)
     end)
-end
-local function stopRapidTP()
-    if rapidTPConn then rapidTPConn:Disconnect(); rapidTPConn=nil end; rapidTPTarget=nil
 end
 
 -- ══ RESPAWN ══
