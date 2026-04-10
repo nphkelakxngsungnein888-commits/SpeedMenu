@@ -101,7 +101,7 @@ end)
 local SG = Instance.new("ScreenGui")
 SG.Name = "LM_v20"
 SG.ResetOnSpawn = false
-SG.IgnoreGuiInset = true
+SG.IgnoreGuiInset = false
 SG.DisplayOrder = 999
 SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 pcall(function() SG.Parent = GuiParent end)
@@ -122,7 +122,7 @@ end)
 local CrossSG = Instance.new("ScreenGui")
 CrossSG.Name = "LM_v20_Cross"
 CrossSG.ResetOnSpawn = false
-CrossSG.IgnoreGuiInset = true
+CrossSG.IgnoreGuiInset = false
 CrossSG.DisplayOrder = 1000
 pcall(function() CrossSG.Parent = GuiParent end)
 if not CrossSG.Parent then CrossSG.Parent = LocalPlayer:WaitForChild("PlayerGui") end
@@ -283,8 +283,8 @@ end
 --   MAIN FRAME
 -- ══════════════════════════════════════════════
 local menuLocked = false
--- ขนาดสูงขึ้นจากเดิม 370 → 440 เพื่อรองรับ AimX + MouseLock
-local MF = mkFrame(SG, UDim2.new(0,232,0,440), UDim2.new(0.5,-116,0.5,-220), Color3.fromRGB(11,11,17), true)
+-- Position มุมซ้ายบน ชัวร์อยู่ในจอมือถือทุกขนาด
+local MF = mkFrame(SG, UDim2.new(0,232,0,440), UDim2.new(0,8,0,48), Color3.fromRGB(11,11,17), true)
 
 local TB = mkFrame(MF, UDim2.new(1,0,0,32), UDim2.new(0,0,0,0), Color3.fromRGB(17,17,28), false, 8)
 TB.ClipsDescendants=false; mkAccent(TB)
