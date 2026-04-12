@@ -1,5 +1,5 @@
--- Lock Menu v16 | Codex Android
--- Camera = RenderStepped | ESP = Heartbeat 0.3s throttle | TP+CamSystem
+-- Lock Menu v18 | Codex Android
+-- Camera Mode: Free / Face-Lock / PVP Crosshair | AimOffset Y+X | Lock on all menus
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
@@ -19,12 +19,13 @@ local Settings = {
     FilterColor   = nil,
     ESPEnabled    = false,
     ExcludeColors = {},
-    MouseLock     = false,  -- redirect Mouse.Hit → เป้าล็อค
 }
-local AIM_OFFSET   = _S.AIM_OFFSET   or 0    -- ขึ้นลงของเป้า
-local AIM_OFFSET_X = _S.AIM_OFFSET_X or 0    -- ซ้าย/ขวาของเป้า
-local CAM_DISTANCE = _S.CAM_DISTANCE or 0    -- ระยะกล้อง
-local CAM_HEIGHT   = 3
+local AIM_OFFSET_Y = _S.AIM_OFFSET_Y or 0   -- ขึ้น/ลง (องศา)
+local AIM_OFFSET_X = _S.AIM_OFFSET_X or 0   -- ซ้าย/ขวา (องศา) 1=ซ้าย -1=ขวา
+local CAM_DISTANCE = _S.CAM_DISTANCE or 0
+
+-- CamMode: 1=อิสระ, 2=ล็อคหันหน้า, 3=PVP Crosshair
+local CamMode = _S.CamMode or 1
 
 local function SaveSettings()
     _G.LockMenuSave = {
@@ -32,9 +33,10 @@ local function SaveSettings()
         LockRange    = Settings.LockRange,
         Mode         = Settings.Mode,
         NearestMode  = Settings.NearestMode,
-        AIM_OFFSET   = AIM_OFFSET,
+        AIM_OFFSET_Y = AIM_OFFSET_Y,
         AIM_OFFSET_X = AIM_OFFSET_X,
         CAM_DISTANCE = CAM_DISTANCE,
+        CamMode      = CamMode,
     }
 end
 
@@ -47,10 +49,6 @@ local lockConn      = nil
 local foundColors   = {}
 local forceRescan   = false
 local TPScanEnabled = false
-local scanTPMode    = "single"  -- "single" | "rapid"
-local scanTPRapidHz = 10         -- ครั้ง/วินาที
-local scanTPRapidConn = nil
-local scanTPModeFrame = nil      -- เมนูเลือกโหมด
 local espBoxes      = {}
 local espTimer      = 0
 local ESP_INTERVAL  = 0.3
@@ -70,134 +68,23 @@ local camMove     = Vector3.new()
 local camFreePos  = Vector3.new()
 
 -- ══ GUI CLEANUP ══
-local CoreGui = game:GetService("CoreGui")
 pcall(function()
-    for _,name in ipairs({"LM_v16","LM_v17","LM_v18"}) do
-        local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if pg then local o=pg:FindFirstChild(name) if o then o:Destroy() end end
-        local o=CoreGui:FindFirstChild(name) if o then o:Destroy() end
-    end
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then local o=pg:FindFirstChild("LM_v18") if o then o:Destroy() end end
+    local cg = game:GetService("CoreGui")
+    if cg then local o=cg:FindFirstChild("LM_v18") if o then o:Destroy() end end
+    -- cleanup old
+    if pg then local o=pg:FindFirstChild("LM_v16") if o then o:Destroy() end end
+    if cg then local o=cg:FindFirstChild("LM_v16") if o then o:Destroy() end end
 end)
-
 local SG = Instance.new("ScreenGui")
-SG.Name = "LM_v18"
-SG.ResetOnSpawn = false
-SG.IgnoreGuiInset = true
-SG.DisplayOrder = 999
-SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-SG.Parent = CoreGui  -- ตรงๆ ไม่มี pcall (แบบเดียวกับที่รันได้)
+SG.Name="LM_v18"; SG.ResetOnSpawn=false
+SG.DisplayOrder=999; SG.IgnoreGuiInset=true
+SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+local guiOK = pcall(function() SG.Parent = game:GetService("CoreGui") end)
+if not guiOK then SG.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
--- กันโดนลบ
-task.spawn(function()
-    while task.wait(1) do
-        if not SG or not SG.Parent then
-            SG.Parent = CoreGui
-        end
-    end
-end)
-
--- กันหายตอนตาย
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    if not SG.Parent then
-        SG.Parent = CoreGui
-    end
-end)
-
--- ══ CROSSHAIR UI (ตรงกลางจอ + เชื่อม AIM_OFFSET) ══
-local CrosshairEnabled = false
-
-local CrossSG = Instance.new("ScreenGui")
-CrossSG.Name="LM_v18_Cross"; CrossSG.ResetOnSpawn=false
-CrossSG.DisplayOrder=1000; CrossSG.IgnoreGuiInset=true
-CrossSG.Parent = CoreGui  -- ตรงๆ
-
--- วงกลม crosshair (ขยับตาม AIM_OFFSET)
-local CrossOuter = Instance.new("Frame")
-CrossOuter.Size = UDim2.new(0,22,0,22)
-CrossOuter.AnchorPoint = Vector2.new(0.5,0.5)
-CrossOuter.Position = UDim2.new(0.5,0,0.5,0)  -- เริ่มตรงกลาง
-CrossOuter.BackgroundTransparency = 1
-CrossOuter.BorderSizePixel = 0
-CrossOuter.Visible = false
-CrossOuter.Parent = CrossSG
-Instance.new("UICorner", CrossOuter).CornerRadius = UDim.new(1,0)
-local CrossRing = Instance.new("UIStroke", CrossOuter)
-CrossRing.Color = Color3.fromRGB(255,60,60)
-CrossRing.Thickness = 2
-
--- เส้นกาก + (horizontal)
-local CrossH = Instance.new("Frame")
-CrossH.Size = UDim2.new(0,14,0,2)
-CrossH.AnchorPoint = Vector2.new(0.5,0.5)
-CrossH.Position = UDim2.new(0.5,0,0.5,0)
-CrossH.BackgroundColor3 = Color3.fromRGB(255,60,60)
-CrossH.BorderSizePixel = 0
-CrossH.Parent = CrossSG
-CrossH.Visible = false
-Instance.new("UICorner",CrossH).CornerRadius = UDim.new(0,1)
-
--- เส้นกาก + (vertical)
-local CrossV = Instance.new("Frame")
-CrossV.Size = UDim2.new(0,2,0,14)
-CrossV.AnchorPoint = Vector2.new(0.5,0.5)
-CrossV.Position = UDim2.new(0.5,0,0.5,0)
-CrossV.BackgroundColor3 = Color3.fromRGB(255,60,60)
-CrossV.BorderSizePixel = 0
-CrossV.Parent = CrossSG
-CrossV.Visible = false
-Instance.new("UICorner",CrossV).CornerRadius = UDim.new(0,1)
-
--- อัปเดต crosshair ตาม AIM_OFFSET Y และ X — project เป้าจริงลงบนหน้าจอ
-local function UpdateCrosshairPos()
-    if not CrosshairEnabled then return end
-
-    -- ถ้ามีเป้าจริง → project aimPoint ลงหน้าจอ
-    if currentTarget then
-        local hrp  = GetRoot(currentTarget)
-        local head = currentTarget:FindFirstChild("Head")
-        if hrp and hrp.Parent then
-            local basePos = head and head.Position or hrp.Position
-            local rightVec = Camera.CFrame.RightVector
-            local aimPoint = basePos
-                + Vector3.new(0,1,0) * AIM_OFFSET
-                + rightVec           * AIM_OFFSET_X
-
-            local screenPos, onScreen = Camera:WorldToScreenPoint(aimPoint)
-            if onScreen then
-                local vp = Camera.ViewportSize
-                local sx = screenPos.X / vp.X
-                local sy = screenPos.Y / vp.Y
-                CrossOuter.Position = UDim2.new(sx, -11, sy, -11)
-                CrossH.Position     = UDim2.new(sx,  -7, sy,  -1)
-                CrossV.Position     = UDim2.new(sx,  -1, sy,  -7)
-            else
-                -- เป้าอยู่หลังหน้าจอ → คงที่ตรงกลาง
-                CrossOuter.Position = UDim2.new(0.5,-11,0.5,-11)
-                CrossH.Position     = UDim2.new(0.5, -7,0.5, -1)
-                CrossV.Position     = UDim2.new(0.5, -1,0.5, -7)
-            end
-            return
-        end
-    end
-
-    -- ไม่มีเป้า → crosshair ตรงกลางจอ พร้อม offset pixel
-    local offY = -AIM_OFFSET   * 8
-    local offX =  AIM_OFFSET_X * 8
-    CrossOuter.Position = UDim2.new(0.5, offX-11, 0.5, offY-11)
-    CrossH.Position     = UDim2.new(0.5, offX- 7, 0.5, offY- 1)
-    CrossV.Position     = UDim2.new(0.5, offX- 1, 0.5, offY- 7)
-end
-
-local function SetCrosshair(on)
-    CrosshairEnabled = on
-    CrossOuter.Visible = on
-    CrossH.Visible = on
-    CrossV.Visible = on
-    if on then UpdateCrosshairPos() end
-end
-
-
+-- ══ UI FACTORY ══
 local function Hex(c)
     return string.format("%02X%02X%02X",math.floor(c.R*255),math.floor(c.G*255),math.floor(c.B*255))
 end
@@ -276,9 +163,6 @@ local function mkDrag(frame,handle,lockFn)
     handle.InputEnded:Connect(en);   UserInputService.InputEnded:Connect(en)
 end
 
--- ══════════════════════════════════════════════
---   MAIN FRAME
--- ══════════════════════════════════════════════
 -- ══ RESIZE HELPER ══
 local function mkResize(titleBar, frame, minW, maxW, minH, maxH)
     local bS=mkBtn(titleBar,"◀",UDim2.new(0,18,0,18),UDim2.new(0,4,0.5,-9),Color3.fromRGB(28,28,46),Color3.fromRGB(150,150,210),9)
@@ -294,14 +178,75 @@ local function mkResize(titleBar, frame, minW, maxW, minH, maxH)
     end)
 end
 
-local menuLocked=false
-local MF=mkFrame(SG,UDim2.new(0,232,0,460),UDim2.new(0.5,-116,0.5,-230),Color3.fromRGB(11,11,17),true)
+-- ══ LOCK BUTTON HELPER (ใช้ทุกเมนู) ══
+-- สร้างปุ่ม 🔒 ใน titleBar แล้วคืน lockState getter
+local function mkMenuLock(titleBar, offsetFromRight)
+    local off = offsetFromRight or 72
+    local locked = false
+    local btn = mkBtn(titleBar,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-off,0.5,-11),Color3.fromRGB(40,40,62))
+    btn.Activated:Connect(function()
+        locked = not locked
+        btn.Text = locked and "🔒" or "🔓"
+        btn.BackgroundColor3 = locked and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
+    end)
+    return function() return locked end
+end
+
+-- ══════════════════════════════════════════════
+--   CROSSHAIR (PVP Mode 3)
+-- ══════════════════════════════════════════════
+local CrosshairFrame = Instance.new("Frame")
+CrosshairFrame.Name = "Crosshair"
+CrosshairFrame.Size = UDim2.new(0,20,0,20)
+CrosshairFrame.AnchorPoint = Vector2.new(0.5,0.5)
+CrosshairFrame.BackgroundTransparency = 1
+CrosshairFrame.ZIndex = 100
+CrosshairFrame.Parent = SG
+
+-- เส้นแนวตั้ง
+local cvLine = Instance.new("Frame",CrosshairFrame)
+cvLine.Size = UDim2.new(0,2,1,0); cvLine.Position = UDim2.new(0.5,-1,0,0)
+cvLine.BackgroundColor3 = Color3.fromRGB(255,255,255); cvLine.BorderSizePixel=0; cvLine.ZIndex=100
+-- เส้นแนวนอน
+local chLine = Instance.new("Frame",CrosshairFrame)
+chLine.Size = UDim2.new(1,0,0,2); chLine.Position = UDim2.new(0,0,0.5,-1)
+chLine.BackgroundColor3 = Color3.fromRGB(255,255,255); chLine.BorderSizePixel=0; chLine.ZIndex=100
+-- วงกลมตรงกลาง
+local cDot = Instance.new("Frame",CrosshairFrame)
+cDot.Size = UDim2.new(0,6,0,6); cDot.Position = UDim2.new(0.5,-3,0.5,-3)
+cDot.BackgroundColor3 = Color3.fromRGB(255,80,80); cDot.BorderSizePixel=0; cDot.ZIndex=101
+Instance.new("UICorner",cDot).CornerRadius = UDim.new(1,0)
+
+CrosshairFrame.Visible = false
+
+-- อัพเดทตำแหน่ง Crosshair ตาม AIM_OFFSET_Y และ AIM_OFFSET_X
+-- จะทำใน RenderStepped
+local function UpdateCrosshairPos()
+    local vp = Camera.ViewportSize
+    -- จุดกลางจอ
+    local cx = vp.X/2
+    local cy = vp.Y/2
+    -- ขยับตาม offset: ค่า Y: บวก=ขึ้น, ค่า X: 1=ซ้าย, -1=ขวา
+    -- ใช้ pixel scale คล้ายๆ ~4 px ต่อ 1 หน่วย
+    local scale = 4
+    local px = cx - AIM_OFFSET_X * scale   -- -X เพราะ 1=ซ้าย
+    local py = cy - AIM_OFFSET_Y * scale   -- -Y เพราะ บวก=ขึ้น
+    CrosshairFrame.Position = UDim2.new(0, px, 0, py)
+end
+
+-- ══════════════════════════════════════════════
+--   MAIN FRAME
+-- ══════════════════════════════════════════════
+local menuLocked = false
+local MF=mkFrame(SG,UDim2.new(0,232,0,440),UDim2.new(0.5,-116,0.5,-220),Color3.fromRGB(11,11,17),true)
 
 local TB=mkFrame(MF,UDim2.new(1,0,0,32),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 TB.ClipsDescendants=false; mkAccent(TB)
 mkDrag(MF,TB,function() return menuLocked end)
-mkLbl(TB,"⚔ Lock Menu v16",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
-mkResize(TB,MF,180,320,300,500)
+mkLbl(TB,"⚔ Lock Menu v18",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkResize(TB,MF,180,320,380,540)
+
+-- ปุ่มล็อคเมนูหลัก
 local BtnLockMenu=mkBtn(TB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-72,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnMin     =mkBtn(TB,"–", UDim2.new(0,22,0,22),UDim2.new(1,-48,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),14)
 local BtnClose   =mkBtn(TB,"✕", UDim2.new(0,22,0,22),UDim2.new(1,-24,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
@@ -326,58 +271,75 @@ end; UpdateModeUI()
 
 mkDiv(Con,53)
 
--- RANGE (1 ค่า: Range=200)
+-- RANGE
 mkLbl(Con,"📏 Range",UDim2.new(1,-16,0,13),UDim2.new(0,8,0,57),9)
 local InpRange=mkInp(Con,Settings.LockRange,UDim2.new(1,-16,0,24),UDim2.new(0,8,0,70))
 
 mkDiv(Con,100)
 
--- AIM OFFSET Y (ขึ้น/ลง) + AIM OFFSET X (ซ้าย/ขวา)
-mkLbl(Con,"⬆ Aim Y (↑บน ↓ล่าง)",UDim2.new(0,110,0,13),UDim2.new(0,8,0,104),9)
-mkLbl(Con,"↔ Aim X (←ซ้าย →ขวา)",UDim2.new(0,110,0,13),UDim2.new(0,118,0,104),9)
-local InpAim    =mkInp(Con,AIM_OFFSET,  UDim2.new(0,80,0,22),UDim2.new(0,8,0,117))
-local InpAimX   =mkInp(Con,AIM_OFFSET_X,UDim2.new(0,80,0,22),UDim2.new(0,118,0,117))
+-- ══ CAMERA MODE SELECTOR ══
+mkLbl(Con,"📷 Camera Mode",UDim2.new(1,-16,0,13),UDim2.new(0,8,0,104),9,Color3.fromRGB(180,180,255))
+-- 3 ปุ่ม: อิสระ / ล็อคหัน / PVP
+local BtnCM1=mkBtn(Con,"1.อิสระ",  UDim2.new(0,68,0,24),UDim2.new(0,8,0,119),  Color3.fromRGB(28,28,46),Color3.fromRGB(148,158,218),9)
+local BtnCM2=mkBtn(Con,"2.ล็อคหัน",UDim2.new(0,68,0,24),UDim2.new(0,80,0,119), Color3.fromRGB(28,28,46),Color3.fromRGB(148,158,218),9)
+local BtnCM3=mkBtn(Con,"3.PVP🎯",  UDim2.new(0,68,0,24),UDim2.new(0,152,0,119),Color3.fromRGB(28,28,46),Color3.fromRGB(148,158,218),9)
 
--- +/- Y
-local BtnAimUp =mkBtn(Con,"+",UDim2.new(0,22,0,20),UDim2.new(0,90,0,117),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),12)
-local BtnAimDn =mkBtn(Con,"–",UDim2.new(0,22,0,20),UDim2.new(0,90,0,139),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),12)
--- +/- X
-local BtnAimXR =mkBtn(Con,"+",UDim2.new(0,22,0,20),UDim2.new(0,200,0,117),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),12)
-local BtnAimXL =mkBtn(Con,"–",UDim2.new(0,22,0,20),UDim2.new(0,200,0,139),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),12)
+local function UpdateCamModeUI()
+    local hi = Color3.fromRGB(62,92,205)
+    local lo = Color3.fromRGB(28,28,46)
+    local tc_hi = Color3.fromRGB(255,255,255)
+    local tc_lo = Color3.fromRGB(148,158,218)
+    BtnCM1.BackgroundColor3 = CamMode==1 and hi or lo; BtnCM1.TextColor3 = CamMode==1 and tc_hi or tc_lo
+    BtnCM2.BackgroundColor3 = CamMode==2 and hi or lo; BtnCM2.TextColor3 = CamMode==2 and tc_hi or tc_lo
+    BtnCM3.BackgroundColor3 = CamMode==3 and hi or lo; BtnCM3.TextColor3 = CamMode==3 and tc_hi or tc_lo
+    CrosshairFrame.Visible = (CamMode==3)
+end; UpdateCamModeUI()
 
-mkLbl(Con,"📷 Cam Dist",UDim2.new(1,-16,0,13),UDim2.new(0,8,0,163),9)
-local InpCamDst =mkInp(Con,CAM_DISTANCE,UDim2.new(1,-16,0,22),UDim2.new(0,8,0,176))
+BtnCM1.Activated:Connect(function() CamMode=1; UpdateCamModeUI(); SaveSettings() end)
+BtnCM2.Activated:Connect(function() CamMode=2; UpdateCamModeUI(); SaveSettings() end)
+BtnCM3.Activated:Connect(function() CamMode=3; UpdateCamModeUI(); SaveSettings() end)
 
-mkDiv(Con,204)
+mkDiv(Con,149)
+
+-- ══ AIM OFFSET Y (ขึ้น/ลง) ══
+mkLbl(Con,"⬆ Aim Y (0=กลาง ↑บน ↓ล่าง)",UDim2.new(1,-16,0,13),UDim2.new(0,8,0,153),9)
+-- input Y + ปุ่ม +/-
+local InpAimY   = mkInp(Con,AIM_OFFSET_Y,UDim2.new(0,80,0,24),UDim2.new(0,8,0,166))
+local BtnAimYUp = mkBtn(Con,"+",UDim2.new(0,26,0,22),UDim2.new(0,92,0,166),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),12)
+local BtnAimYDn = mkBtn(Con,"–",UDim2.new(0,26,0,22),UDim2.new(0,120,0,166),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),12)
+
+-- ══ AIM OFFSET X (ซ้าย/ขวา) ══
+mkLbl(Con,"↔ Aim X (1=ซ้าย -1=ขวา)",UDim2.new(1,-16,0,13),UDim2.new(0,8,0,193),9)
+local InpAimX   = mkInp(Con,AIM_OFFSET_X,UDim2.new(0,80,0,24),UDim2.new(0,8,0,206))
+local BtnAimXL  = mkBtn(Con,"+",UDim2.new(0,26,0,22),UDim2.new(0,92,0,206),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),12)
+local BtnAimXR  = mkBtn(Con,"–",UDim2.new(0,26,0,22),UDim2.new(0,120,0,206),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),12)
+
+mkDiv(Con,236)
 
 -- LOCK BUTTON
-local BtnLock=mkBtn(Con,"🔓 Lock : OFF",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,210),Color3.fromRGB(24,24,40),Color3.fromRGB(175,175,255),12)
-local BtnNear=mkBtn(Con,"📍 Nearest : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,244),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),11)
+local BtnLock=mkBtn(Con,"🔓 Lock : OFF",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,242),Color3.fromRGB(24,24,40),Color3.fromRGB(175,175,255),12)
+local BtnNear=mkBtn(Con,"📍 Nearest : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,276),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),11)
 
 -- PREV/TARGET/NEXT
-local BtnPrev=mkBtn(Con,"◀",UDim2.new(0,38,0,26),UDim2.new(0,8,0,276),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
-local TgtLbl=Instance.new("TextLabel"); TgtLbl.Size=UDim2.new(0,122,0,26); TgtLbl.Position=UDim2.new(0,50,0,276)
+local BtnPrev=mkBtn(Con,"◀",UDim2.new(0,38,0,26),UDim2.new(0,8,0,308),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
+local TgtLbl=Instance.new("TextLabel"); TgtLbl.Size=UDim2.new(0,122,0,26); TgtLbl.Position=UDim2.new(0,50,0,308)
 TgtLbl.BackgroundColor3=Color3.fromRGB(15,15,26); TgtLbl.BorderSizePixel=0; TgtLbl.Text="No Target"
 TgtLbl.TextColor3=Color3.fromRGB(130,170,255); TgtLbl.TextSize=10; TgtLbl.Font=Enum.Font.GothamBold
 TgtLbl.TextTruncate=Enum.TextTruncate.AtEnd; TgtLbl.Parent=Con
 Instance.new("UICorner",TgtLbl).CornerRadius=UDim.new(0,5)
-local BtnNext=mkBtn(Con,"▶",UDim2.new(0,38,0,26),UDim2.new(0,176,0,276),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
+local BtnNext=mkBtn(Con,"▶",UDim2.new(0,38,0,26),UDim2.new(0,176,0,308),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
 
-mkDiv(Con,308)
+mkDiv(Con,340)
 
 -- FEATURE ROW
-local BtnESP   =mkBtn(Con,"👁 ESP",  UDim2.new(0,42,0,26),UDim2.new(0,8,0,314),  Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnScan  =mkBtn(Con,"🔍 Scan", UDim2.new(0,42,0,26),UDim2.new(0,54,0,314), Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,42,0,26),UDim2.new(0,100,0,314),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,38,0,26),UDim2.new(0,146,0,314),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnMove  =mkBtn(Con,"🏃 Move", UDim2.new(0,42,0,26),UDim2.new(0,188,0,314),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnESP   =mkBtn(Con,"👁 ESP",  UDim2.new(0,42,0,26),UDim2.new(0,8,0,346),  Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnScan  =mkBtn(Con,"🔍 Scan", UDim2.new(0,42,0,26),UDim2.new(0,54,0,346), Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,42,0,26),UDim2.new(0,100,0,346),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,38,0,26),UDim2.new(0,146,0,346),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnMove  =mkBtn(Con,"🏃 Move", UDim2.new(0,42,0,26),UDim2.new(0,188,0,346),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
 
--- MOUSE LOCK ROW
-mkDiv(Con,346)
-local BtnMouseLock=mkBtn(Con,"🖱️ Mouse Lock : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,352),Color3.fromRGB(24,24,40),Color3.fromRGB(200,160,255),11)
-
-mkDiv(Con,384)
-local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,389),10,Color3.fromRGB(60,60,90))
+mkDiv(Con,378)
+local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,383),10,Color3.fromRGB(60,60,90))
 
 -- ══════════════════════════════════════════════
 --   SCAN FRAME
@@ -385,16 +347,15 @@ local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,389),
 local SF=mkFrame(SG,UDim2.new(0,220,0,340),UDim2.new(0.5,126,0.5,-170),Color3.fromRGB(11,11,17),true)
 SF.Visible=false
 local STB=mkFrame(SF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8); mkAccent(STB)
-local scanLocked=false
-mkDrag(SF,STB,function() return scanLocked end)
-mkLbl(STB,"🔍 Scan",UDim2.new(1,-132,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local scanMenuLocked = mkMenuLock(STB, 72)
+mkDrag(SF,STB,scanMenuLocked)
+mkLbl(STB,"🔍 Scan",UDim2.new(1,-108,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(STB,SF,160,320,200,500)
-local BtnTPScan=mkBtn(STB,"🚀",UDim2.new(0,22,0,22),UDim2.new(1,-138,0.5,-11),Color3.fromRGB(30,80,30))
-local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-114,0.5,-11),Color3.fromRGB(48,48,160))
-local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-90,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
-local BtnSLock  =mkBtn(STB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-68,0.5,-10),Color3.fromRGB(40,40,62))
-local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-46,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
-local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-24,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
+local BtnTPScan=mkBtn(STB,"🚀",UDim2.new(0,22,0,22),UDim2.new(1,-116,0.5,-11),Color3.fromRGB(30,80,30))
+local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-92,0.5,-11),Color3.fromRGB(48,48,160))
+local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-68,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
+local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-44,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
+local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
 
 local FBar=mkFrame(SF,UDim2.new(1,-16,0,22),UDim2.new(0,8,0,32),Color3.fromRGB(16,16,26),false,5)
 local FLbl=mkLbl(FBar,"🎨 Filter: ทั้งหมด",UDim2.new(1,-28,1,0),UDim2.new(0,6,0,0),9,Color3.fromRGB(120,120,170))
@@ -438,7 +399,7 @@ EPScr.BackgroundTransparency=1; EPScr.BorderSizePixel=0; EPScr.ScrollBarThicknes
 EPScr.CanvasSize=UDim2.new(0,0,0,0); EPScr.ZIndex=10; EPScr.Parent=EPop
 local EPLayout=Instance.new("UIListLayout"); EPLayout.Padding=UDim.new(0,3); EPLayout.Parent=EPScr
 
--- ══ TP MODE POPUP (สำหรับ Scan TP) ══
+-- ══ TP MODE POPUP ══
 local TPModePopup=mkFrame(SG,UDim2.new(0,200,0,160),UDim2.new(0.5,126,0.5,175),Color3.fromRGB(12,15,22),true)
 TPModePopup.Visible=false; TPModePopup.ZIndex=12
 local TPMBar=mkFrame(TPModePopup,UDim2.new(1,0,0,28),UDim2.new(0,0,0,0),Color3.fromRGB(18,22,35),false,8)
@@ -449,9 +410,8 @@ mkLbl(TPMBar,"🚀 TP Mode",UDim2.new(1,-30,1,0),UDim2.new(0,8,0,0),10,Color3.fr
 local BtnTPMClose=mkBtn(TPMBar,"✕",UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
 BtnTPMClose.ZIndex=12
 
--- โหมด 1 = ปกติ, 2 = รัว
-local tpModeSelect=1  -- default โหมด 1
-local tpRapidSpeed=0.05  -- วินาทีระหว่างแต่ละวาป
+local tpModeSelect=1
+local tpRapidSpeed=0.05
 
 local BtnTPM1=mkBtn(TPModePopup,"1️⃣ ปกติ (วาปครั้งเดียว)",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,32),
     Color3.fromRGB(25,75,25),Color3.fromRGB(180,255,180),10)
@@ -480,7 +440,6 @@ InpTPSpeed.FocusLost:Connect(function()
     if v and v>0 then tpRapidSpeed=v else InpTPSpeed.Text=tostring(tpRapidSpeed) end
 end)
 
--- rapid TP state
 local rapidTPConn=nil
 local rapidTPTarget=nil
 
@@ -515,11 +474,10 @@ local CamF=mkFrame(SG,UDim2.new(0,190,0,200),UDim2.new(0.5,-340,0.5,-100),Color3
 CamF.Visible=false
 local CamTB=mkFrame(CamF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 mkAccent(CamTB,Color3.fromRGB(245,150,50))
-local camFrameLocked=false
-mkDrag(CamF,CamTB,function() return camFrameLocked end)
-mkLbl(CamTB,"📷 Camera System",UDim2.new(1,-75,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local camMenuLocked = mkMenuLock(CamTB, 72)
+mkDrag(CamF,CamTB,camMenuLocked)
+mkLbl(CamTB,"📷 Camera System",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(CamTB,CamF,160,280,160,320)
-local BtnCamFLock=mkBtn(CamTB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-70,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnCamMin  =mkBtn(CamTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnCamClose=mkBtn(CamTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 
@@ -567,11 +525,10 @@ local TF=mkFrame(SG,UDim2.new(0,210,0,260),UDim2.new(0.5,-340,0.5,110),Color3.fr
 TF.Visible=false
 local TFTB=mkFrame(TF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 mkAccent(TFTB,Color3.fromRGB(50,190,110))
-local tpFrameLocked=false
-mkDrag(TF,TFTB,function() return tpFrameLocked end)
-mkLbl(TFTB,"🚀 Teleport Save",UDim2.new(1,-75,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local tpMenuLocked = mkMenuLock(TFTB, 72)
+mkDrag(TF,TFTB,tpMenuLocked)
+mkLbl(TFTB,"🚀 Teleport Save",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(TFTB,TF,160,320,200,400)
-local BtnTFFLock=mkBtn(TFTB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-70,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnTFMin  =mkBtn(TFTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnTFClose=mkBtn(TFTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 local BtnTPSave =mkBtn(TF,"+ Save",    UDim2.new(0,60,0,26),UDim2.new(0,5,0,34),  Color3.fromRGB(20,68,20),Color3.fromRGB(170,255,170),11)
@@ -592,11 +549,10 @@ MvF.Visible=false
 local MvTB=mkFrame(MvF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 do local a=Instance.new("Frame"); a.Size=UDim2.new(1,0,0,2); a.Position=UDim2.new(0,0,1,-2)
    a.BackgroundColor3=Color3.fromRGB(80,200,100); a.BorderSizePixel=0; a.Parent=MvTB end
-local mvFrameLocked=false
-mkDrag(MvF,MvTB,function() return mvFrameLocked end)
-mkLbl(MvTB,"🏃 Movement Panel",UDim2.new(1,-75,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local mvMenuLocked = mkMenuLock(MvTB, 72)
+mkDrag(MvF,MvTB,mvMenuLocked)
+mkLbl(MvTB,"🏃 Movement Panel",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(MvTB,MvF,180,340,200,500)
-local BtnMvFLock=mkBtn(MvTB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-70,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnMvMin  =mkBtn(MvTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 local BtnMvClose=mkBtn(MvTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 
@@ -634,7 +590,6 @@ end
 if LocalPlayer.Character then mvSetupChar(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(mvSetupChar)
 
--- MultiJump
 UserInputService.InputBegan:Connect(function(input,gp)
     if gp then return end
     if input.KeyCode==Enum.KeyCode.Space then
@@ -650,12 +605,8 @@ UserInputService.InputBegan:Connect(function(input,gp)
     end
 end)
 
--- Fly
-local mvControls = nil
-pcall(function()
-    local PlayerModule2 = require(LocalPlayer:WaitForChild("PlayerScripts",3):WaitForChild("PlayerModule",3))
-    mvControls = PlayerModule2:GetControls()
-end)
+local PlayerModule2=require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
+local mvControls=PlayerModule2:GetControls()
 
 local function mvStartFly()
     if not mvRoot then return end; mvFlying=true
@@ -670,14 +621,13 @@ local function mvStopFly()
     if mvHumanoid then mvHumanoid.AutoRotate=true end
 end
 
-local mvRayParams=RaycastParams.new(); mvRayParams.FilterType=Enum.RaycastFilterType.Exclude
+local mvRayParams=RaycastParams.new(); mvRayParams.FilterType=Enum.RaycastFilterType.Blacklist
 
--- Main Loop
 RunService.RenderStepped:Connect(function()
     if not mvHumanoid or not mvRoot then return end
     mvHumanoid.WalkSpeed = mvState.enableSpeed and mvState.walkSpeed or 16
     mvHumanoid.JumpPower = mvState.enableJump  and mvState.jumpPower  or 50
-    if mvState.enableFly and mvFlying and mvFlyBV and mvFlyBG and mvControls then
+    if mvState.enableFly and mvFlying and mvFlyBV and mvFlyBG then
         local cf=Camera.CFrame; local mv=mvControls:GetMoveVector()
         local dir=(cf.LookVector*-mv.Z)+(cf.RightVector*mv.X)+(cf.UpVector*-mv.Y)
         mvFlyBV.Velocity=dir*mvState.flySpeed
@@ -707,19 +657,14 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ══ ROW BUILDER ══
 local function mkMvRow(emoji,name,defVal,onToggle,onVal)
     local row=Instance.new("Frame"); row.Size=UDim2.new(1,-8,0,44)
     row.BackgroundColor3=Color3.fromRGB(18,18,28); row.BorderSizePixel=0; row.Parent=MvScr
     Instance.new("UICorner",row).CornerRadius=UDim.new(0,6)
-
-    -- emoji + name label
     local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(0,120,1,0); lbl.Position=UDim2.new(0,8,0,0)
     lbl.BackgroundTransparency=1; lbl.Text=emoji.." "..name
     lbl.TextColor3=Color3.fromRGB(200,200,255); lbl.TextSize=10; lbl.Font=Enum.Font.GothamBold
     lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.Parent=row
-
-    -- toggle button
     local tog=mkBtn(row,"OFF",UDim2.new(0,44,0,26),UDim2.new(0,130,0.5,-13),
         Color3.fromRGB(140,30,30),Color3.fromRGB(255,200,200),10)
     local on=false
@@ -729,8 +674,6 @@ local function mkMvRow(emoji,name,defVal,onToggle,onVal)
         tog.TextColor3=on and Color3.fromRGB(180,255,180) or Color3.fromRGB(255,200,200)
         onToggle(on)
     end)
-
-    -- value box (숨긴다 ถ้า defVal==-1)
     if defVal ~= -1 then
         local box=mkInp(row,defVal,UDim2.new(0,58,0,26),UDim2.new(1,-66,0.5,-13))
         box.FocusLost:Connect(function()
@@ -774,46 +717,45 @@ local function GetRoot(model)
 end
 
 local function GetTargetList()
-    local myHRP=Character and Character:FindFirstChild( "HumanoidRootPart" )
-    ถ้า ไม่ใช่ myHRP ให้ ส่งคืน {} จบ
-    รายการท้องถิ่น = {}
-    ช่วง ท้องถิ่น = ตัวเลข (InpRange.Text) หรือการตั้งค่า.ล็อคช่วง
-    ถ้า Settings.Mode == "Player"  แล้ว
-        สำหรับ _,p ใน ipairs(Players:GetPlayers()) ทำ
-            ถ้า p ≠ LocalPlayer และ p เป็น Character แล้ว
-                local hrp=p.Character:FindFirstChild( "HumanoidRootPart" )
-                local hum=p.Character:FindFirstChild( "Humanoid" )
-                ถ้า hrp และ hum และ hum.Health > 0  แล้ว
-                    ระยะห่าง ภายใน = (ตำแหน่ง hrp - ตำแหน่ง myHRP)
-                    ถ้า dist <= range แล้ว
+    local myHRP=Character and Character:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return {} end
+    local list={}
+    local range=tonumber(InpRange.Text) or Settings.LockRange
+    if Settings.Mode=="Player" then
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p~=LocalPlayer and p.Character then
+                local hrp=p.Character:FindFirstChild("HumanoidRootPart")
+                local hum=p.Character:FindFirstChild("Humanoid")
+                if hrp and hum and hum.Health>0 then
+                    local dist=(hrp.Position-myHRP.Position).Magnitude
+                    if dist<=range then
                         local col=GetTeamColor(p.Character)
-                        ถ้า ไม่ใช่ IsExcluded(col) แล้ว
+                        if not IsExcluded(col) then
                             table.insert(list,{model=p.Character,name=p.Name,dist=dist,color=col})
-                        จบ
-                    จบ
-                จบ
-            จบ
-        จบ
-    อื่น
-        สำหรับ _,obj ใน ipairs(workspace:GetDescendants()) ทำ
-            ถ้า obj:IsA( "Model" ) และ obj~=Character และ ไม่ใช่ Players:GetPlayerFromCharacter(obj) แล้ว
-                local hum=obj:FindFirstChildOfClass( "Humanoid" )
-                ถ้า hum และ hum.Health > 0  แล้ว
+                        end
+                    end
+                end
+            end
+        end
+    else
+        for _,obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj~=Character and not Players:GetPlayerFromCharacter(obj) then
+                local hum=obj:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health>0 then
                     local hrp=GetRoot(obj)
-                    ถ้า hrp แล้ว
-                        ระยะห่าง ภายใน = (ตำแหน่ง hrp - ตำแหน่ง myHRP)
-                        ถ้า dist <= range แล้ว
+                    if hrp then
+                        local dist=(hrp.Position-myHRP.Position).Magnitude
+                        if dist<=range then
                             local col=GetTeamColor(obj)
-                            ถ้า ไม่ใช่ IsExcluded(col) แล้ว
+                            if not IsExcluded(col) then
                                 table.insert(list,{model=obj,name=obj.Name,dist=dist,color=col})
-                            จบ
-                        จบ
-                    จบ
-                จบ
-            จบ
-        จบ
-    จบend
-
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
     table.sort(list,function(a,b) return a.dist<b.dist end)
     return list
 end
@@ -922,39 +864,25 @@ local function UpdateEPicker()
 end
 
 -- ══════════════════════════════════════════════
---   LOCK CORE
+--   LOCK CORE  (Camera Mode 1/2/3)
 -- ══════════════════════════════════════════════
-local LOCK_CAM_DIST = nil  -- จำระยะกล้องตอนเปิด Lock ไม่ให้ซูมออก
-local LOCK_FOV      = nil  -- จำ FOV ตอนเปิด Lock
+--[[
+    CamMode 1 = อิสระ: ล็อคกล้องหาเป้า (ปัจจุบัน) เหมือนเดิม
+    CamMode 2 = ล็อคหัน: ตัวละครหันหน้าตรงไปทางกล้อง + กล้องล็อคเป้า
+    CamMode 3 = PVP: มีเป้ากลาง (Crosshair) + ใช้ Crosshair position ยิง/ออกสกิล
+                กล้องล็อคเป้าผ่านเป้ากลาง + ตัวหันหน้าตามทิศกล้อง
+]]
 
 local function StartLock()
     if lockConn then lockConn:Disconnect(); lockConn=nil end
     local timer=0
 
-    -- จำระยะกล้องและ FOV ณ ตอนกด Lock → ล็อคคงที่ ไม่ซูมออก
-    local myHRP0 = Character and Character:FindFirstChild("HumanoidRootPart")
-    LOCK_CAM_DIST = myHRP0
-        and math.clamp((myHRP0.Position - Camera.CFrame.Position).Magnitude, 6, 40)
-        or 16
-    LOCK_FOV = Camera.FieldOfView
-
-    Camera.CameraType = Enum.CameraType.Scriptable
-    SetCrosshair(true)
-
     lockConn=RunService.RenderStepped:Connect(function(dt)
         local myHRP=Character and Character:FindFirstChild("HumanoidRootPart")
         if not myHRP then return end
 
-        -- ล็อค FOV ไม่ให้ซูมออกเอง
-        if LOCK_FOV and Camera.FieldOfView ~= LOCK_FOV then
-            Camera.FieldOfView = LOCK_FOV
-        end
+        local str=math.clamp(Settings.LockStrength, 0.01, 0.99)
 
-        local str   = math.clamp(Settings.LockStrength, 0.01, 0.99)
-        local alpha = 1 - (1 - str)^(math.min(dt,0.05)*60)
-        local camD  = LOCK_CAM_DIST or 16
-
-        -- เป้าตาย → scan ทันที
         if currentTarget then
             local hum=currentTarget:FindFirstChildOfClass("Humanoid")
             if not hum or hum.Health<=0 or not currentTarget.Parent then
@@ -962,7 +890,6 @@ local function StartLock()
             end
         end
 
-        -- scan
         if not currentTarget or Settings.NearestMode or forceRescan then
             timer=timer+dt
             if forceRescan or timer>=SCAN_INT then
@@ -974,16 +901,7 @@ local function StartLock()
             end
         end
 
-        -- ══ อัปเดต crosshair ทุก frame (project aimPoint → screen) ══
-        UpdateCrosshairPos()
-
-        -- ══ ไม่มีเป้า: กล้องติด HRP ระยะเดิม ไม่ซูม ══
-        if not currentTarget then
-            local lookVec = Camera.CFrame.LookVector
-            local camPos  = myHRP.Position + Vector3.new(0,1.5,0) - lookVec * camD
-            Camera.CFrame = CFrame.new(camPos, myHRP.Position + Vector3.new(0,1.5,0))
-            return
-        end
+        if not currentTarget then return end
 
         local hrp=GetRoot(currentTarget)
         local hum=currentTarget:FindFirstChildOfClass("Humanoid")
@@ -993,39 +911,68 @@ local function StartLock()
 
         local myPos = myHRP.Position
         local head  = currentTarget:FindFirstChild("Head")
-        local targetBase = head and head.Position or hrp.Position
+        local targetPos = head and head.Position or hrp.Position
 
-        -- ══ AIM POINT รวม offset Y (ขึ้น/ลง) และ X (ซ้าย/ขวา) ══
-        local rightVec = Camera.CFrame.RightVector
-        local aimPoint = targetBase
-            + Vector3.new(0,1,0) * AIM_OFFSET
-            + rightVec           * AIM_OFFSET_X
+        local camPos = Camera.CFrame.Position
+        local toTarget = (targetPos - camPos)
+        if toTarget.Magnitude < 0.1 then return end
 
-        -- ══ กล้องอยู่หลัง HRP ระยะคงที่ หันไปที่ aimPoint ══
-        local dirFlat = Vector3.new(aimPoint.X-myPos.X, 0, aimPoint.Z-myPos.Z)
-        local backDir = dirFlat.Magnitude>0.1 and dirFlat.Unit or Vector3.new(0,0,1)
-        local camPos  = myHRP.Position + Vector3.new(0,1.5,0) - backDir * camD
+        local baseCF = CFrame.lookAt(camPos, targetPos)
+        -- ใช้ทั้ง Y offset (pitch) และ X offset (yaw)
+        local offsetCF = baseCF
+            * CFrame.Angles(math.rad(-AIM_OFFSET_Y), math.rad(AIM_OFFSET_X), 0)
 
-        Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(camPos, aimPoint), alpha)
+        local alpha = 1 - (1 - str)^(math.min(dt,0.05)*60)
 
-        -- หมุนตัวละครหันไปทิศกล้อง (XZ เท่านั้น)
-        if dirFlat.Magnitude > 0.1 then
-            myHRP.CFrame = myHRP.CFrame:Lerp(
-                CFrame.new(myPos, myPos + dirFlat.Unit), alpha)
+        if CamMode == 1 then
+            -- Mode 1: อิสระ — ล็อคกล้องไปเป้า + ตัวหันตามเป้า
+            Camera.CFrame = Camera.CFrame:Lerp(offsetCF, alpha)
+            local lookDir = Vector3.new(targetPos.X-myPos.X, 0, targetPos.Z-myPos.Z)
+            if lookDir.Magnitude > 0.1 then
+                local bodyCF = CFrame.new(myPos, myPos+lookDir.Unit)
+                myHRP.CFrame = myHRP.CFrame:Lerp(bodyCF, alpha)
+            end
+
+        elseif CamMode == 2 then
+            -- Mode 2: ล็อคหัน — ตัวละครหันหน้าตรงไปทางกล้อง (เหมือน FPS)
+            -- กล้องล็อคเป้า + ตัวหันตามทิศกล้อง
+            Camera.CFrame = Camera.CFrame:Lerp(offsetCF, alpha)
+            -- ตัวหันตามทิศที่กล้องมอง (XZ)
+            local camLook = Camera.CFrame.LookVector
+            local bodyLook = Vector3.new(camLook.X, 0, camLook.Z)
+            if bodyLook.Magnitude > 0.1 then
+                local bodyCF = CFrame.new(myPos, myPos+bodyLook.Unit)
+                myHRP.CFrame = myHRP.CFrame:Lerp(bodyCF, alpha)
+            end
+
+        elseif CamMode == 3 then
+            -- Mode 3: PVP — กล้องล็อคเป้า + ตัวหันตามกล้อง + Crosshair กลางจอ
+            -- Crosshair ถูก offset ตาม AIM_OFFSET_Y/X
+            Camera.CFrame = Camera.CFrame:Lerp(offsetCF, alpha)
+            local camLook = Camera.CFrame.LookVector
+            local bodyLook = Vector3.new(camLook.X, 0, camLook.Z)
+            if bodyLook.Magnitude > 0.1 then
+                local bodyCF = CFrame.new(myPos, myPos+bodyLook.Unit)
+                myHRP.CFrame = myHRP.CFrame:Lerp(bodyCF, alpha)
+            end
+            -- อัพเดทตำแหน่ง crosshair
+            UpdateCrosshairPos()
         end
     end)
 end
 
 local function StopLock()
-    if lockConn then lockConn:Disconnect(); lockConn=nil end
-    SetTarget(nil)
-    LOCK_CAM_DIST = nil
-    LOCK_FOV      = nil
-    Camera.CameraType = Enum.CameraType.Custom
-    SetCrosshair(false)
+    if lockConn then lockConn:Disconnect(); lockConn=nil end; SetTarget(nil)
 end
 
--- ══ ESP + TP ANCHOR (Heartbeat เท่านั้น ไม่แตะ Camera) ══
+-- ══ Crosshair update เมื่อไม่ได้ lock ด้วย (อัพเดทตำแหน่งตาม offset เสมอ) ══
+RunService.RenderStepped:Connect(function()
+    if CamMode == 3 and CrosshairFrame.Visible then
+        UpdateCrosshairPos()
+    end
+end)
+
+-- ══ ESP + TP ANCHOR (Heartbeat) ══
 RunService.Heartbeat:Connect(function(dt)
     if Settings.ESPEnabled then
         espTimer=espTimer+dt
@@ -1036,24 +983,9 @@ RunService.Heartbeat:Connect(function(dt)
         local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
         if (root.Position-lockPos).Magnitude>10 then root.CFrame=CFrame.new(lockPos+Vector3.new(0,3,0)) end
     end
-    -- ══ MOUSE LOCK: redirect Mouse.Hit → aimPoint (ตรงเป้า/crosshair) ══
-    if Settings.MouseLock and Settings.Enabled and currentTarget then
-        local hrp  = GetRoot(currentTarget)
-        local head = currentTarget:FindFirstChild("Head")
-        if hrp and hrp.Parent then
-            local basePos  = head and head.Position or hrp.Position
-            local rightVec = Camera.CFrame.RightVector
-            -- aimPoint ตรงกับที่ crosshair ชี้ (Y+X offset เหมือน StartLock)
-            local aimPos = basePos
-                + Vector3.new(0,1,0) * AIM_OFFSET
-                + rightVec           * AIM_OFFSET_X
-            pcall(function() Mouse.Hit    = CFrame.new(aimPos) end)
-            pcall(function() Mouse.Target = head or hrp end)
-        end
-    end
 end)
 
--- ══ CAMERA SYSTEM (RenderStepped — Camera.CFrame ต้องอยู่นี่) ══
+-- ══ CAMERA SYSTEM (RenderStepped) ══
 RunService.RenderStepped:Connect(function(dt)
     if camLocked and not camFreecam then
         local char=LocalPlayer.Character; if not char then return end
@@ -1104,12 +1036,7 @@ end
 -- ══ RESPAWN ══
 LocalPlayer.CharacterAdded:Connect(function(c)
     Character=c; c:WaitForChild("HumanoidRootPart"); currentTarget=nil; ClearESP()
-    Camera.CameraType = Enum.CameraType.Custom
-    if Settings.Enabled then
-        task.wait(0.5)
-        Camera.CameraType = Enum.CameraType.Scriptable
-        StartLock()
-    end
+    if Settings.Enabled then task.wait(0.5); StartLock() end
 end)
 
 -- ══════════════════════════════════════════════
@@ -1121,39 +1048,32 @@ InpRange.FocusLost:Connect(function()
     else InpRange.Text=tostring(Settings.LockRange) end
 end)
 
-InpAim.FocusLost:Connect(function()
-    local v=tonumber(InpAim.Text)
-    if v then AIM_OFFSET=v; InpAim.Text=tostring(v); UpdateCrosshairPos(); SaveSettings()
-    else InpAim.Text=tostring(AIM_OFFSET) end
+-- AIM Y
+InpAimY.FocusLost:Connect(function()
+    local v=tonumber(InpAimY.Text)
+    if v then AIM_OFFSET_Y=v; InpAimY.Text=tostring(v); SaveSettings()
+    else InpAimY.Text=tostring(AIM_OFFSET_Y) end
+end)
+BtnAimYUp.Activated:Connect(function()
+    AIM_OFFSET_Y=AIM_OFFSET_Y+0.5; InpAimY.Text=tostring(AIM_OFFSET_Y); SaveSettings()
+end)
+BtnAimYDn.Activated:Connect(function()
+    AIM_OFFSET_Y=AIM_OFFSET_Y-0.5; InpAimY.Text=tostring(AIM_OFFSET_Y); SaveSettings()
 end)
 
+-- AIM X
 InpAimX.FocusLost:Connect(function()
     local v=tonumber(InpAimX.Text)
-    if v then AIM_OFFSET_X=v; InpAimX.Text=tostring(v); UpdateCrosshairPos(); SaveSettings()
+    if v then AIM_OFFSET_X=v; InpAimX.Text=tostring(v); SaveSettings()
     else InpAimX.Text=tostring(AIM_OFFSET_X) end
 end)
-
-InpCamDst.FocusLost:Connect(function()
-    local v=tonumber(InpCamDst.Text)
-    if v then CAM_DISTANCE=v; InpCamDst.Text=tostring(v); SaveSettings()
-    else InpCamDst.Text=tostring(CAM_DISTANCE) end
-end)
-
-BtnAimUp.Activated:Connect(function()
-    AIM_OFFSET=math.floor((AIM_OFFSET+0.5)*10+0.5)/10
-    InpAim.Text=tostring(AIM_OFFSET); UpdateCrosshairPos(); SaveSettings()
-end)
-BtnAimDn.Activated:Connect(function()
-    AIM_OFFSET=math.floor((AIM_OFFSET-0.5)*10+0.5)/10
-    InpAim.Text=tostring(AIM_OFFSET); UpdateCrosshairPos(); SaveSettings()
+BtnAimXL.Activated:Connect(function()
+    -- +1 = ซ้าย
+    AIM_OFFSET_X=AIM_OFFSET_X+1; InpAimX.Text=tostring(AIM_OFFSET_X); SaveSettings()
 end)
 BtnAimXR.Activated:Connect(function()
-    AIM_OFFSET_X=math.floor((AIM_OFFSET_X+0.5)*10+0.5)/10
-    InpAimX.Text=tostring(AIM_OFFSET_X); UpdateCrosshairPos(); SaveSettings()
-end)
-BtnAimXL.Activated:Connect(function()
-    AIM_OFFSET_X=math.floor((AIM_OFFSET_X-0.5)*10+0.5)/10
-    InpAimX.Text=tostring(AIM_OFFSET_X); UpdateCrosshairPos(); SaveSettings()
+    -- -1 = ขวา
+    AIM_OFFSET_X=AIM_OFFSET_X-1; InpAimX.Text=tostring(AIM_OFFSET_X); SaveSettings()
 end)
 
 InpCamDist.FocusLost:Connect(function()
@@ -1203,14 +1123,6 @@ BtnESP.Activated:Connect(function()
     if not Settings.ESPEnabled then ClearESP() end
 end)
 
--- Mouse Lock
-BtnMouseLock.Activated:Connect(function()
-    Settings.MouseLock = not Settings.MouseLock
-    BtnMouseLock.Text = Settings.MouseLock and "🖱️ Mouse Lock : ON" or "🖱️ Mouse Lock : OFF"
-    BtnMouseLock.BackgroundColor3 = Settings.MouseLock and Color3.fromRGB(64,20,90) or Color3.fromRGB(24,24,40)
-    BtnMouseLock.TextColor3 = Settings.MouseLock and Color3.fromRGB(230,180,255) or Color3.fromRGB(200,160,255)
-end)
-
 -- Menu Lock (หลัก)
 BtnLockMenu.Activated:Connect(function()
     menuLocked=not menuLocked
@@ -1218,27 +1130,17 @@ BtnLockMenu.Activated:Connect(function()
     BtnLockMenu.BackgroundColor3=menuLocked and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
 end)
 
--- Sub-menu Locks
-local function mkSubLock(btn, getState, setState)
-    btn.Activated:Connect(function()
-        local on = not getState()
-        setState(on)
-        btn.Text = on and "🔒" or "🔓"
-        btn.BackgroundColor3 = on and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
-    end)
-end
-mkSubLock(BtnSLock,   function() return scanLocked     end, function(v) scanLocked=v     end)
-mkSubLock(BtnCamFLock,function() return camFrameLocked  end, function(v) camFrameLocked=v  end)
-mkSubLock(BtnTFFLock, function() return tpFrameLocked   end, function(v) tpFrameLocked=v   end)
-mkSubLock(BtnMvFLock, function() return mvFrameLocked   end, function(v) mvFrameLocked=v   end)
-
 -- Minimize/Close
 local minimized=false
 BtnMin.Activated:Connect(function()
     minimized=not minimized; Con.Visible=not minimized
-    MF.Size=minimized and UDim2.new(0,232,0,32) or UDim2.new(0,232,0,460)
+    MF.Size=minimized and UDim2.new(0,232,0,32) or UDim2.new(0,232,0,440)
 end)
-BtnClose.Activated:Connect(function() StopLock(); ClearESP(); SG:Destroy(); CrossSG:Destroy() end)
+BtnClose.Activated:Connect(function()
+    StopLock(); ClearESP()
+    CrosshairFrame.Visible=false
+    SG:Destroy()
+end)
 
 -- Scan
 local scanVis=false
@@ -1277,11 +1179,8 @@ BtnDoScan.Activated:Connect(function()
                 local hrp=GetRoot(e.model)
                 if hrp then
                     if tpModeSelect==1 then
-                        -- โหมด 1: วาปครั้งเดียว
-                        stopRapidTP()
-                        doTP(hrp)
+                        stopRapidTP(); doTP(hrp)
                     else
-                        -- โหมด 2: รัว
                         startRapidTP(hrp)
                     end
                 end
@@ -1382,6 +1281,7 @@ end)
 
 -- ══ INIT ══
 if Settings.NearestMode then BtnNear.Text="📍 Nearest : ON"; BtnNear.BackgroundColor3=Color3.fromRGB(20,58,20) end
+UpdateCamModeUI()
 
 -- ══ MOVEMENT PANEL CONNECTIONS ══
 local mvVis=false
@@ -1400,7 +1300,6 @@ BtnMvClose.Activated:Connect(function()
     mvVis=false; MvF.Visible=false
     BtnMove.BackgroundColor3=Color3.fromRGB(24,24,40)
 end)
-
 
 BtnTPScan.Activated:Connect(function()
     TPScanEnabled = not TPScanEnabled
