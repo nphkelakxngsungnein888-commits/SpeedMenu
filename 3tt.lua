@@ -1,6 +1,6 @@
--- Lock Menu v16 | Codex Android
--- Camera = RenderStepped | ESP = Heartbeat 0.3s throttle | TP+CamSystem
--- [FIXED] Codex Android: CoreGui fallback / CameraType guard / Mouse read-only guard
+-- Lock Menu v18 | Codex Android
+-- BASE: v17 (working) + เพิ่ม AIM_SIDE, MouseLock, Crosshair, Lock/Unlock UI buttons
+-- FIX: require pcall+timeout, GUI cleanup ครอบคลุม, ไม่มี CameraType.Scriptable
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
@@ -70,97 +70,69 @@ local camAngleY   = 0
 local camMove     = Vector3.new()
 local camFreePos  = Vector3.new()
 
--- ══ GUI CLEANUP ══
-local CoreGui = game:GetService("CoreGui")
+-- ══ GUI CLEANUP (v17 style) ══
 pcall(function()
-    for _,name in ipairs({"LM_v16","LM_v17","LM_v18"}) do
-        local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if pg then local o=pg:FindFirstChild(name) if o then o:Destroy() end end
-        local o=CoreGui:FindFirstChild(name) if o then o:Destroy() end
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        for _,name in ipairs({"LM_v16","LM_v17","LM_v18","LM_v18_Cross"}) do
+            local o=pg:FindFirstChild(name); if o then o:Destroy() end
+        end
     end
-end)
-local SG = Instance.new("ScreenGui")
-SG.Name="LM_v18"; SG.ResetOnSpawn=false
-SG.DisplayOrder=999; SG.IgnoreGuiInset=true
-SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-
--- [FIX 1] Force parent: ลอง CoreGui → fallback PlayerGui → retry loop (robust version)
-local function tryParentSG()
-    local ok = pcall(function() SG.Parent = CoreGui end)
-    if not ok or not SG.Parent then
-        pcall(function()
-            local pg = LocalPlayer:WaitForChild("PlayerGui",5)
-            if pg then SG.Parent = pg end
-        end)
-    end
-    -- ถ้ายังไม่มี parent ลองอีกรอบ
-    if not SG.Parent then
-        pcall(function() SG.Parent = LocalPlayer.PlayerGui end)
-    end
-end
-tryParentSG()
-
--- Keepalive
-task.spawn(function()
-    while task.wait(1) do
-        if not SG.Parent then
-            tryParentSG()
+    local cg = game:GetService("CoreGui")
+    if cg then
+        for _,name in ipairs({"LM_v16","LM_v17","LM_v18","LM_v18_Cross"}) do
+            local o=cg:FindFirstChild(name); if o then o:Destroy() end
         end
     end
 end)
 
--- ══ CROSSHAIR UI ══
-local CrosshairEnabled = false
+-- ══ GUI PARENT (v17 style) ══
+local SG = Instance.new("ScreenGui")
+SG.Name="LM_v18"; SG.ResetOnSpawn=false
+SG.DisplayOrder=999; SG.IgnoreGuiInset=true
+SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+local guiOK = pcall(function() SG.Parent = game:GetService("CoreGui") end)
+if not guiOK or not SG.Parent then
+    SG.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
 
+-- ══ CROSSHAIR GUI ══
 local CrossSG = Instance.new("ScreenGui")
 CrossSG.Name="LM_v18_Cross"; CrossSG.ResetOnSpawn=false
 CrossSG.DisplayOrder=1000; CrossSG.IgnoreGuiInset=true
--- [FIX 1 ซ้ำ] ใช้ pcall ทุกครั้ง
-pcall(function() CrossSG.Parent = CoreGui end)
-if not CrossSG.Parent then
-    pcall(function()
-        CrossSG.Parent = LocalPlayer.PlayerGui or LocalPlayer:WaitForChild("PlayerGui")
-    end)
+local crossOK = pcall(function() CrossSG.Parent = game:GetService("CoreGui") end)
+if not crossOK or not CrossSG.Parent then
+    CrossSG.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
+local CrosshairEnabled = false
 local CrossOuter = Instance.new("Frame")
 CrossOuter.Size = UDim2.new(0,24,0,24)
 CrossOuter.Position = UDim2.new(0.5,-12,0.5,-12)
-CrossOuter.BackgroundTransparency = 1
-CrossOuter.BorderSizePixel = 0
-CrossOuter.Visible = false
-CrossOuter.Parent = CrossSG
+CrossOuter.BackgroundTransparency = 1; CrossOuter.BorderSizePixel = 0
+CrossOuter.Visible = false; CrossOuter.Parent = CrossSG
 Instance.new("UICorner", CrossOuter).CornerRadius = UDim.new(1,0)
 local CrossRing = Instance.new("UIStroke", CrossOuter)
-CrossRing.Color = Color3.fromRGB(255,80,80)
-CrossRing.Thickness = 2
+CrossRing.Color = Color3.fromRGB(255,80,80); CrossRing.Thickness = 2
 
 local CrossH = Instance.new("Frame")
-CrossH.Size = UDim2.new(0,14,0,2)
-CrossH.Position = UDim2.new(0.5,-7,0.5,-1)
-CrossH.BackgroundColor3 = Color3.fromRGB(255,80,80)
-CrossH.BorderSizePixel = 0
-CrossH.Parent = CrossSG
-CrossH.Visible = false
+CrossH.Size = UDim2.new(0,14,0,2); CrossH.Position = UDim2.new(0.5,-7,0.5,-1)
+CrossH.BackgroundColor3 = Color3.fromRGB(255,80,80); CrossH.BorderSizePixel = 0
+CrossH.Visible = false; CrossH.Parent = CrossSG
 Instance.new("UICorner",CrossH).CornerRadius = UDim.new(0,1)
 
 local CrossV = Instance.new("Frame")
-CrossV.Size = UDim2.new(0,2,0,14)
-CrossV.Position = UDim2.new(0.5,-1,0.5,-7)
-CrossV.BackgroundColor3 = Color3.fromRGB(255,80,80)
-CrossV.BorderSizePixel = 0
-CrossV.Parent = CrossSG
-CrossV.Visible = false
+CrossV.Size = UDim2.new(0,2,0,14); CrossV.Position = UDim2.new(0.5,-1,0.5,-7)
+CrossV.BackgroundColor3 = Color3.fromRGB(255,80,80); CrossV.BorderSizePixel = 0
+CrossV.Visible = false; CrossV.Parent = CrossSG
 Instance.new("UICorner",CrossV).CornerRadius = UDim.new(0,1)
 
 local function SetCrosshair(on)
     CrosshairEnabled = on
-    CrossOuter.Visible = on
-    CrossH.Visible = on
-    CrossV.Visible = on
+    CrossOuter.Visible = on; CrossH.Visible = on; CrossV.Visible = on
 end
 
-
+-- ══ UI FACTORY ══
 local function Hex(c)
     return string.format("%02X%02X%02X",math.floor(c.R*255),math.floor(c.G*255),math.floor(c.B*255))
 end
@@ -239,9 +211,7 @@ local function mkDrag(frame,handle,lockFn)
     handle.InputEnded:Connect(en);   UserInputService.InputEnded:Connect(en)
 end
 
--- ══════════════════════════════════════════════
---   MAIN FRAME
--- ══════════════════════════════════════════════
+-- ══ RESIZE HELPER ══
 local function mkResize(titleBar, frame, minW, maxW, minH, maxH)
     local bS=mkBtn(titleBar,"◀",UDim2.new(0,18,0,18),UDim2.new(0,4,0.5,-9),Color3.fromRGB(28,28,46),Color3.fromRGB(150,150,210),9)
     local bL=mkBtn(titleBar,"▶",UDim2.new(0,18,0,18),UDim2.new(0,24,0.5,-9),Color3.fromRGB(28,28,46),Color3.fromRGB(150,150,210),9)
@@ -256,14 +226,17 @@ local function mkResize(titleBar, frame, minW, maxW, minH, maxH)
     end)
 end
 
+-- ══════════════════════════════════════════════
+--   MAIN FRAME
+-- ══════════════════════════════════════════════
 local menuLocked=false
-local MF=mkFrame(SG,UDim2.new(0,232,0,410),UDim2.new(0.5,-116,0.5,-205),Color3.fromRGB(11,11,17),true)
+local MF=mkFrame(SG,UDim2.new(0,232,0,420),UDim2.new(0.5,-116,0.5,-210),Color3.fromRGB(11,11,17),true)
 
 local TB=mkFrame(MF,UDim2.new(1,0,0,32),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 TB.ClipsDescendants=false; mkAccent(TB)
 mkDrag(MF,TB,function() return menuLocked end)
-mkLbl(TB,"⚔ Lock Menu v16",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
-mkResize(TB,MF,180,320,300,500)
+mkLbl(TB,"⚔ Lock Menu v18",UDim2.new(1,-112,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkResize(TB,MF,180,320,300,520)
 local BtnLockMenu=mkBtn(TB,"🔓",UDim2.new(0,22,0,22),UDim2.new(1,-72,0.5,-11),Color3.fromRGB(40,40,62))
 local BtnMin     =mkBtn(TB,"–", UDim2.new(0,22,0,22),UDim2.new(1,-48,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),14)
 local BtnClose   =mkBtn(TB,"✕", UDim2.new(0,22,0,22),UDim2.new(1,-24,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
@@ -294,50 +267,50 @@ local InpRange=mkInp(Con,Settings.LockRange,UDim2.new(1,-16,0,24),UDim2.new(0,8,
 
 mkDiv(Con,100)
 
--- AIM OFFSET + AIM SIDE + CAM DIST
+-- AIM OFFSET + AIM SIDE
 mkLbl(Con,"⬆ Aim Up/Down",UDim2.new(0,90,0,13),UDim2.new(0,8,0,104),9)
 mkLbl(Con,"↔ Aim Left/Right",UDim2.new(0,95,0,13),UDim2.new(0,120,0,104),9)
-local InpAim    =mkInp(Con,AIM_OFFSET,  UDim2.new(0,96,0,24),UDim2.new(0,8,0,117))
-local InpSide   =mkInp(Con,AIM_SIDE,    UDim2.new(0,96,0,24),UDim2.new(0,120,0,117))
+local InpAim  =mkInp(Con,AIM_OFFSET,UDim2.new(0,96,0,24),UDim2.new(0,8,0,117))
+local InpSide =mkInp(Con,AIM_SIDE,  UDim2.new(0,96,0,24),UDim2.new(0,120,0,117))
 
-local BtnAimUp  =mkBtn(Con,"+",UDim2.new(0,10,0,10),UDim2.new(0,106,0,117),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),9)
-local BtnAimDn  =mkBtn(Con,"–",UDim2.new(0,10,0,10),UDim2.new(0,106,0,131),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),9)
-local BtnSideR  =mkBtn(Con,"+",UDim2.new(0,10,0,10),UDim2.new(0,218,0,117),Color3.fromRGB(35,35,65),Color3.fromRGB(175,175,255),9)
-local BtnSideL  =mkBtn(Con,"–",UDim2.new(0,10,0,10),UDim2.new(0,218,0,131),Color3.fromRGB(65,35,35),Color3.fromRGB(255,175,175),9)
+local BtnAimUp =mkBtn(Con,"+",UDim2.new(0,10,0,10),UDim2.new(0,106,0,117),Color3.fromRGB(35,55,35),Color3.fromRGB(175,255,175),9)
+local BtnAimDn =mkBtn(Con,"–",UDim2.new(0,10,0,10),UDim2.new(0,106,0,131),Color3.fromRGB(55,28,28),Color3.fromRGB(255,175,175),9)
+local BtnSideR =mkBtn(Con,"+",UDim2.new(0,10,0,10),UDim2.new(0,218,0,117),Color3.fromRGB(35,35,65),Color3.fromRGB(175,175,255),9)
+local BtnSideL =mkBtn(Con,"–",UDim2.new(0,10,0,10),UDim2.new(0,218,0,131),Color3.fromRGB(65,35,35),Color3.fromRGB(255,175,175),9)
 
 mkLbl(Con,"📷 Cam Dist",UDim2.new(1,-16,0,13),UDim2.new(0,8,0,143),9)
-local InpCamDst =mkInp(Con,CAM_DISTANCE,UDim2.new(0,96,0,24),UDim2.new(0,8,0,156))
+local InpCamDst=mkInp(Con,CAM_DISTANCE,UDim2.new(0,96,0,24),UDim2.new(0,8,0,156))
 
 mkDiv(Con,186)
 
 -- LOCK BUTTON
-local BtnLock=mkBtn(Con,"🔓 Lock : OFF",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,167),Color3.fromRGB(24,24,40),Color3.fromRGB(175,175,255),12)
-local BtnNear=mkBtn(Con,"📍 Nearest : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,201),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),11)
+local BtnLock=mkBtn(Con,"🔓 Lock : OFF",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,192),Color3.fromRGB(24,24,40),Color3.fromRGB(175,175,255),12)
+local BtnNear=mkBtn(Con,"📍 Nearest : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,226),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),11)
 
 -- PREV/TARGET/NEXT
-local BtnPrev=mkBtn(Con,"◀",UDim2.new(0,38,0,26),UDim2.new(0,8,0,233),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
-local TgtLbl=Instance.new("TextLabel"); TgtLbl.Size=UDim2.new(0,122,0,26); TgtLbl.Position=UDim2.new(0,50,0,233)
+local BtnPrev=mkBtn(Con,"◀",UDim2.new(0,38,0,26),UDim2.new(0,8,0,258),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
+local TgtLbl=Instance.new("TextLabel"); TgtLbl.Size=UDim2.new(0,122,0,26); TgtLbl.Position=UDim2.new(0,50,0,258)
 TgtLbl.BackgroundColor3=Color3.fromRGB(15,15,26); TgtLbl.BorderSizePixel=0; TgtLbl.Text="No Target"
 TgtLbl.TextColor3=Color3.fromRGB(130,170,255); TgtLbl.TextSize=10; TgtLbl.Font=Enum.Font.GothamBold
 TgtLbl.TextTruncate=Enum.TextTruncate.AtEnd; TgtLbl.Parent=Con
 Instance.new("UICorner",TgtLbl).CornerRadius=UDim.new(0,5)
-local BtnNext=mkBtn(Con,"▶",UDim2.new(0,38,0,26),UDim2.new(0,176,0,233),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
+local BtnNext=mkBtn(Con,"▶",UDim2.new(0,38,0,26),UDim2.new(0,176,0,258),Color3.fromRGB(28,28,46),Color3.fromRGB(175,175,255),13)
 
-mkDiv(Con,265)
+mkDiv(Con,290)
 
 -- FEATURE ROW
-local BtnESP   =mkBtn(Con,"👁 ESP",  UDim2.new(0,42,0,26),UDim2.new(0,8,0,271),  Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnScan  =mkBtn(Con,"🔍 Scan", UDim2.new(0,42,0,26),UDim2.new(0,54,0,271), Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,42,0,26),UDim2.new(0,100,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,38,0,26),UDim2.new(0,146,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
-local BtnMove  =mkBtn(Con,"🏃 Move", UDim2.new(0,42,0,26),UDim2.new(0,188,0,271),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnESP   =mkBtn(Con,"👁 ESP",  UDim2.new(0,42,0,26),UDim2.new(0,8,0,296),  Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnScan  =mkBtn(Con,"🔍 Scan", UDim2.new(0,42,0,26),UDim2.new(0,54,0,296), Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnCamSys=mkBtn(Con,"📷 Cam",  UDim2.new(0,42,0,26),UDim2.new(0,100,0,296),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnTP    =mkBtn(Con,"🚀 TP",   UDim2.new(0,38,0,26),UDim2.new(0,146,0,296),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
+local BtnMove  =mkBtn(Con,"🏃 Move", UDim2.new(0,42,0,26),UDim2.new(0,188,0,296),Color3.fromRGB(24,24,40),Color3.fromRGB(148,148,210),9)
 
--- MOUSE LOCK ROW
-mkDiv(Con,303)
-local BtnMouseLock=mkBtn(Con,"🖱️ Mouse Lock : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,309),Color3.fromRGB(24,24,40),Color3.fromRGB(200,160,255),11)
+-- MOUSE LOCK
+mkDiv(Con,328)
+local BtnMouseLock=mkBtn(Con,"🖱️ Mouse Lock : OFF",UDim2.new(1,-16,0,26),UDim2.new(0,8,0,334),Color3.fromRGB(24,24,40),Color3.fromRGB(200,160,255),11)
 
-mkDiv(Con,341)
-local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,346),10,Color3.fromRGB(60,60,90))
+mkDiv(Con,366)
+local StatusLbl=mkLbl(Con,"● Idle",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,371),10,Color3.fromRGB(60,60,90))
 
 -- ══════════════════════════════════════════════
 --   SCAN FRAME
@@ -347,14 +320,14 @@ SF.Visible=false
 local STB=mkFrame(SF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8); mkAccent(STB)
 local scanLocked=false
 mkDrag(SF,STB,function() return scanLocked end)
-mkLbl(STB,"🔍 Scan",UDim2.new(1,-108,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+mkLbl(STB,"🔍 Scan",UDim2.new(1,-130,1,0),UDim2.new(0,52,0,0),12,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(STB,SF,160,320,200,500)
-local BtnTPScan  =mkBtn(STB,"🚀",UDim2.new(0,22,0,22),UDim2.new(1,-140,0.5,-11),Color3.fromRGB(30,80,30))
-local BtnSLock   =mkBtn(STB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-118,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),10)
-local BtnCP2     =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-96,0.5,-11),Color3.fromRGB(48,48,160))
-local BtnExc     =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-72,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
-local BtnSMin    =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-48,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
-local BtnSClose  =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-26,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
+local BtnTPScan =mkBtn(STB,"🚀",UDim2.new(0,22,0,22),UDim2.new(1,-140,0.5,-11),Color3.fromRGB(30,80,30))
+local BtnSLock  =mkBtn(STB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-118,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),10)
+local BtnCP2    =mkBtn(STB,"🎨",UDim2.new(0,22,0,22),UDim2.new(1,-96,0.5,-11),Color3.fromRGB(48,48,160))
+local BtnExc    =mkBtn(STB,"🚫",UDim2.new(0,22,0,22),UDim2.new(1,-72,0.5,-11),Color3.fromRGB(100,30,30),Color3.fromRGB(255,170,170))
+local BtnSMin   =mkBtn(STB,"–", UDim2.new(0,20,0,20),UDim2.new(1,-48,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),12)
+local BtnSClose =mkBtn(STB,"✕", UDim2.new(0,20,0,20),UDim2.new(1,-26,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10)
 
 local FBar=mkFrame(SF,UDim2.new(1,-16,0,22),UDim2.new(0,8,0,32),Color3.fromRGB(16,16,26),false,5)
 local FLbl=mkLbl(FBar,"🎨 Filter: ทั้งหมด",UDim2.new(1,-28,1,0),UDim2.new(0,6,0,0),9,Color3.fromRGB(120,120,170))
@@ -397,7 +370,6 @@ local EPScr=Instance.new("ScrollingFrame"); EPScr.Size=UDim2.new(1,-8,1,-80); EP
 EPScr.BackgroundTransparency=1; EPScr.BorderSizePixel=0; EPScr.ScrollBarThickness=3
 EPScr.CanvasSize=UDim2.new(0,0,0,0); EPScr.ZIndex=10; EPScr.Parent=EPop
 local EPLayout=Instance.new("UIListLayout"); EPLayout.Padding=UDim.new(0,3); EPLayout.Parent=EPScr
-
 -- ══ TP MODE POPUP ══
 local TPModePopup=mkFrame(SG,UDim2.new(0,200,0,160),UDim2.new(0.5,126,0.5,175),Color3.fromRGB(12,15,22),true)
 TPModePopup.Visible=false; TPModePopup.ZIndex=12
@@ -492,27 +464,22 @@ local InpCamDist=mkInp(CamCon,camDist,UDim2.new(1,-10,0,26),UDim2.new(0,5,0,89))
 mkLbl(CamCon,"⚡ Speed",UDim2.new(1,-10,0,13),UDim2.new(0,5,0,120),9)
 local InpCamSpd =mkInp(CamCon,camSpeed,UDim2.new(1,-10,0,26),UDim2.new(0,5,0,133))
 
--- Control pad (FreeCam มือถือ)
+-- Control pad
 local CtrlPad=mkFrame(SG,UDim2.new(0,160,0,160),UDim2.new(0.75,0,0.6,0),nil,false,0)
 CtrlPad.BackgroundTransparency=1; CtrlPad.Visible=false
 
 local function mkPad(txt,pos)
-    local b=mkBtn(CtrlPad,txt,UDim2.new(0,45,0,45),pos,Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
-    return b
+    return mkBtn(CtrlPad,txt,UDim2.new(0,45,0,45),pos,Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
 end
 local bF=mkPad("↑",UDim2.new(0.5,-22,0,0));  local bB=mkPad("↓",UDim2.new(0.5,-22,0,90))
 local bL=mkPad("←",UDim2.new(0,0,0.5,-22));  local bR=mkPad("→",UDim2.new(0,90,0.5,-22))
 local bU=mkPad("▲",UDim2.new(0,0,0,0));       local bD=mkPad("▼",UDim2.new(0,90,0,0))
 local function bindPad(b,v)
     b.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-            camMove=camMove+v
-        end
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then camMove=camMove+v end
     end)
     b.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-            camMove=camMove-v
-        end
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then camMove=camMove-v end
     end)
 end
 bindPad(bF,Vector3.new(0,0,-1)); bindPad(bB,Vector3.new(0,0,1))
@@ -530,9 +497,9 @@ local tpMenuLocked=false
 mkDrag(TF,TFTB,function() return tpMenuLocked end)
 mkLbl(TFTB,"🚀 Teleport Save",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(TFTB,TF,160,320,200,400)
-local BtnTFLockMenu =mkBtn(TFTB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-70,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),10)
-local BtnTFMin      =mkBtn(TFTB,"–", UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
-local BtnTFClose    =mkBtn(TFTB,"✕", UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
+local BtnTFLockMenu=mkBtn(TFTB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-70,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),10)
+local BtnTFMin  =mkBtn(TFTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
+local BtnTFClose=mkBtn(TFTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 local BtnTPSave =mkBtn(TF,"+ Save",    UDim2.new(0,60,0,26),UDim2.new(0,5,0,34),  Color3.fromRGB(20,68,20),Color3.fromRGB(170,255,170),11)
 local BtnTPClic =mkBtn(TF,"Click TP OFF",UDim2.new(0,80,0,26),UDim2.new(0,68,0,34), Color3.fromRGB(130,32,32),Color3.fromRGB(255,170,170),10)
 local BtnTPDel  =mkBtn(TF,"Delete",    UDim2.new(0,55,0,26),UDim2.new(0,152,0,34), Color3.fromRGB(72,24,24),Color3.fromRGB(255,140,140),10)
@@ -547,7 +514,6 @@ local TPLayout=Instance.new("UIListLayout"); TPLayout.Padding=UDim.new(0,4); TPL
 -- ══════════════════════════════════════════════
 local MvF=mkFrame(SG,UDim2.new(0,260,0,360),UDim2.new(0.5,-130,0.5,-180),Color3.fromRGB(11,11,17),true)
 MvF.Visible=false
-
 local MvTB=mkFrame(MvF,UDim2.new(1,0,0,30),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8)
 do local a=Instance.new("Frame"); a.Size=UDim2.new(1,0,0,2); a.Position=UDim2.new(0,0,1,-2)
    a.BackgroundColor3=Color3.fromRGB(80,200,100); a.BorderSizePixel=0; a.Parent=MvTB end
@@ -555,9 +521,9 @@ local mvMenuLocked=false
 mkDrag(MvF,MvTB,function() return mvMenuLocked end)
 mkLbl(MvTB,"🏃 Movement Panel",UDim2.new(1,-55,1,0),UDim2.new(0,52,0,0),11,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
 mkResize(MvTB,MvF,180,340,200,500)
-local BtnMvLockMenu =mkBtn(MvTB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-70,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),10)
-local BtnMvMin      =mkBtn(MvTB,"–", UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
-local BtnMvClose    =mkBtn(MvTB,"✕", UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
+local BtnMvLockMenu=mkBtn(MvTB,"🔓",UDim2.new(0,20,0,20),UDim2.new(1,-70,0.5,-10),Color3.fromRGB(40,40,62),Color3.fromRGB(200,200,255),10)
+local BtnMvMin  =mkBtn(MvTB,"–",UDim2.new(0,22,0,22),UDim2.new(1,-46,0.5,-11),Color3.fromRGB(40,40,62),Color3.fromRGB(255,255,255),13)
+local BtnMvClose=mkBtn(MvTB,"✕",UDim2.new(0,22,0,22),UDim2.new(1,-23,0.5,-11),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),12)
 
 local MvScr=Instance.new("ScrollingFrame")
 MvScr.Size=UDim2.new(1,-8,1,-36); MvScr.Position=UDim2.new(0,4,0,36)
@@ -609,22 +575,21 @@ UserInputService.InputBegan:Connect(function(input,gp)
     end
 end)
 
--- Fly
+-- Fly — pcall+timeout ปลอดภัยบน Codex Android
 local mvControls = nil
 pcall(function()
-    local PlayerModule2=require(LocalPlayer:WaitForChild("PlayerScripts",3):WaitForChild("PlayerModule",3))
-    mvControls=PlayerModule2:GetControls()
+    local ps = LocalPlayer:WaitForChild("PlayerScripts", 5)
+    if ps then
+        local pm = ps:WaitForChild("PlayerModule", 5)
+        if pm then mvControls = require(pm):GetControls() end
+    end
 end)
 
 local function mvStartFly()
     if not mvRoot then return end; mvFlying=true
-    pcall(function()
-        mvFlyBV=Instance.new("BodyVelocity",mvRoot); mvFlyBV.MaxForce=Vector3.new(1e6,1e6,1e6)
-    end)
-    pcall(function()
-        mvFlyBG=Instance.new("BodyGyro",mvRoot); mvFlyBG.MaxTorque=Vector3.new(1e6,1e6,1e6)
-    end)
-    mvHumanoid.AutoRotate=false
+    pcall(function() mvFlyBV=Instance.new("BodyVelocity",mvRoot); mvFlyBV.MaxForce=Vector3.new(1e6,1e6,1e6) end)
+    pcall(function() mvFlyBG=Instance.new("BodyGyro",mvRoot); mvFlyBG.MaxTorque=Vector3.new(1e6,1e6,1e6) end)
+    if mvHumanoid then mvHumanoid.AutoRotate=false end
 end
 local function mvStopFly()
     mvFlying=false
@@ -633,7 +598,8 @@ local function mvStopFly()
     if mvHumanoid then mvHumanoid.AutoRotate=true end
 end
 
-local mvRayParams=RaycastParams.new(); pcall(function() mvRayParams.FilterType=Enum.RaycastFilterType.Exclude end)
+local mvRayParams=RaycastParams.new()
+pcall(function() mvRayParams.FilterType=Enum.RaycastFilterType.Exclude end)
 pcall(function() if not mvRayParams.FilterType then mvRayParams.FilterType=Enum.RaycastFilterType.Blacklist end end)
 
 -- Main Loop Movement
@@ -642,8 +608,9 @@ RunService.RenderStepped:Connect(function()
     mvHumanoid.WalkSpeed = mvState.enableSpeed and mvState.walkSpeed or 16
     mvHumanoid.JumpPower = mvState.enableJump  and mvState.jumpPower  or 50
     if mvState.enableFly and mvFlying and mvFlyBV and mvFlyBG then
-        local cf=Camera.CFrame; local mv=mvControls and mvControls:GetMoveVector() or Vector3.new()
-        local dir=(cf.LookVector*-mv.Z)+(cf.RightVector*mv.X)+(cf.UpVector*-mv.Y)
+        local cf=Camera.CFrame
+        local mv2 = mvControls and mvControls:GetMoveVector() or Vector3.new()
+        local dir=(cf.LookVector*-mv2.Z)+(cf.RightVector*mv2.X)+(cf.UpVector*-mv2.Y)
         mvFlyBV.Velocity=dir*mvState.flySpeed
         mvFlyBG.CFrame=CFrame.new(mvRoot.Position,mvRoot.Position+cf.LookVector)
     end
@@ -676,12 +643,10 @@ local function mkMvRow(emoji,name,defVal,onToggle,onVal)
     local row=Instance.new("Frame"); row.Size=UDim2.new(1,-8,0,44)
     row.BackgroundColor3=Color3.fromRGB(18,18,28); row.BorderSizePixel=0; row.Parent=MvScr
     Instance.new("UICorner",row).CornerRadius=UDim.new(0,6)
-
     local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(0,120,1,0); lbl.Position=UDim2.new(0,8,0,0)
     lbl.BackgroundTransparency=1; lbl.Text=emoji.." "..name
     lbl.TextColor3=Color3.fromRGB(200,200,255); lbl.TextSize=10; lbl.Font=Enum.Font.GothamBold
     lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.Parent=row
-
     local tog=mkBtn(row,"OFF",UDim2.new(0,44,0,26),UDim2.new(0,130,0.5,-13),
         Color3.fromRGB(140,30,30),Color3.fromRGB(255,200,200),10)
     local on=false
@@ -691,7 +656,6 @@ local function mkMvRow(emoji,name,defVal,onToggle,onVal)
         tog.TextColor3=on and Color3.fromRGB(180,255,180) or Color3.fromRGB(255,200,200)
         onToggle(on)
     end)
-
     if defVal ~= -1 then
         local box=mkInp(row,defVal,UDim2.new(0,58,0,26),UDim2.new(1,-66,0.5,-13))
         box.FocusLost:Connect(function()
@@ -882,26 +846,22 @@ local function UpdateEPicker()
 end
 
 -- ══════════════════════════════════════════════
---   LOCK CORE
+--   LOCK CORE (v17 base + AIM_SIDE)
 -- ══════════════════════════════════════════════
 local function StartLock()
     if lockConn then lockConn:Disconnect(); lockConn=nil end
     local timer=0
     SetCrosshair(true)
-
     lockConn=RunService.RenderStepped:Connect(function(dt)
         local myHRP=Character and Character:FindFirstChild("HumanoidRootPart")
         if not myHRP then return end
-
         local str=math.clamp(Settings.LockStrength, 0.01, 0.99)
-
         if currentTarget then
             local hum=currentTarget:FindFirstChildOfClass("Humanoid")
             if not hum or hum.Health<=0 or not currentTarget.Parent then
                 SetTarget(nil); forceRescan=true
             end
         end
-
         if not currentTarget or Settings.NearestMode or forceRescan then
             timer=timer+dt
             if forceRescan or timer>=SCAN_INT then
@@ -912,32 +872,25 @@ local function StartLock()
                 end
             end
         end
-
-        local alpha = 1 - (1-str)^(math.min(dt,0.05)*60)
-        local camPos = Camera.CFrame.Position
-
         if not currentTarget then return end
-
         local hrp=GetRoot(currentTarget)
         local hum=currentTarget:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum or hum.Health<=0 or not currentTarget.Parent then
             SetTarget(nil); forceRescan=true; return
         end
-
         local myPos = myHRP.Position
         local head = currentTarget:FindFirstChild("Head")
         local targetPos = head and head.Position or hrp.Position
-
+        local camPos = Camera.CFrame.Position
+        local toTarget = (targetPos - camPos)
+        if toTarget.Magnitude < 0.1 then return end
         local baseCF = CFrame.lookAt(camPos, targetPos)
-        local aimCF  = baseCF
-            * CFrame.Angles(math.rad(-AIM_OFFSET), math.rad(AIM_SIDE), 0)
-
-        Camera.CFrame = Camera.CFrame:Lerp(aimCF, alpha)
-
-        local aimDir = aimCF.LookVector
-        local aimTarget = camPos + aimDir * math.max((targetPos - camPos).Magnitude, 10)
-        _G.LM_AimTarget = aimTarget
-
+        -- AIM_OFFSET = บน/ล่าง (องศา), AIM_SIDE = ซ้าย/ขวา (องศา)
+        local offsetCF = baseCF * CFrame.Angles(math.rad(-AIM_OFFSET), math.rad(AIM_SIDE), 0)
+        local alpha = 1 - (1-str)^(math.min(dt,0.05)*60)
+        Camera.CFrame = Camera.CFrame:Lerp(offsetCF, alpha)
+        -- expose aimTarget
+        _G.LM_AimTarget = camPos + offsetCF.LookVector * math.max(toTarget.Magnitude, 10)
         local lookDir = Vector3.new(targetPos.X-myPos.X, 0, targetPos.Z-myPos.Z)
         if lookDir.Magnitude > 0.1 then
             local bodyCF = CFrame.new(myPos, myPos+lookDir.Unit)
@@ -948,8 +901,7 @@ end
 
 local function StopLock()
     if lockConn then lockConn:Disconnect(); lockConn=nil end
-    SetTarget(nil)
-    SetCrosshair(false)
+    SetTarget(nil); SetCrosshair(false)
 end
 
 -- ══ ESP + TP ANCHOR (Heartbeat) ══
@@ -963,29 +915,22 @@ RunService.Heartbeat:Connect(function(dt)
         local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
         if (root.Position-lockPos).Magnitude>10 then root.CFrame=CFrame.new(lockPos+Vector3.new(0,3,0)) end
     end
-    -- [FIX 3] Mouse.Hit และ Mouse.Target เป็น read-only บน Codex Android → ใช้ pcall ครอบ
     if Settings.MouseLock and Settings.Enabled and currentTarget and _G.LM_AimTarget then
-        pcall(function()
-            Mouse.Hit = CFrame.new(_G.LM_AimTarget)
-        end)
+        pcall(function() Mouse.Hit = CFrame.new(_G.LM_AimTarget) end)
         local hrp=GetRoot(currentTarget)
         local head=currentTarget:FindFirstChild("Head")
         pcall(function() Mouse.Target = head or hrp end)
     end
 end)
 
--- ══ CROSSHAIR POSITION UPDATER ══
+-- ══ CROSSHAIR UPDATER ══
 RunService.RenderStepped:Connect(function()
     if not CrosshairEnabled then return end
     local vp = Camera.ViewportSize
     local fov = Camera.FieldOfView
     local pxPerDeg = vp.Y / fov
-    local offsetPxX =  AIM_SIDE   * pxPerDeg
-    local offsetPxY = -AIM_OFFSET * pxPerDeg
-
-    local cx = vp.X/2 + offsetPxX
-    local cy = vp.Y/2 + offsetPxY
-
+    local cx = vp.X/2 + AIM_SIDE   * pxPerDeg
+    local cy = vp.Y/2 - AIM_OFFSET * pxPerDeg
     CrossOuter.Position = UDim2.new(0, cx-12, 0, cy-12)
     CrossH.Position     = UDim2.new(0, cx-7,  0, cy-1)
     CrossV.Position     = UDim2.new(0, cx-1,  0, cy-7)
@@ -1009,6 +954,7 @@ RunService.RenderStepped:Connect(function(dt)
         Camera.CFrame=CFrame.new(camFreePos, camFreePos+d)
     end
 end)
+
 
 UserInputService.InputChanged:Connect(function(input)
     if camFreecam and(input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
@@ -1039,20 +985,10 @@ local function TPRefresh()
     TPScr.CanvasSize=UDim2.new(0,0,0,#tpSaves*30)
 end
 
--- ══ RESPAWN ══
--- [FIX 2] ลบ CameraType.Scriptable ออก → ไม่ set เพราะ Codex Android block
--- Lock ทำงานผ่าน RenderStepped โดยตรง ไม่ต้องการ Scriptable mode
+-- ══ RESPAWN (v17 style) ══
 LocalPlayer.CharacterAdded:Connect(function(c)
-    Character=c
-    pcall(function() c:WaitForChild("HumanoidRootPart",5) end)
-    currentTarget=nil; ClearESP()
-    -- reset camera type เป็น Custom (ปลอดภัย)
-    pcall(function() Camera.CameraType = Enum.CameraType.Custom end)
-    if Settings.Enabled then
-        task.wait(0.5)
-        -- [FIX 2] ไม่ set Scriptable → lock ทำงานผ่าน CFrame โดยตรง
-        StartLock()
-    end
+    Character=c; c:WaitForChild("HumanoidRootPart"); currentTarget=nil; ClearESP()
+    if Settings.Enabled then task.wait(0.5); StartLock() end
 end)
 
 -- ══════════════════════════════════════════════
@@ -1076,24 +1012,15 @@ InpSide.FocusLost:Connect(function()
     else InpSide.Text=tostring(AIM_SIDE) end
 end)
 
-BtnSideR.Activated:Connect(function()
-    AIM_SIDE=AIM_SIDE+0.5; InpSide.Text=tostring(AIM_SIDE); SaveSettings()
-end)
-BtnSideL.Activated:Connect(function()
-    AIM_SIDE=AIM_SIDE-0.5; InpSide.Text=tostring(AIM_SIDE); SaveSettings()
-end)
+BtnAimUp.Activated:Connect(function() AIM_OFFSET=AIM_OFFSET+0.5; InpAim.Text=tostring(AIM_OFFSET); SaveSettings() end)
+BtnAimDn.Activated:Connect(function() AIM_OFFSET=AIM_OFFSET-0.5; InpAim.Text=tostring(AIM_OFFSET); SaveSettings() end)
+BtnSideR.Activated:Connect(function() AIM_SIDE=AIM_SIDE+0.5; InpSide.Text=tostring(AIM_SIDE); SaveSettings() end)
+BtnSideL.Activated:Connect(function() AIM_SIDE=AIM_SIDE-0.5; InpSide.Text=tostring(AIM_SIDE); SaveSettings() end)
 
 InpCamDst.FocusLost:Connect(function()
     local v=tonumber(InpCamDst.Text)
     if v then CAM_DISTANCE=v; InpCamDst.Text=tostring(v); SaveSettings()
     else InpCamDst.Text=tostring(CAM_DISTANCE) end
-end)
-
-BtnAimUp.Activated:Connect(function()
-    AIM_OFFSET=AIM_OFFSET+0.5; InpAim.Text=tostring(AIM_OFFSET); SaveSettings()
-end)
-BtnAimDn.Activated:Connect(function()
-    AIM_OFFSET=AIM_OFFSET-0.5; InpAim.Text=tostring(AIM_OFFSET); SaveSettings()
 end)
 
 InpCamDist.FocusLost:Connect(function()
@@ -1103,11 +1030,9 @@ InpCamSpd.FocusLost:Connect(function()
     local v=tonumber(InpCamSpd.Text); if v then camSpeed=v else InpCamSpd.Text=tostring(camSpeed) end
 end)
 
--- Mode
 BtnPlayer.Activated:Connect(function() Settings.Mode="Player"; currentTarget=nil; UpdateModeUI(); SaveSettings() end)
 BtnNPC.Activated:Connect(function()    Settings.Mode="NPC";    currentTarget=nil; UpdateModeUI(); SaveSettings() end)
 
--- Lock
 BtnLock.Activated:Connect(function()
     Settings.Enabled=not Settings.Enabled
     if Settings.Enabled then
@@ -1135,7 +1060,6 @@ BtnNext.Activated:Connect(function()
     if #targetList>0 then targetIndex=targetIndex+1; if targetIndex>#targetList then targetIndex=1 end; SetTarget(targetList[targetIndex].model) end
 end)
 
--- ESP
 BtnESP.Activated:Connect(function()
     Settings.ESPEnabled=not Settings.ESPEnabled
     BtnESP.Text=Settings.ESPEnabled and "👁 ESP ON" or "👁 ESP"
@@ -1143,7 +1067,6 @@ BtnESP.Activated:Connect(function()
     if not Settings.ESPEnabled then ClearESP() end
 end)
 
--- Mouse Lock
 BtnMouseLock.Activated:Connect(function()
     Settings.MouseLock = not Settings.MouseLock
     BtnMouseLock.Text = Settings.MouseLock and "🖱️ Mouse Lock : ON" or "🖱️ Mouse Lock : OFF"
@@ -1151,22 +1074,19 @@ BtnMouseLock.Activated:Connect(function()
     BtnMouseLock.TextColor3 = Settings.MouseLock and Color3.fromRGB(230,180,255) or Color3.fromRGB(200,160,255)
 end)
 
--- Menu Lock
 BtnLockMenu.Activated:Connect(function()
     menuLocked=not menuLocked
     BtnLockMenu.Text=menuLocked and "🔒" or "🔓"
     BtnLockMenu.BackgroundColor3=menuLocked and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
 end)
 
--- Minimize/Close
 local minimized=false
 BtnMin.Activated:Connect(function()
     minimized=not minimized; Con.Visible=not minimized
-    MF.Size=minimized and UDim2.new(0,232,0,32) or UDim2.new(0,232,0,410)
+    MF.Size=minimized and UDim2.new(0,232,0,32) or UDim2.new(0,232,0,420)
 end)
 BtnClose.Activated:Connect(function() StopLock(); ClearESP(); SG:Destroy(); CrossSG:Destroy() end)
 
--- Scan
 local scanVis=false
 BtnScan.Activated:Connect(function()
     scanVis=not scanVis; SF.Visible=scanVis
@@ -1177,7 +1097,6 @@ BtnSLock.Activated:Connect(function()
     BtnSLock.Text=scanLocked and "🔒" or "🔓"
     BtnSLock.BackgroundColor3=scanLocked and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
 end)
-
 BtnSClose.Activated:Connect(function()
     scanVis=false; SF.Visible=false; CPop.Visible=false; EPop.Visible=false
     BtnScan.BackgroundColor3=Color3.fromRGB(24,24,40)
@@ -1203,17 +1122,12 @@ BtnDoScan.Activated:Connect(function()
         dot.BackgroundColor3=e.color; dot.BorderSizePixel=0; dot.Parent=b
         Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
         b.Activated:Connect(function()
-            targetIndex=i
-            SetTarget(e.model)
+            targetIndex=i; SetTarget(e.model)
             if TPScanEnabled then
                 local hrp=GetRoot(e.model)
                 if hrp then
-                    if tpModeSelect==1 then
-                        stopRapidTP()
-                        doTP(hrp)
-                    else
-                        startRapidTP(hrp)
-                    end
+                    if tpModeSelect==1 then stopRapidTP(); doTP(hrp)
+                    else startRapidTP(hrp) end
                 end
             end
         end)
@@ -1222,7 +1136,6 @@ BtnDoScan.Activated:Connect(function()
     UpdateCPicker(); UpdateEPicker()
 end)
 
--- Color Picker
 BtnCP2.Activated:Connect(function() CPop.Visible=not CPop.Visible; EPop.Visible=false; if CPop.Visible then UpdateCPicker() end end)
 BtnCPClose.Activated:Connect(function() CPop.Visible=false end)
 BtnCPAll.Activated:Connect(function()
@@ -1234,7 +1147,6 @@ BtnCF.Activated:Connect(function()
     BtnCP2.BackgroundColor3=Color3.fromRGB(48,48,160); UpdateCPicker()
 end)
 
--- Exclude
 BtnExc.Activated:Connect(function()
     EPop.Visible=not EPop.Visible; CPop.Visible=false
     if EPop.Visible then pendEx={}; for _,h in ipairs(Settings.ExcludeColors) do table.insert(pendEx,h) end; UpdateEPicker() end
@@ -1246,7 +1158,6 @@ BtnEPOk.Activated:Connect(function()
 end)
 BtnCE.Activated:Connect(function() Settings.ExcludeColors={}; pendEx={}; UpdateEPicker() end)
 
--- Camera System
 local camVis=false
 BtnCamSys.Activated:Connect(function()
     camVis=not camVis; CamF.Visible=camVis
@@ -1263,7 +1174,6 @@ BtnCamLockMenu.Activated:Connect(function()
     BtnCamLockMenu.Text=camMenuLocked and "🔒" or "🔓"
     BtnCamLockMenu.BackgroundColor3=camMenuLocked and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
 end)
-
 BtnCamClose.Activated:Connect(function()
     camVis=false; CamF.Visible=false; CtrlPad.Visible=false; camFreecam=false
     BtnCamSys.BackgroundColor3=Color3.fromRGB(24,24,40)
@@ -1281,7 +1191,6 @@ BtnCamFree.Activated:Connect(function()
     if camFreecam then camFreePos=Camera.CFrame.Position end
 end)
 
--- TP
 local tpVis=false
 BtnTP.Activated:Connect(function()
     tpVis=not tpVis; TF.Visible=tpVis
@@ -1299,7 +1208,6 @@ BtnTFLockMenu.Activated:Connect(function()
     BtnTFLockMenu.Text=tpMenuLocked and "🔒" or "🔓"
     BtnTFLockMenu.BackgroundColor3=tpMenuLocked and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
 end)
-
 BtnTFClose.Activated:Connect(function() tpVis=false; TF.Visible=false; BtnTP.BackgroundColor3=Color3.fromRGB(24,24,40) end)
 BtnTPSave.Activated:Connect(function()
     local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -1325,25 +1233,21 @@ end)
 -- ══ INIT ══
 if Settings.NearestMode then BtnNear.Text="📍 Nearest : ON"; BtnNear.BackgroundColor3=Color3.fromRGB(20,58,20) end
 
--- ══ MOVEMENT PANEL CONNECTIONS ══
 local mvVis=false
 BtnMove.Activated:Connect(function()
     mvVis=not mvVis; MvF.Visible=mvVis
     BtnMove.BackgroundColor3=mvVis and Color3.fromRGB(20,70,25) or Color3.fromRGB(24,24,40)
 end)
-
 local mvMin=false
 BtnMvMin.Activated:Connect(function()
     mvMin=not mvMin; MvScr.Visible=not mvMin
     MvF.Size=mvMin and UDim2.new(0,260,0,30) or UDim2.new(0,260,0,360)
 end)
-
 BtnMvLockMenu.Activated:Connect(function()
     mvMenuLocked=not mvMenuLocked
     BtnMvLockMenu.Text=mvMenuLocked and "🔒" or "🔓"
     BtnMvLockMenu.BackgroundColor3=mvMenuLocked and Color3.fromRGB(72,52,16) or Color3.fromRGB(40,40,62)
 end)
-
 BtnMvClose.Activated:Connect(function()
     mvVis=false; MvF.Visible=false
     BtnMove.BackgroundColor3=Color3.fromRGB(24,24,40)
@@ -1359,4 +1263,4 @@ BtnTPScan.Activated:Connect(function()
         TPModePopup.Visible=false
         stopRapidTP()
     end
-end)
+ end)
