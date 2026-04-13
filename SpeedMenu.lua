@@ -64,6 +64,7 @@ local St={
     tpModeSelect=1,
     tpRapidSpd=0.05,
     pendEx={},
+    fakePart=nil,
 }
 local MvCfg={
     walkSpeed=16,jumpPower=50,multiJump=5,flySpeed=60,heightLock=0,
@@ -93,6 +94,18 @@ SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 if not pcall(function() SG.Parent=game:GetService("CoreGui") end) then
     SG.Parent=LP:WaitForChild("PlayerGui")
 end
+
+-- ══ FAKE PART (หลอก Mouse.Hit ให้ยิงตรงเป้า) ══
+local fakePart=Instance.new("Part")
+fakePart.Name="FakeAimPart"
+fakePart.Size=Vector3.new(0.1,0.1,0.1)
+fakePart.Anchored=true
+fakePart.CanCollide=false
+fakePart.Transparency=1
+fakePart.CastShadow=false
+fakePart.Parent=workspace
+St.fakePart=fakePart
+Mouse.TargetFilter=fakePart
 
 -- ══ UI FACTORY ══
 local function Hex(c)
@@ -318,6 +331,49 @@ local SScr=Instance.new("ScrollingFrame");SScr.Size=UDim2.new(1,-8,1,-125);SScr.
 SScr.BackgroundTransparency=1;SScr.BorderSizePixel=0;SScr.ScrollBarThickness=3
 SScr.CanvasSize=UDim2.new(0,0,0,0);SScr.Parent=SF
 local SLayout=Instance.new("UIListLayout");SLayout.Padding=UDim.new(0,3);SLayout.Parent=SScr
+
+-- ══ COLOR PICKER ══
+local CPop=mkFrame(SG,UDim2.new(0,200,0,230),UDim2.new(0.5,126,0.5,175),Color3.fromRGB(12,12,18),true)
+CPop.Visible=false;CPop.ZIndex=10
+local CPBar=mkFrame(CPop,UDim2.new(1,0,0,28),UDim2.new(0,0,0,0),Color3.fromRGB(17,17,28),false,8);CPBar.ZIndex=10
+mkDrag(CPop,CPBar,nil)
+mkLbl(CPBar,"🎨 Filter Color",UDim2.new(1,-28,1,0),UDim2.new(0,8,0,0),10,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local BtnCPClose=mkBtn(CPBar,"✕",UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10);BtnCPClose.ZIndex=10
+local BtnCPAll=mkBtn(CPop,"✅ แสดงทั้งหมด",UDim2.new(1,-16,0,22),UDim2.new(0,8,0,30),Color3.fromRGB(26,46,26),Color3.fromRGB(170,255,170),9);BtnCPAll.ZIndex=10
+local CPScr=Instance.new("ScrollingFrame");CPScr.Size=UDim2.new(1,-8,1,-56);CPScr.Position=UDim2.new(0,4,0,54)
+CPScr.BackgroundTransparency=1;CPScr.BorderSizePixel=0;CPScr.ScrollBarThickness=3
+CPScr.CanvasSize=UDim2.new(0,0,0,0);CPScr.ZIndex=10;CPScr.Parent=CPop
+local CPLayout=Instance.new("UIListLayout");CPLayout.Padding=UDim.new(0,3);CPLayout.Parent=CPScr
+
+-- ══ EXCLUDE POPUP ══
+local EPop=mkFrame(SG,UDim2.new(0,200,0,260),UDim2.new(0.5,126,0.5,175),Color3.fromRGB(16,8,8),true)
+EPop.Visible=false;EPop.ZIndex=10
+local EPBar=mkFrame(EPop,UDim2.new(1,0,0,28),UDim2.new(0,0,0,0),Color3.fromRGB(25,12,12),false,8);EPBar.ZIndex=10
+mkDrag(EPop,EPBar,nil)
+mkLbl(EPBar,"🚫 Exclude Color",UDim2.new(1,-28,1,0),UDim2.new(0,8,0,0),10,Color3.fromRGB(255,190,190),Enum.Font.GothamBold)
+local BtnEPClose=mkBtn(EPBar,"✕",UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10);BtnEPClose.ZIndex=10
+mkLbl(EPop,"กดสีที่ไม่ต้องการล็อค → OK",UDim2.new(1,-16,0,20),UDim2.new(0,8,0,30),9,Color3.fromRGB(190,148,148))
+local BtnEPOk=mkBtn(EPop,"✅ OK",UDim2.new(1,-16,0,22),UDim2.new(0,8,0,52),Color3.fromRGB(26,50,26),Color3.fromRGB(170,255,170),9);BtnEPOk.ZIndex=10
+local EPScr=Instance.new("ScrollingFrame");EPScr.Size=UDim2.new(1,-8,1,-80);EPScr.Position=UDim2.new(0,4,0,78)
+EPScr.BackgroundTransparency=1;EPScr.BorderSizePixel=0;EPScr.ScrollBarThickness=3
+EPScr.CanvasSize=UDim2.new(0,0,0,0);EPScr.ZIndex=10;EPScr.Parent=EPop
+local EPLayout=Instance.new("UIListLayout");EPLayout.Padding=UDim.new(0,3);EPLayout.Parent=EPScr
+
+-- ══ TP MODE POPUP ══
+local TPMPop=mkFrame(SG,UDim2.new(0,200,0,160),UDim2.new(0.5,126,0.5,175),Color3.fromRGB(12,15,22),true)
+TPMPop.Visible=false;TPMPop.ZIndex=12
+local TPMBar=mkFrame(TPMPop,UDim2.new(1,0,0,28),UDim2.new(0,0,0,0),Color3.fromRGB(18,22,35),false,8);TPMBar.ZIndex=12
+mkDrag(TPMPop,TPMBar,nil);mkAccent(TPMBar,Color3.fromRGB(50,200,120))
+mkLbl(TPMBar,"🚀 TP Mode",UDim2.new(1,-30,1,0),UDim2.new(0,8,0,0),10,Color3.fromRGB(255,255,255),Enum.Font.GothamBold)
+local BtnTPMClose=mkBtn(TPMBar,"✕",UDim2.new(0,20,0,20),UDim2.new(1,-22,0.5,-10),Color3.fromRGB(150,32,32),Color3.fromRGB(255,255,255),10);BtnTPMClose.ZIndex=12
+local BtnTPM1=mkBtn(TPMPop,"1️⃣ ปกติ",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,32),Color3.fromRGB(25,75,25),Color3.fromRGB(180,255,180),10);BtnTPM1.ZIndex=12
+local BtnTPM2=mkBtn(TPMPop,"2️⃣ รัว",UDim2.new(1,-16,0,28),UDim2.new(0,8,0,64),Color3.fromRGB(35,35,55),Color3.fromRGB(155,155,220),10);BtnTPM2.ZIndex=12
+mkLbl(TPMPop,"⚡ ความเร็วรัว (วิ)",UDim2.new(1,-16,0,14),UDim2.new(0,8,0,96),9,Color3.fromRGB(120,120,170))
+local InpTPSpd=mkInp(TPMPop,St.tpRapidSpd,UDim2.new(1,-16,0,24),UDim2.new(0,8,0,112));InpTPSpd.ZIndex=12
+local function UpdateTPMUI()
+    BtnTPM1.BackgroundColor3=St.tpModeSelect==1 and Color3.fromRGB(25,100,25) or Color3.fromRGB(25,45,25)
+    BtnTPM2.BackgroundColor3=St.tpModeSelect==2 and Color3.fromRGB(60,40,100) or Color3.fromRGB(35,35,55)
+end;UpdateTPMUI()
 
 -- ══ COLOR PICKER ══
 local CPop=mkFrame(SG,UDim2.new(0,200,0,230),UDim2.new(0.5,126,0.5,175),Color3.fromRGB(12,12,18),true)
@@ -673,8 +729,6 @@ end
 
 local function StartLock()
     if St.lockConn then St.lockConn:Disconnect();St.lockConn=nil end
-    -- ล็อคกล้องไม่ให้หลุด
-    Cam.CameraType=Enum.CameraType.Scriptable
     local timer=0
     St.lockConn=Svc.Run.RenderStepped:Connect(function(dt)
         local myHRP=St.char and St.char:FindFirstChild("HumanoidRootPart")
@@ -713,18 +767,17 @@ local function StartLock()
             if Cfg.camMode==3 then UpdateCH() end
         end
         -- ══ Override Mouse.Hit → ยิงตรงเป้าเสมอ ══
+        -- ใช้ fake part หลอก Mouse.Target แทน (Mouse.Hit เป็น read-only)
         local aimHRP=GetRoot(St.target)
         local aimHead=St.target:FindFirstChild("Head")
         local aimPos=aimHead and aimHead.Position or (aimHRP and aimHRP.Position)
-        if aimPos then
-            pcall(function() Mouse.Hit=CFrame.new(aimPos) end)
+        if aimPos and St.fakePart then
+            St.fakePart.CFrame=CFrame.new(aimPos)
         end
     end)
 end
 local function StopLock()
     if St.lockConn then St.lockConn:Disconnect();St.lockConn=nil end
-    -- คืนกล้องกลับปกติ
-    Cam.CameraType=Enum.CameraType.Custom
     SetTarget(nil)
 end
 
@@ -888,7 +941,11 @@ BtnMin.Activated:Connect(function()
     minimized=not minimized;Con.Visible=not minimized
     MF.Size=minimized and UDim2.new(0,232,0,32) or UDim2.new(0,232,0,440)
 end)
-BtnClose.Activated:Connect(function() StopLock();ClearESP();CHF.Visible=false;SG:Destroy() end)
+BtnClose.Activated:Connect(function()
+    StopLock();ClearESP();CHF.Visible=false
+    if St.fakePart then St.fakePart:Destroy();St.fakePart=nil end
+    SG:Destroy()
+end)
 local scanVis=false
 BtnScan.Activated:Connect(function()
     scanVis=not scanVis;SF.Visible=scanVis
@@ -971,7 +1028,7 @@ BtnCamLock.Activated:Connect(function()
     St.camLocked=not St.camLocked
     BtnCamLock.Text=St.camLocked and "🔒 Lock Cam ON" or "🔒 Lock Cam OFF"
     BtnCamLock.BackgroundColor3=St.camLocked and Color3.fromRGB(20,84,20) or Color3.fromRGB(150,32,32)
-end)
+end
 BtnCamFree.Activated:Connect(function()
     St.camFree=not St.camFree
     BtnCamFree.Text=St.camFree and "🎥 FreeCam ON" or "🎥 FreeCam OFF"
