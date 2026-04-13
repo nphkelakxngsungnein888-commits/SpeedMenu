@@ -673,6 +673,8 @@ end
 
 local function StartLock()
     if St.lockConn then St.lockConn:Disconnect();St.lockConn=nil end
+    -- ล็อคกล้องไม่ให้หลุด
+    Cam.CameraType=Enum.CameraType.Scriptable
     local timer=0
     St.lockConn=Svc.Run.RenderStepped:Connect(function(dt)
         local myHRP=St.char and St.char:FindFirstChild("HumanoidRootPart")
@@ -710,10 +712,20 @@ local function StartLock()
             if bl.Magnitude>0.1 then myHRP.CFrame=myHRP.CFrame:Lerp(CFrame.new(myPos,myPos+bl.Unit),alpha) end
             if Cfg.camMode==3 then UpdateCH() end
         end
+        -- ══ Override Mouse.Hit → ยิงตรงเป้าเสมอ ══
+        local aimHRP=GetRoot(St.target)
+        local aimHead=St.target:FindFirstChild("Head")
+        local aimPos=aimHead and aimHead.Position or (aimHRP and aimHRP.Position)
+        if aimPos then
+            pcall(function() Mouse.Hit=CFrame.new(aimPos) end)
+        end
     end)
 end
 local function StopLock()
-    if St.lockConn then St.lockConn:Disconnect();St.lockConn=nil end;SetTarget(nil)
+    if St.lockConn then St.lockConn:Disconnect();St.lockConn=nil end
+    -- คืนกล้องกลับปกติ
+    Cam.CameraType=Enum.CameraType.Custom
+    SetTarget(nil)
 end
 
 -- ══ LOOPS ══
@@ -751,17 +763,28 @@ Svc.Run.RenderStepped:Connect(function(dt)
             St.mvRoot.Velocity=Vector3.new(St.mvRoot.Velocity.X,0,St.mvRoot.Velocity.Z)
         end
     end
-    if MvCfg.noclip and St.mvChar then
+    if St.mvChar then
         for _,v in pairs(St.mvChar:GetDescendants()) do
-            if v:IsA("BasePart") then v.CanCollide=false;v.Massless=true end
+            if v:IsA("BasePart") then
+                if MvCfg.noclip then
+                    v.CanCollide=false;v.Massless=true
+                else
+                    -- คืนกลับปกติเมื่อปิด Noclip
+                    v.CanCollide=true;v.Massless=false
+                end
+            end
         end
     end
-    if MvCfg.antiTP and St.mvLastPos then
-        if (St.mvRoot.Position-St.mvLastPos).Magnitude>30 and St.mvRoot.Velocity.Magnitude<120 then
-            St.mvRoot.CFrame=CFrame.new(St.mvLastPos)
+    if MvCfg.antiTP then
+        if St.mvLastPos then
+            if (St.mvRoot.Position-St.mvLastPos).Magnitude>30 and St.mvRoot.Velocity.Magnitude<120 then
+                St.mvRoot.CFrame=CFrame.new(St.mvLastPos)
+            end
         end
+        St.mvLastPos=St.mvRoot.Position
+    else
+        St.mvLastPos=nil  -- ล้างค่าเมื่อปิด AntiTP
     end
-    if MvCfg.antiTP then St.mvLastPos=St.mvRoot.Position end
 end)
 
 Svc.Run.Heartbeat:Connect(function(dt)
