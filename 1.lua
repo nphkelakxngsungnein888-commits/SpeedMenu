@@ -1,728 +1,954 @@
--- ============================================================
--- GAG AUTO BUY v3.1 - GROW A GARDEN
--- Features:
---   ✅ Scan ทุกร้านในแมพจาก workspace (ProximityPrompt + Billboard + Model)
---   ✅ Scan ของในแต่ละร้านจาก ReplicatedStorage + workspace GUI
---   ✅ ซื้อทุกอย่างที่มีขายจนหมด stock / เงินหมด
---   ✅ อยู่ที่ไหนก็ซื้อได้ (ยิง Remote ตรง ไม่ต้อง teleport)
---   ✅ UI แสดงร้านทั้งหมดที่เจอในแมพ + รายการของ + บล็อกได้
--- Platform: Mobile (Dobex) | Version: 3.1
--- ============================================================
+--// SERVICES
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 
--- SERVICES
-local Players           = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService  = game:GetService("UserInputService")
-local RunService        = game:GetService("RunService")
-local TweenService      = game:GetService("TweenService")
+--// PLAYER
+local player = Players.LocalPlayer
+local character, humanoid, root
 
--- VARIABLES
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
-local Character   = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local HRP         = Character:WaitForChild("HumanoidRootPart")
+--// STATE
+local speedEnabled = false
+local speedMultiplier = 1
 
-local autoBuyEnabled = false
-local scannedItems   = {}  -- { [itemName] = shopName }
-local blockedItems   = {}  -- { [itemName] = true }
-local buyInterval    = 0.25
--- allShops = { [shopName] = { prompt=obj|nil, position=vec3|nil, source="..." } }
-local allShops       = {}
-local shopCount      = 0
+local infiniteJumpEnabled = false
+local jumpPowerEnabled = false
+local jumpPower = 50
 
--- ============================================================
--- RESPAWN SAFETY
--- ============================================================
-LocalPlayer.CharacterAdded:Connect(function(char)
-    Character = char
-    HRP       = char:WaitForChild("HumanoidRootPart")
-    warn("[GAG-Buy] Respawned — ready")
+local followTargetEnabled = false
+local followDistance = 5
+local followSpeedMultiplier = 1
+
+--// FLY
+local Flying = false
+local FlySpeed = 60
+local BV, BG, FlyLoop
+
+--// LOCK HEIGHT
+local lockHeightEnabled = false
+local lockHeightOffset = 0
+local lockTargetY = nil
+local lockBodyPos = nil
+
+--// NAME TAG
+local nameTagEnabled = false
+local nameTags = {}
+
+local currentTarget = nil
+local moveVector = Vector3.zero
+
+local scanRange = 100
+local nameFilter = ""
+local hiddenTeamColors = {}
+local lastFoundColors = {}
+local pendingHide = {}
+
+--// SETUP
+local function setupCharacter(char)
+	character = char
+	humanoid = char:WaitForChild("Humanoid")
+	root = char:WaitForChild("HumanoidRootPart")
+	-- รีเซ็ต fly
+	if FlyLoop then FlyLoop:Disconnect() FlyLoop = nil end
+	if BV then BV:Destroy() BV = nil end
+	if BG then BG:Destroy() BG = nil end
+	Flying = false
+	-- รีเซ็ต lock
+	lockTargetY = nil
+	if lockBodyPos then lockBodyPos:Destroy() lockBodyPos = nil end
+end
+
+if player.Character then setupCharacter(player.Character) end
+player.CharacterAdded:Connect(function(char)
+	task.wait(1)
+	setupCharacter(char)
+end)
+player.CharacterAdded:Connect(function()
+	lockBodyPos = nil
+	lockTargetY = nil
 end)
 
-local function GetHRP()
-    if not Character or not Character.Parent then
-        Character = LocalPlayer.Character
-    end
-    if Character then
-        HRP = Character:FindFirstChild("HumanoidRootPart")
-    end
-    return HRP
+local function getRoot()
+	if character and character.Parent and root then return root end
+	return nil
 end
 
--- ============================================================
--- KEYWORDS
--- ============================================================
-local SHOP_KW = {
-    "shop","store","merchant","vendor","seller","npc",
-    "seed","gear","tool","supply","market","stand",
-    "pete","paul","farmer","shopkeeper","trader","buy"
-}
-local ITEM_BL = {
-    "buy","sell","close","back","exit","menu","shop","store",
-    "welcome","hello","interact","press","click","touch","open",
-    "enter","leave","cancel","confirm","ok","yes","no","coins",
-    "cash","money","balance","level","rank","info","help","quest"
-}
-
-local function MatchKw(str)
-    local s = str:lower()
-    for _, kw in ipairs(SHOP_KW) do
-        if s:find(kw) then return true end
-    end
-    return false
+local function Alive()
+	return character and humanoid and root and humanoid.Health > 0
 end
 
-local function IsBlacklisted(str)
-    local s = str:lower():gsub("^%s+",""):gsub("%s+$","")
-    for _, bl in ipairs(ITEM_BL) do
-        if s == bl then return true end
-    end
-    return false
+--// TEAM COLOR
+local function getTeamColor(p)
+	if p and p.Team then
+		local tc = p.Team.TeamColor
+		return Color3.fromRGB(tc.r*255, tc.g*255, tc.b*255), p.Team.TeamColor.Name
+	end
+	return Color3.fromRGB(200,200,200), "NoTeam"
 end
 
--- ============================================================
--- SCAN: หาทุกร้านในแมพ
--- ============================================================
-local function ScanAllShopsInMap()
-    allShops  = {}
-    shopCount = 0
-
-    -- Method 1: ProximityPrompt
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") then
-            local at  = obj.ActionText or ""
-            local ot  = obj.ObjectText or ""
-            local pn  = (obj.Parent and obj.Parent.Name) or ""
-            if MatchKw(at .. " " .. ot .. " " .. pn) then
-                local pos = nil
-                local part = obj.Parent
-                if part and part:IsA("BasePart") then
-                    pos = part.Position
-                elseif part then
-                    local mdl = part.Parent
-                    if mdl and mdl:IsA("Model") then
-                        local pp = mdl.PrimaryPart or mdl:FindFirstChildOfClass("BasePart")
-                        if pp then pos = pp.Position end
-                    end
-                end
-                local name = ot ~= "" and ot or at ~= "" and at or pn ~= "" and pn or ("Shop_"..shopCount)
-                if not allShops[name] then
-                    allShops[name] = { prompt=obj, position=pos, source="proxprompt" }
-                    shopCount = shopCount + 1
-                    warn("[GAG-Buy] 🚪 Shop (Prompt): " .. name)
-                end
-            end
-        end
-    end
-
-    -- Method 2: BillboardGui / SurfaceGui
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
-            for _, child in ipairs(obj:GetDescendants()) do
-                if child:IsA("TextLabel") then
-                    local txt = child.Text:gsub("^%s+",""):gsub("%s+$","")
-                    if #txt >= 3 and MatchKw(txt) then
-                        local part = obj.Parent
-                        local pos  = (part and part:IsA("BasePart")) and part.Position or nil
-                        if not allShops[txt] then
-                            allShops[txt] = { prompt=nil, position=pos, source="billboard" }
-                            shopCount = shopCount + 1
-                            warn("[GAG-Buy] 📋 Shop (Billboard): " .. txt)
-                        end
-                        break
-                    end
-                end
-            end
-        end
-    end
-
-    -- Method 3: Model ชื่อตรง keyword
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and MatchKw(obj.Name) then
-            if not allShops[obj.Name] then
-                local pp  = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
-                allShops[obj.Name] = {
-                    prompt   = nil,
-                    position = pp and pp.Position or nil,
-                    source   = "model"
-                }
-                shopCount = shopCount + 1
-                warn("[GAG-Buy] 🏠 Shop (Model): " .. obj.Name)
-            end
-        end
-    end
-
-    -- Method 4: ReplicatedStorage folder
-    for _, child in ipairs(ReplicatedStorage:GetChildren()) do
-        if MatchKw(child.Name) and not allShops[child.Name] then
-            allShops[child.Name] = { prompt=nil, position=nil, source="replstorage" }
-            shopCount = shopCount + 1
-            warn("[GAG-Buy] 📦 Shop (RS): " .. child.Name)
-        end
-    end
-
-    warn("[GAG-Buy] Total shops: " .. shopCount)
-    return allShops
+--// NAME TAG
+local function clearNameTags()
+	for _, tag in pairs(nameTags) do
+		if tag and tag.Parent then tag:Destroy() end
+	end
+	nameTags = {}
 end
 
--- ============================================================
--- SCAN: หาของในทุกร้าน
--- ============================================================
-local function ScanItemsFromAllShops()
-    scannedItems = {}
-    local found  = 0
+local function updateNameTags()
+	clearNameTags()
+	if not nameTagEnabled then return end
+	for _, p in pairs(Players:GetPlayers()) do
+		if p == player then continue end
+		local pChar = p.Character
+		if not pChar then continue end
+		local hrp2 = pChar:FindFirstChild("HumanoidRootPart")
+		if not hrp2 then continue end
 
-    local RS_KW = {
-        "shop","item","seed","gear","product","stock",
-        "catalog","store","goods","inventory","tool","supply"
-    }
+		local bb = Instance.new("BillboardGui")
+		bb.Name = "KuyNameTag"
+		bb.AlwaysOnTop = true
+		bb.Size = UDim2.new(0, 100, 0, 22)
+		bb.StudsOffset = Vector3.new(0, 3.5, 0)
+		bb.Parent = hrp2
 
-    local function ScanRSFolder(folder, shopName, depth)
-        if depth > 5 then return end
-        for _, child in ipairs(folder:GetChildren()) do
-            local nl = child.Name:lower()
-            if child:IsA("Folder") or child:IsA("Configuration") then
-                for _, kw in ipairs(RS_KW) do
-                    if nl:find(kw) then ScanRSFolder(child, shopName, depth+1); break end
-                end
-            end
-            if child:IsA("StringValue") or child:IsA("IntValue")
-                or child:IsA("NumberValue") or child:IsA("BoolValue")
-                or child:IsA("Folder") then
-                local clean = child.Name:gsub("^%s+",""):gsub("%s+$","")
-                if #clean >= 3 and #clean <= 50
-                    and not IsBlacklisted(clean)
-                    and not clean:lower():find("remote")
-                    and not clean:lower():find("event")
-                    and not clean:lower():find("handler")
-                    and not clean:lower():find("manager")
-                    and not clean:lower():find("system")
-                    and not clean:lower():find("script")
-                    and not clean:lower():find("service") then
-                    if not scannedItems[clean] then
-                        scannedItems[clean] = shopName or "Unknown"
-                        found = found + 1
-                    end
-                end
-            end
-        end
-    end
-
-    -- สแกนจากทุก shop ที่เจอ
-    for shopName, _ in pairs(allShops) do
-        local rsFolder = ReplicatedStorage:FindFirstChild(shopName)
-        if rsFolder then ScanRSFolder(rsFolder, shopName, 0) end
-    end
-
-    -- สแกน RS ทั้งหมดด้วย keyword
-    for _, child in ipairs(ReplicatedStorage:GetChildren()) do
-        local nl = child.Name:lower()
-        for _, kw in ipairs(RS_KW) do
-            if nl:find(kw) then ScanRSFolder(child, child.Name, 0); break end
-        end
-    end
-
-    -- Method 2: workspace GUI
-    if found == 0 then
-        warn("[GAG-Buy] RS empty — scanning workspace GUI...")
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and obj.Parent then
-                local parent = obj.Parent
-                if parent:IsA("BillboardGui") or parent:IsA("SurfaceGui") then
-                    local txt = obj.Text:gsub("^%s+",""):gsub("%s+$","")
-                    if #txt >= 3 and #txt <= 50
-                        and not IsBlacklisted(txt)
-                        and not txt:match("^%d")
-                        and not txt:find("%$") then
-                        local shopName = "Workspace"
-                        local gp = parent.Parent
-                        if gp then
-                            if MatchKw(gp.Name) then shopName = gp.Name
-                            elseif gp.Parent and MatchKw(gp.Parent.Name) then
-                                shopName = gp.Parent.Name
-                            end
-                        end
-                        if not scannedItems[txt] then
-                            scannedItems[txt] = shopName
-                            found = found + 1
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- Fallback
-    if found == 0 then
-        warn("[GAG-Buy] Using GAG fallback list")
-        local fb = {
-            {"Carrot Seed","Seed Shop"},{"Strawberry Seed","Seed Shop"},
-            {"Blueberry Seed","Seed Shop"},{"Tomato Seed","Seed Shop"},
-            {"Corn Seed","Seed Shop"},{"Watermelon Seed","Seed Shop"},
-            {"Pumpkin Seed","Seed Shop"},{"Grape Seed","Seed Shop"},
-            {"Mango Seed","Seed Shop"},{"Dragon Fruit Seed","Seed Shop"},
-            {"Bamboo Seed","Seed Shop"},{"Cactus Seed","Seed Shop"},
-            {"Mushroom Seed","Seed Shop"},{"Sunflower Seed","Seed Shop"},
-            {"Rose Seed","Seed Shop"},{"Magic Bean","Seed Shop"},
-            {"Golden Seed","Seed Shop"},{"Mystery Seed","Seed Shop"},
-            {"Watering Can","Gear Shop"},{"Fertilizer","Gear Shop"},
-            {"Shovel","Gear Shop"},{"Hoe","Gear Shop"},
-            {"Basic Sprinkler","Gear Shop"},{"Advanced Sprinkler","Gear Shop"},
-            {"Trowel","Gear Shop"},{"Harvest Tool","Gear Shop"},
-            {"Recall Wrench","Gear Shop"},{"Favorite Tool","Gear Shop"},
-        }
-        for _, p in ipairs(fb) do
-            scannedItems[p[1]] = p[2]
-            found = found + 1
-        end
-    end
-
-    warn("[GAG-Buy] Total items: " .. found)
-    return scannedItems
+		local lbl = Instance.new("TextLabel", bb)
+		lbl.Size = UDim2.new(1, 0, 1, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = p.Name
+		lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+		lbl.Font = Enum.Font.SourceSansBold
+		lbl.TextSize = 14
+		lbl.TextStrokeTransparency = 0.3
+		lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		table.insert(nameTags, bb)
+	end
 end
 
--- ============================================================
--- FIND BUY REMOTE
--- ============================================================
-local cachedBuyRemote = nil
-
-local function FindBuyRemote()
-    if cachedBuyRemote and cachedBuyRemote.Parent then return cachedBuyRemote end
-    local kws = {"buy","purchase","shop","order","acquire"}
-    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-            local nl = v.Name:lower()
-            for _, kw in ipairs(kws) do
-                if nl:find(kw) then
-                    cachedBuyRemote = v
-                    warn("[GAG-Buy] Remote: " .. v.Name .. " (" .. v.ClassName .. ")")
-                    return v
-                end
-            end
-        end
-    end
-    warn("[GAG-Buy] ❌ No buy remote")
-    return nil
-end
-
--- ============================================================
--- TRY BUY
--- ============================================================
-local function TryBuyItem(itemName)
-    if not itemName then return false end
-    local hrp = GetHRP()
-    if not hrp then return false end
-    local hum = Character:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then return false end
-
-    local remote = FindBuyRemote()
-    if not remote then return false end
-
-    local success = false
-    local argSets = {
-        {itemName},
-        {itemName, 1},
-        {itemName, 1, "buy"},
-        {1, itemName},
-        {{item=itemName, amount=1}},
-        {{name=itemName, quantity=1}},
-    }
-
-    for _, args in ipairs(argSets) do
-        if success then break end
-        pcall(function()
-            if remote:IsA("RemoteEvent") then
-                remote:FireServer(table.unpack(args)); success = true
-            elseif remote:IsA("RemoteFunction") then
-                local r = remote:InvokeServer(table.unpack(args))
-                success = r ~= false and r ~= nil
-            end
-        end)
-        if success then warn("[GAG-Buy] ✅ " .. itemName); return true end
-        task.wait(0.04)
-    end
-
-    -- fallback: scan all
-    if not success then
-        for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-            if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) and v.Name:lower():find("buy") then
-                pcall(function()
-                    if v:IsA("RemoteEvent") then v:FireServer(itemName)
-                    else v:InvokeServer(itemName) end
-                    success = true
-                end)
-                if success then break end
-            end
-        end
-    end
-    return success
-end
-
--- ============================================================
--- BUY ALL UNTIL EMPTY
--- ============================================================
-local function BuyAllUntilEmpty()
-    local total = 0
-    local failC = {}
-
-    for itemName, _ in pairs(scannedItems) do
-        if not autoBuyEnabled then break end
-        if blockedItems[itemName] then continue end
-
-        failC[itemName] = 0
-        local itemBought = 0
-
-        while autoBuyEnabled do
-            local ok = TryBuyItem(itemName)
-            if ok then
-                itemBought = itemBought + 1
-                total      = total + 1
-                failC[itemName] = 0
-            else
-                failC[itemName] = failC[itemName] + 1
-                if failC[itemName] >= 3 then
-                    if itemBought > 0 then
-                        warn("[GAG-Buy] Done: " .. itemName .. " x" .. itemBought)
-                    end
-                    break
-                end
-            end
-            task.wait(buyInterval)
-        end
-    end
-    return total
-end
-
--- ============================================================
--- UI
--- ============================================================
-local oldGui = PlayerGui:FindFirstChild("GAGAutoBuyUI")
-if oldGui then oldGui:Destroy() end
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name           = "GAGAutoBuyUI"
-ScreenGui.ResetOnSpawn   = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder   = 999
-ScreenGui.Parent         = PlayerGui
-
-local Main = Instance.new("Frame")
-Main.Name             = "Main"
-Main.Size             = UDim2.new(0, 310, 0, 560)
-Main.Position         = UDim2.new(0, 16, 0.5, -280)
-Main.BackgroundColor3 = Color3.fromRGB(13,17,23)
-Main.BorderSizePixel  = 0
-Main.Active           = true
-Main.ClipsDescendants = true
-Main.Parent           = ScreenGui
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0,16)
-local Stroke = Instance.new("UIStroke")
-Stroke.Color=Color3.fromRGB(34,197,94); Stroke.Thickness=1.5; Stroke.Transparency=0.4
-Stroke.Parent = Main
-
--- Title Bar
-local TitleBar = Instance.new("Frame")
-TitleBar.Size=UDim2.new(1,0,0,48); TitleBar.BackgroundColor3=Color3.fromRGB(17,24,39)
-TitleBar.BorderSizePixel=0; TitleBar.Parent=Main
-Instance.new("UICorner",TitleBar).CornerRadius=UDim.new(0,16)
-local TFix=Instance.new("Frame"); TFix.Size=UDim2.new(1,0,0,8)
-TFix.Position=UDim2.new(0,0,1,-8); TFix.BackgroundColor3=Color3.fromRGB(17,24,39)
-TFix.BorderSizePixel=0; TFix.Parent=TitleBar
-
-local TitleTxt=Instance.new("TextLabel")
-TitleTxt.Size=UDim2.new(1,-50,1,0); TitleTxt.Position=UDim2.new(0,14,0,0)
-TitleTxt.BackgroundTransparency=1; TitleTxt.Text="🌱 GAG Auto Buy v3.1"
-TitleTxt.TextColor3=Color3.fromRGB(134,239,172); TitleTxt.TextSize=14
-TitleTxt.Font=Enum.Font.GothamBold; TitleTxt.TextXAlignment=Enum.TextXAlignment.Left
-TitleTxt.Parent=TitleBar
-
-local CloseBtn=Instance.new("TextButton")
-CloseBtn.Size=UDim2.new(0,32,0,32); CloseBtn.Position=UDim2.new(1,-40,0.5,-16)
-CloseBtn.BackgroundColor3=Color3.fromRGB(60,20,20); CloseBtn.Text="✕"
-CloseBtn.TextColor3=Color3.fromRGB(255,100,100); CloseBtn.TextSize=13
-CloseBtn.Font=Enum.Font.GothamBold; CloseBtn.BorderSizePixel=0; CloseBtn.Parent=TitleBar
-Instance.new("UICorner",CloseBtn).CornerRadius=UDim.new(0,8)
-
--- Status
-local StatusBox=Instance.new("Frame")
-StatusBox.Size=UDim2.new(1,-16,0,34); StatusBox.Position=UDim2.new(0,8,0,54)
-StatusBox.BackgroundColor3=Color3.fromRGB(20,30,20); StatusBox.BorderSizePixel=0
-StatusBox.Parent=Main; Instance.new("UICorner",StatusBox).CornerRadius=UDim.new(0,8)
-local StatusTxt=Instance.new("TextLabel")
-StatusTxt.Size=UDim2.new(1,-12,1,0); StatusTxt.Position=UDim2.new(0,8,0,0)
-StatusTxt.BackgroundTransparency=1; StatusTxt.Text="⬛ OFF — กด SCAN ก่อน"
-StatusTxt.TextColor3=Color3.fromRGB(150,200,150); StatusTxt.TextSize=11
-StatusTxt.Font=Enum.Font.Gotham; StatusTxt.TextXAlignment=Enum.TextXAlignment.Left
-StatusTxt.TextTruncate=Enum.TextTruncate.AtEnd; StatusTxt.Parent=StatusBox
-
--- Shop section label
-local ShopLabel=Instance.new("TextLabel")
-ShopLabel.Size=UDim2.new(1,-16,0,18); ShopLabel.Position=UDim2.new(0,8,0,94)
-ShopLabel.BackgroundTransparency=1; ShopLabel.Text="🏪 ร้านที่พบในแมพ:"
-ShopLabel.TextColor3=Color3.fromRGB(134,239,172); ShopLabel.TextSize=11
-ShopLabel.Font=Enum.Font.GothamBold; ShopLabel.TextXAlignment=Enum.TextXAlignment.Left
-ShopLabel.Parent=Main
-
-local ShopScroll=Instance.new("ScrollingFrame")
-ShopScroll.Size=UDim2.new(1,-16,0,80); ShopScroll.Position=UDim2.new(0,8,0,114)
-ShopScroll.BackgroundColor3=Color3.fromRGB(10,14,20); ShopScroll.BorderSizePixel=0
-ShopScroll.ScrollBarThickness=3; ShopScroll.ScrollBarImageColor3=Color3.fromRGB(34,197,94)
-ShopScroll.CanvasSize=UDim2.new(0,0,0,0); ShopScroll.Parent=Main
-Instance.new("UICorner",ShopScroll).CornerRadius=UDim.new(0,8)
-local ShopLayout=Instance.new("UIListLayout")
-ShopLayout.Padding=UDim.new(0,3); ShopLayout.SortOrder=Enum.SortOrder.Name
-ShopLayout.Parent=ShopScroll
-local ShopPad=Instance.new("UIPadding")
-ShopPad.PaddingTop=UDim.new(0,4); ShopPad.PaddingLeft=UDim.new(0,4)
-ShopPad.PaddingRight=UDim.new(0,4); ShopPad.Parent=ShopScroll
-
--- Scan button
-local ScanBtn=Instance.new("TextButton")
-ScanBtn.Size=UDim2.new(1,-16,0,36); ScanBtn.Position=UDim2.new(0,8,0,200)
-ScanBtn.BackgroundColor3=Color3.fromRGB(37,99,235); ScanBtn.Text="🔍  SCAN ทุกร้านในแมพ"
-ScanBtn.TextColor3=Color3.fromRGB(255,255,255); ScanBtn.TextSize=13
-ScanBtn.Font=Enum.Font.GothamBold; ScanBtn.BorderSizePixel=0; ScanBtn.Parent=Main
-Instance.new("UICorner",ScanBtn).CornerRadius=UDim.new(0,10)
-
--- Count label
-local CountTxt=Instance.new("TextLabel")
-CountTxt.Size=UDim2.new(1,-16,0,18); CountTxt.Position=UDim2.new(0,8,0,242)
-CountTxt.BackgroundTransparency=1; CountTxt.Text="📦 ของ: 0  |  🏪 ร้าน: 0  |  🚫 บล็อก: 0"
-CountTxt.TextColor3=Color3.fromRGB(100,160,100); CountTxt.TextSize=11
-CountTxt.Font=Enum.Font.Gotham; CountTxt.TextXAlignment=Enum.TextXAlignment.Left
-CountTxt.Parent=Main
-
--- Item section label
-local ItemLbl=Instance.new("TextLabel")
-ItemLbl.Size=UDim2.new(1,-16,0,18); ItemLbl.Position=UDim2.new(0,8,0,262)
-ItemLbl.BackgroundTransparency=1; ItemLbl.Text="🛒 รายการของทั้งหมด:"
-ItemLbl.TextColor3=Color3.fromRGB(134,239,172); ItemLbl.TextSize=11
-ItemLbl.Font=Enum.Font.GothamBold; ItemLbl.TextXAlignment=Enum.TextXAlignment.Left
-ItemLbl.Parent=Main
-
-local Scroll=Instance.new("ScrollingFrame")
-Scroll.Size=UDim2.new(1,-16,0,188); Scroll.Position=UDim2.new(0,8,0,282)
-Scroll.BackgroundColor3=Color3.fromRGB(10,14,20); Scroll.BorderSizePixel=0
-Scroll.ScrollBarThickness=3; Scroll.ScrollBarImageColor3=Color3.fromRGB(34,197,94)
-Scroll.CanvasSize=UDim2.new(0,0,0,0); Scroll.Parent=Main
-Instance.new("UICorner",Scroll).CornerRadius=UDim.new(0,10)
-local ListLayout=Instance.new("UIListLayout")
-ListLayout.Padding=UDim.new(0,3); ListLayout.SortOrder=Enum.SortOrder.Name
-ListLayout.Parent=Scroll
-local ListPad=Instance.new("UIPadding")
-ListPad.PaddingTop=UDim.new(0,4); ListPad.PaddingLeft=UDim.new(0,4)
-ListPad.PaddingRight=UDim.new(0,4); ListPad.PaddingBottom=UDim.new(0,4)
-ListPad.Parent=Scroll
-
--- Speed
-local SpeedFrame=Instance.new("Frame")
-SpeedFrame.Size=UDim2.new(1,-16,0,30); SpeedFrame.Position=UDim2.new(0,8,0,476)
-SpeedFrame.BackgroundColor3=Color3.fromRGB(17,24,39); SpeedFrame.BorderSizePixel=0
-SpeedFrame.Parent=Main; Instance.new("UICorner",SpeedFrame).CornerRadius=UDim.new(0,8)
-local SpeedLabel=Instance.new("TextLabel")
-SpeedLabel.Size=UDim2.new(0.5,0,1,0); SpeedLabel.Position=UDim2.new(0,10,0,0)
-SpeedLabel.BackgroundTransparency=1; SpeedLabel.Text="⚡ Normal (0.25s)"
-SpeedLabel.TextColor3=Color3.fromRGB(180,180,200); SpeedLabel.TextSize=11
-SpeedLabel.Font=Enum.Font.Gotham; SpeedLabel.TextXAlignment=Enum.TextXAlignment.Left
-SpeedLabel.Parent=SpeedFrame
-local SpeedFast=Instance.new("TextButton")
-SpeedFast.Size=UDim2.new(0,50,0,20); SpeedFast.Position=UDim2.new(1,-114,0.5,-10)
-SpeedFast.BackgroundColor3=Color3.fromRGB(30,60,30); SpeedFast.Text="Fast"
-SpeedFast.TextColor3=Color3.fromRGB(200,255,200); SpeedFast.TextSize=11
-SpeedFast.Font=Enum.Font.GothamBold; SpeedFast.BorderSizePixel=0; SpeedFast.Parent=SpeedFrame
-Instance.new("UICorner",SpeedFast).CornerRadius=UDim.new(0,6)
-local SpeedNormal=Instance.new("TextButton")
-SpeedNormal.Size=UDim2.new(0,58,0,20); SpeedNormal.Position=UDim2.new(1,-60,0.5,-10)
-SpeedNormal.BackgroundColor3=Color3.fromRGB(34,197,94); SpeedNormal.Text="Normal"
-SpeedNormal.TextColor3=Color3.fromRGB(0,0,0); SpeedNormal.TextSize=11
-SpeedNormal.Font=Enum.Font.GothamBold; SpeedNormal.BorderSizePixel=0; SpeedNormal.Parent=SpeedFrame
-Instance.new("UICorner",SpeedNormal).CornerRadius=UDim.new(0,6)
-
--- Start / Stop
-local StartBtn=Instance.new("TextButton")
-StartBtn.Size=UDim2.new(0.5,-6,0,42); StartBtn.Position=UDim2.new(0,8,0,512)
-StartBtn.BackgroundColor3=Color3.fromRGB(22,163,74); StartBtn.Text="▶  START"
-StartBtn.TextColor3=Color3.fromRGB(255,255,255); StartBtn.TextSize=14
-StartBtn.Font=Enum.Font.GothamBold; StartBtn.BorderSizePixel=0; StartBtn.Parent=Main
-Instance.new("UICorner",StartBtn).CornerRadius=UDim.new(0,12)
-local StopBtn=Instance.new("TextButton")
-StopBtn.Size=UDim2.new(0.5,-6,0,42); StopBtn.Position=UDim2.new(0.5,-2,0,512)
-StopBtn.BackgroundColor3=Color3.fromRGB(80,20,20); StopBtn.Text="⏹  STOP"
-StopBtn.TextColor3=Color3.fromRGB(255,100,100); StopBtn.TextSize=14
-StopBtn.Font=Enum.Font.GothamBold; StopBtn.BorderSizePixel=0; StopBtn.Parent=Main
-Instance.new("UICorner",StopBtn).CornerRadius=UDim.new(0,12)
-
--- ============================================================
--- BUILD UI
--- ============================================================
-local shopRowMap = {}
-local itemRowMap = {}
-
-local function UpdateCount()
-    local total, blocked = 0, 0
-    for n,_ in pairs(scannedItems) do
-        total = total + 1
-        if blockedItems[n] then blocked = blocked + 1 end
-    end
-    CountTxt.Text = "📦 ของ: "..total.."  |  🏪 ร้าน: "..shopCount.."  |  🚫 บล็อก: "..blocked
-end
-
-local function BuildShopRows()
-    for _,r in pairs(shopRowMap) do r:Destroy() end
-    shopRowMap = {}
-    local names = {}
-    for n,_ in pairs(allShops) do table.insert(names,n) end
-    table.sort(names)
-    for _, sn in ipairs(names) do
-        local data = allShops[sn]
-        local icon = data.source=="proxprompt" and "🚪"
-            or data.source=="billboard" and "📋"
-            or data.source=="model" and "🏠" or "📦"
-        local Row=Instance.new("Frame")
-        Row.Name=sn; Row.Size=UDim2.new(1,0,0,26)
-        Row.BackgroundColor3=Color3.fromRGB(20,35,20)
-        Row.BorderSizePixel=0; Row.Parent=ShopScroll
-        Instance.new("UICorner",Row).CornerRadius=UDim.new(0,6)
-        local Lbl=Instance.new("TextLabel")
-        Lbl.Size=UDim2.new(1,-8,1,0); Lbl.Position=UDim2.new(0,8,0,0)
-        Lbl.BackgroundTransparency=1
-        Lbl.Text=icon.." "..sn.."  ["..data.source.."]"
-        Lbl.TextColor3=Color3.fromRGB(160,240,160); Lbl.TextSize=11
-        Lbl.Font=Enum.Font.Gotham; Lbl.TextXAlignment=Enum.TextXAlignment.Left
-        Lbl.TextTruncate=Enum.TextTruncate.AtEnd; Lbl.Parent=Row
-        table.insert(shopRowMap, Row)
-    end
-    ShopScroll.CanvasSize=UDim2.new(0,0,0,(#names*29)+8)
-end
-
-local function BuildItemRows()
-    for _,r in pairs(itemRowMap) do r:Destroy() end
-    itemRowMap = {}
-    local names = {}
-    for n,_ in pairs(scannedItems) do table.insert(names,n) end
-    table.sort(names)
-    for _, itemName in ipairs(names) do
-        local shopTag = scannedItems[itemName] or ""
-        local isBlock = blockedItems[itemName] == true
-        local Row=Instance.new("Frame")
-        Row.Name=itemName; Row.Size=UDim2.new(1,0,0,30)
-        Row.BackgroundColor3=isBlock and Color3.fromRGB(40,15,15) or Color3.fromRGB(20,30,20)
-        Row.BorderSizePixel=0; Row.Parent=Scroll
-        Instance.new("UICorner",Row).CornerRadius=UDim.new(0,6)
-        local NameLbl=Instance.new("TextLabel")
-        NameLbl.Size=UDim2.new(1,-70,1,0); NameLbl.Position=UDim2.new(0,8,0,0)
-        NameLbl.BackgroundTransparency=1
-        NameLbl.Text=(isBlock and "🚫 " or "✅ ")..itemName
-            ..(shopTag~="" and ("  · "..shopTag) or "")
-        NameLbl.TextColor3=isBlock and Color3.fromRGB(120,60,60) or Color3.fromRGB(180,255,180)
-        NameLbl.TextSize=10; NameLbl.Font=Enum.Font.Gotham
-        NameLbl.TextXAlignment=Enum.TextXAlignment.Left
-        NameLbl.TextTruncate=Enum.TextTruncate.AtEnd; NameLbl.Parent=Row
-        local BlockBtn=Instance.new("TextButton")
-        BlockBtn.Size=UDim2.new(0,56,0,22); BlockBtn.Position=UDim2.new(1,-60,0.5,-11)
-        BlockBtn.BackgroundColor3=isBlock and Color3.fromRGB(22,100,40) or Color3.fromRGB(100,20,20)
-        BlockBtn.Text=isBlock and "✅ ON" or "🚫 OFF"
-        BlockBtn.TextColor3=Color3.fromRGB(255,255,255); BlockBtn.TextSize=10
-        BlockBtn.Font=Enum.Font.GothamBold; BlockBtn.BorderSizePixel=0; BlockBtn.Parent=Row
-        Instance.new("UICorner",BlockBtn).CornerRadius=UDim.new(0,6)
-        local cn=itemName
-        BlockBtn.MouseButton1Click:Connect(function()
-            blockedItems[cn] = not blockedItems[cn] or nil
-            BuildItemRows(); UpdateCount()
-        end)
-        table.insert(itemRowMap, Row)
-    end
-    Scroll.CanvasSize=UDim2.new(0,0,0,(#names*33)+8)
-    UpdateCount()
-end
-
--- ============================================================
--- DRAG
--- ============================================================
-local dragging, dragStart, startPos = false, nil, nil
-TitleBar.InputBegan:Connect(function(i)
-    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
-        dragging=true; dragStart=i.Position; startPos=Main.Position end end)
-UserInputService.InputChanged:Connect(function(i)
-    if dragging and (i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseMovement) then
-        local d=i.Position-dragStart
-        Main.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y) end end)
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
-        dragging=false end end)
-
--- ============================================================
--- BUTTONS
--- ============================================================
-CloseBtn.MouseButton1Click:Connect(function()
-    autoBuyEnabled=false; ScreenGui:Destroy(); warn("[GAG-Buy] Closed") end)
-
-ScanBtn.MouseButton1Click:Connect(function()
-    ScanBtn.Text="⏳  กำลังสแกนแมพ..."
-    ScanBtn.BackgroundColor3=Color3.fromRGB(60,60,60)
-    StatusTxt.Text="🔍 สแกนร้านทั้งหมดในแมพ..."
-    task.wait(0.3)
-    ScanAllShopsInMap(); BuildShopRows()
-    ScanItemsFromAllShops(); BuildItemRows()
-    local cnt=0; for _ in pairs(scannedItems) do cnt=cnt+1 end
-    ScanBtn.Text="🔄  SCAN อีกครั้ง"
-    ScanBtn.BackgroundColor3=Color3.fromRGB(37,99,235)
-    StatusTxt.Text="✅ ร้าน: "..shopCount.."  ของ: "..cnt.." — กด START"
-    warn("[GAG-Buy] Scan done | shops:"..shopCount.." items:"..cnt) end)
-
-SpeedFast.MouseButton1Click:Connect(function()
-    buyInterval=0.1; SpeedLabel.Text="⚡ Fast (0.1s)"
-    SpeedFast.BackgroundColor3=Color3.fromRGB(34,197,94)
-    SpeedNormal.BackgroundColor3=Color3.fromRGB(30,50,30) end)
-
-SpeedNormal.MouseButton1Click:Connect(function()
-    buyInterval=0.25; SpeedLabel.Text="⚡ Normal (0.25s)"
-    SpeedFast.BackgroundColor3=Color3.fromRGB(30,60,30)
-    SpeedNormal.BackgroundColor3=Color3.fromRGB(34,197,94) end)
-
-StartBtn.MouseButton1Click:Connect(function()
-    local cnt=0; for _ in pairs(scannedItems) do cnt=cnt+1 end
-    if cnt==0 then StatusTxt.Text="⚠️ กด SCAN ก่อน!"; return end
-    autoBuyEnabled=true
-    StatusBox.BackgroundColor3=Color3.fromRGB(15,40,15)
-    StatusTxt.Text="🟢 กำลังซื้อ..."
-    StartBtn.Text="⏳  RUNNING"; StartBtn.BackgroundColor3=Color3.fromRGB(15,100,45)
-    warn("[GAG-Buy] Started")
-    task.spawn(function()
-        while autoBuyEnabled do
-            if not GetHRP() then
-                StatusTxt.Text="⚠️ รอ respawn..."; task.wait(3)
-            else
-                StatusTxt.Text="🟢 กำลังซื้อรอบใหม่..."
-                local total=BuyAllUntilEmpty()
-                if autoBuyEnabled then
-                    warn("[GAG-Buy] Round done: "..total.." items")
-                    for i=60,1,-1 do
-                        if not autoBuyEnabled then break end
-                        StatusTxt.Text="⏳ รอ restock: "..i.."s | ซื้อไป: "..total
-                        task.wait(1)
-                    end
-                end
-            end
-        end
-        StatusTxt.Text="⬛ OFF"; warn("[GAG-Buy] Loop ended") end) end)
-
-StopBtn.MouseButton1Click:Connect(function()
-    autoBuyEnabled=false
-    StatusBox.BackgroundColor3=Color3.fromRGB(20,30,20)
-    StatusTxt.Text="⬛ OFF — กด START เพื่อเริ่มใหม่"
-    StartBtn.Text="▶  START"; StartBtn.BackgroundColor3=Color3.fromRGB(22,163,74)
-    warn("[GAG-Buy] Stopped") end)
-
--- ============================================================
--- AUTO SCAN ON LOAD
--- ============================================================
+Players.PlayerAdded:Connect(function()
+	task.wait(1)
+	if nameTagEnabled then updateNameTags() end
+end)
+Players.PlayerRemoving:Connect(function()
+	task.wait(0.1)
+	if nameTagEnabled then updateNameTags() end
+end)
 task.spawn(function()
-    task.wait(2)
-    StatusTxt.Text="🔍 Auto scanning map..."
-    ScanAllShopsInMap(); BuildShopRows()
-    ScanItemsFromAllShops(); BuildItemRows()
-    local cnt=0; for _ in pairs(scannedItems) do cnt=cnt+1 end
-    ScanBtn.Text="🔄  SCAN อีกครั้ง"
-    StatusTxt.Text="✅ ร้าน: "..shopCount.."  ของ: "..cnt.." — กด START"
-    warn("[GAG-Buy] v3.1 ready | shops:"..shopCount.." items:"..cnt) end)
+	while true do
+		task.wait(5)
+		if nameTagEnabled then updateNameTags() end
+	end
+end)
+
+--// INFINITE JUMP
+UIS.JumpRequest:Connect(function()
+	if not infiniteJumpEnabled then return end
+	if not humanoid then return end
+	local state = humanoid:GetState()
+	if state == Enum.HumanoidStateType.Freefall
+		or state == Enum.HumanoidStateType.FallingDown
+		or state == Enum.HumanoidStateType.Jumping then
+		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+--// FLY (ใช้โค้ดใหม่ที่ส่งมา)
+local function StartFly()
+	if not Alive() or Flying then return end
+	Flying = true
+
+	BV = Instance.new("BodyVelocity")
+	BV.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+	BV.Parent = root
+
+	BG = Instance.new("BodyGyro")
+	BG.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+	BG.P = 50000
+	BG.D = 1000
+	BG.Parent = root
+
+	FlyLoop = RunService.RenderStepped:Connect(function()
+		if not Flying or not Alive() then return end
+
+		local camCF = Camera.CFrame
+		local move = humanoid.MoveDirection
+
+		local relative = camCF:VectorToObjectSpace(move)
+
+		local forward = camCF.LookVector
+		local right = camCF.RightVector
+
+		local direction =
+			(forward * -relative.Z) +
+			(right * relative.X)
+
+		BV.Velocity = direction * FlySpeed
+		BG.CFrame = CFrame.lookAt(root.Position, root.Position + forward)
+
+		humanoid.PlatformStand = true
+	end)
+end
+
+local function StopFly()
+	Flying = false
+	if FlyLoop then FlyLoop:Disconnect() FlyLoop = nil end
+	if BV then BV:Destroy() BV = nil end
+	if BG then BG:Destroy() BG = nil end
+	if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
+end
+
+--// LOCK HEIGHT
+local function createLockForce(hrp)
+	if not hrp then return end
+	if not lockBodyPos then
+		lockBodyPos = Instance.new("BodyPosition")
+		lockBodyPos.MaxForce = Vector3.new(0, math.huge, 0)
+		lockBodyPos.P = 100000
+		lockBodyPos.D = 0
+		lockBodyPos.Parent = hrp
+	end
+end
+
+local function applyLockHeight(hrp)
+	if not hrp then return end
+	if not lockTargetY then
+		lockTargetY = hrp.Position.Y + lockHeightOffset
+		hrp.CFrame = CFrame.new(hrp.Position.X, lockTargetY, hrp.Position.Z)
+	end
+	createLockForce(hrp)
+	local finalY = lockTargetY
+	if lockHeightOffset < 0 then
+		finalY = lockTargetY - 6
+	elseif lockHeightOffset > 0 then
+		finalY = lockTargetY + 0.2
+	end
+	lockBodyPos.Position = Vector3.new(hrp.Position.X, finalY, hrp.Position.Z)
+end
+
+local function removeLockHeight()
+	if lockBodyPos then lockBodyPos:Destroy() lockBodyPos = nil end
+	lockTargetY = nil
+end
+
+RunService.Heartbeat:Connect(function()
+	if not lockHeightEnabled then
+		if lockBodyPos then removeLockHeight() end
+		return
+	end
+	local hrp = getRoot()
+	if not hrp then
+		if player.Character then setupCharacter(player.Character) end
+		return
+	end
+	applyLockHeight(hrp)
+end)
+
+--// MAIN LOOP
+RunService.RenderStepped:Connect(function(dt)
+	local hrp = getRoot()
+	if not hrp or not humanoid then return end
+
+	if jumpPowerEnabled then
+		humanoid.JumpPower = jumpPower
+	end
+
+	-- SPEED
+	if speedEnabled and not Flying then
+		local dir = humanoid.MoveDirection
+		if dir.Magnitude > 0 then
+			dir = dir.Unit
+			local final = 16 * speedMultiplier
+			hrp.CFrame = hrp.CFrame + Vector3.new(dir.X*final*0.05, 0, dir.Z*final*0.05)
+		end
+		humanoid.PlatformStand = false
+		if not infiniteJumpEnabled then
+			local state = humanoid:GetState()
+			if state ~= Enum.HumanoidStateType.Jumping
+				and state ~= Enum.HumanoidStateType.Freefall
+				and state ~= Enum.HumanoidStateType.FallingDown then
+				humanoid:ChangeState(Enum.HumanoidStateType.Running)
+			end
+		end
+	end
+
+	-- FOLLOW
+	if followTargetEnabled and not Flying then
+		if currentTarget and not currentTarget.Parent then currentTarget = nil end
+		if currentTarget then
+			local tr = currentTarget:FindFirstChild("HumanoidRootPart")
+			if tr then
+				local dist = (tr.Position - hrp.Position).Magnitude
+				if dist > followDistance then
+					local dir = (tr.Position - hrp.Position).Unit
+					hrp.CFrame = hrp.CFrame + dir * (0.6 * followSpeedMultiplier)
+				end
+				hrp.CFrame = CFrame.new(hrp.Position, tr.Position)
+			end
+		end
+	end
+end)
+
+--// ============ GUI ============
+local gui = Instance.new("ScreenGui")
+gui.Name = "KuyUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.new(0, 240, 0, 420)
+main.Position = UDim2.new(0.05, 0, 0.1, 0)
+main.BackgroundColor3 = Color3.fromRGB(0,0,0)
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true
+
+local titleLabel = Instance.new("TextLabel", main)
+titleLabel.Size = UDim2.new(1,0,0,24)
+titleLabel.BackgroundColor3 = Color3.fromRGB(20,20,20)
+titleLabel.Text = "Move Hub"
+titleLabel.TextColor3 = Color3.fromRGB(255,255,255)
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextSize = 14
+titleLabel.BorderSizePixel = 0
+
+local closeMain = Instance.new("TextButton", main)
+closeMain.Size = UDim2.new(0,24,0,24)
+closeMain.Position = UDim2.new(1,-24,0,0)
+closeMain.Text = "X"
+closeMain.BackgroundColor3 = Color3.fromRGB(0,0,0)
+closeMain.TextColor3 = Color3.fromRGB(255,80,80)
+closeMain.Font = Enum.Font.SourceSansBold
+closeMain.TextSize = 13
+closeMain.BorderSizePixel = 0
+closeMain.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+local minBtn = Instance.new("TextButton", main)
+minBtn.Size = UDim2.new(0,24,0,24)
+minBtn.Position = UDim2.new(1,-48,0,0)
+minBtn.Text = "-"
+minBtn.BackgroundColor3 = Color3.fromRGB(0,0,0)
+minBtn.TextColor3 = Color3.fromRGB(200,200,200)
+minBtn.Font = Enum.Font.SourceSansBold
+minBtn.TextSize = 14
+minBtn.BorderSizePixel = 0
+
+local content = Instance.new("Frame", main)
+content.Size = UDim2.new(1,0,1,-24)
+content.Position = UDim2.new(0,0,0,24)
+content.BackgroundTransparency = 1
+
+local open = true
+minBtn.MouseButton1Click:Connect(function()
+	open = not open
+	content.Visible = open
+	main.Size = open and UDim2.new(0,240,0,420) or UDim2.new(0,240,0,24)
+end)
+
+local scroll = Instance.new("ScrollingFrame", content)
+scroll.Size = UDim2.new(1,-6,1,-4)
+scroll.Position = UDim2.new(0,3,0,2)
+scroll.CanvasSize = UDim2.new(0,0,0,900)
+scroll.BackgroundTransparency = 1
+scroll.ScrollBarThickness = 3
+scroll.BorderSizePixel = 0
+
+local mainLayout = Instance.new("UIListLayout", scroll)
+mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+mainLayout.Padding = UDim.new(0,5)
+
+--// UI HELPERS
+local function makeHeader(parent, text)
+	local h = Instance.new("TextLabel", parent)
+	h.Size = UDim2.new(1,0,0,16)
+	h.BackgroundColor3 = Color3.fromRGB(15,15,15)
+	h.Text = text
+	h.TextColor3 = Color3.fromRGB(160,160,160)
+	h.Font = Enum.Font.SourceSansBold
+	h.TextSize = 10
+	h.BorderSizePixel = 0
+	return h
+end
+
+local function makeSmallBtn(parent, text)
+	local b = Instance.new("TextButton", parent)
+	b.Size = UDim2.new(0,72,0,26)
+	b.Text = text
+	b.BackgroundColor3 = Color3.fromRGB(15,15,15)
+	b.TextColor3 = Color3.fromRGB(220,220,220)
+	b.Font = Enum.Font.SourceSansBold
+	b.TextSize = 10
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	return b
+end
+
+local function makeBox(parent, placeholder, defaultVal)
+	local b = Instance.new("TextBox", parent)
+	b.Size = UDim2.new(1,0,0,24)
+	b.PlaceholderText = placeholder
+	b.Text = defaultVal or ""
+	b.BackgroundColor3 = Color3.fromRGB(18,18,18)
+	b.TextColor3 = Color3.fromRGB(220,220,220)
+	b.PlaceholderColor3 = Color3.fromRGB(80,80,80)
+	b.Font = Enum.Font.SourceSans
+	b.TextSize = 11
+	b.BorderSizePixel = 0
+	return b
+end
+
+local function makeFullBtn(parent, text)
+	local b = Instance.new("TextButton", parent)
+	b.Size = UDim2.new(1,0,0,28)
+	b.Text = text
+	b.BackgroundColor3 = Color3.fromRGB(15,15,15)
+	b.TextColor3 = Color3.fromRGB(220,220,220)
+	b.Font = Enum.Font.SourceSans
+	b.TextSize = 12
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	return b
+end
+
+local function makeRow(parent)
+	local f = Instance.new("Frame", parent)
+	f.Size = UDim2.new(1,0,0,26)
+	f.BackgroundTransparency = 1
+	f.BorderSizePixel = 0
+	local l = Instance.new("UIListLayout", f)
+	l.FillDirection = Enum.FillDirection.Horizontal
+	l.Padding = UDim.new(0,3)
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	return f
+end
+
+--// MOVEMENT
+makeHeader(scroll, "── MOVEMENT ──")
+
+local row1 = makeRow(scroll)
+local speedBtn = makeSmallBtn(row1, "Speed\nOFF")
+local jumpBtn  = makeSmallBtn(row1, "Inf Jump\nOFF")
+
+local row1b = makeRow(scroll)
+row1b.Size = UDim2.new(1,0,0,24)
+
+local speedValBox = makeBox(nil, "Spd x1", "")
+speedValBox.Size = UDim2.new(0,112,0,24)
+speedValBox.Parent = row1b
+
+local jumpValBox = makeBox(nil, "Jmp 50", "")
+jumpValBox.Size = UDim2.new(0,112,0,24)
+jumpValBox.Parent = row1b
+
+speedBtn.MouseButton1Click:Connect(function()
+	speedEnabled = not speedEnabled
+	speedBtn.Text = "Speed\n"..(speedEnabled and "ON" or "OFF")
+	speedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(0,35,0) or Color3.fromRGB(15,15,15)
+end)
+speedValBox.FocusLost:Connect(function()
+	local n = tonumber(speedValBox.Text)
+	if n and n > 0 then speedMultiplier = n speedValBox.Text = tostring(n)
+	else speedValBox.Text = tostring(speedMultiplier) end
+end)
+
+jumpBtn.MouseButton1Click:Connect(function()
+	infiniteJumpEnabled = not infiniteJumpEnabled
+	jumpBtn.Text = "Inf Jump\n"..(infiniteJumpEnabled and "ON" or "OFF")
+	jumpBtn.BackgroundColor3 = infiniteJumpEnabled and Color3.fromRGB(0,35,0) or Color3.fromRGB(15,15,15)
+end)
+jumpValBox.FocusLost:Connect(function()
+	local n = tonumber(jumpValBox.Text)
+	if n and n > 0 then
+		jumpPower = n
+		jumpPowerEnabled = true
+		jumpValBox.Text = tostring(n)
+	else jumpValBox.Text = tostring(jumpPower) end
+end)
+
+--// SPECIAL
+makeHeader(scroll, "── SPECIAL ──")
+
+local row2 = makeRow(scroll)
+local flyBtn  = makeSmallBtn(row2, "Fly\nOFF")
+local lockBtn = makeSmallBtn(row2, "LockY\nOFF")
+
+local row2b = makeRow(scroll)
+row2b.Size = UDim2.new(1,0,0,24)
+
+local flyValBox = makeBox(nil, "Fly spd 60", "")
+flyValBox.Size = UDim2.new(0,112,0,24)
+flyValBox.Parent = row2b
+
+local lockValBox = makeBox(nil, "Y offset 0", "")
+lockValBox.Size = UDim2.new(0,112,0,24)
+lockValBox.Parent = row2b
+
+flyBtn.MouseButton1Click:Connect(function()
+	if Flying then
+		StopFly()
+		flyBtn.Text = "Fly\nOFF"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(15,15,15)
+	else
+		StartFly()
+		flyBtn.Text = "Fly\nON"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(0,35,0)
+	end
+end)
+flyValBox.FocusLost:Connect(function()
+	local n = tonumber(flyValBox.Text)
+	if n and n > 0 then FlySpeed = n flyValBox.Text = tostring(n)
+	else flyValBox.Text = tostring(FlySpeed) end
+end)
+
+lockBtn.MouseButton1Click:Connect(function()
+	lockHeightEnabled = not lockHeightEnabled
+	lockBtn.Text = "LockY\n"..(lockHeightEnabled and "ON" or "OFF")
+	lockBtn.BackgroundColor3 = lockHeightEnabled and Color3.fromRGB(0,35,0) or Color3.fromRGB(15,15,15)
+	if lockHeightEnabled then
+		local hrp = getRoot()
+		if hrp then applyLockHeight(hrp) end
+	else
+		removeLockHeight()
+		if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
+	end
+end)
+lockValBox.FocusLost:Connect(function()
+	local n = tonumber(lockValBox.Text)
+	if n ~= nil then
+		lockHeightOffset = n
+		lockValBox.Text = tostring(n)
+		if lockHeightEnabled then
+			local hrp = getRoot()
+			if hrp then
+				lockTargetY = nil
+				removeLockHeight()
+				applyLockHeight(hrp)
+			end
+		end
+	else lockValBox.Text = tostring(lockHeightOffset) end
+end)
+
+--// NAME TAG
+makeHeader(scroll, "── NAME TAG ──")
+
+local nameTagBtn = makeFullBtn(scroll, "Show Names OFF")
+nameTagBtn.MouseButton1Click:Connect(function()
+	nameTagEnabled = not nameTagEnabled
+	nameTagBtn.Text = nameTagEnabled and "Show Names ON" or "Show Names OFF"
+	nameTagBtn.BackgroundColor3 = nameTagEnabled and Color3.fromRGB(0,35,0) or Color3.fromRGB(15,15,15)
+	updateNameTags()
+end)
+
+--// FOLLOW
+makeHeader(scroll, "── FOLLOW ──")
+
+local targetBtn = makeFullBtn(scroll, "Follow Target OFF")
+targetBtn.MouseButton1Click:Connect(function()
+	followTargetEnabled = not followTargetEnabled
+	targetBtn.Text = followTargetEnabled and "Follow Target ON" or "Follow Target OFF"
+	targetBtn.BackgroundColor3 = followTargetEnabled and Color3.fromRGB(0,35,0) or Color3.fromRGB(15,15,15)
+end)
+
+local targetLabel = Instance.new("TextLabel", scroll)
+targetLabel.Size = UDim2.new(1,0,0,20)
+targetLabel.Text = "Target: -"
+targetLabel.BackgroundColor3 = Color3.fromRGB(10,10,10)
+targetLabel.TextColor3 = Color3.fromRGB(180,255,180)
+targetLabel.Font = Enum.Font.SourceSans
+targetLabel.TextSize = 11
+targetLabel.TextTruncate = Enum.TextTruncate.AtEnd
+targetLabel.BorderSizePixel = 0
+
+local row3 = makeRow(scroll)
+row3.Size = UDim2.new(1,0,0,24)
+
+local followSpdBox = makeBox(nil, "Follow spd 1", "")
+followSpdBox.Size = UDim2.new(0,112,0,24)
+followSpdBox.Parent = row3
+followSpdBox.FocusLost:Connect(function()
+	local n = tonumber(followSpdBox.Text)
+	if n and n > 0 then followSpeedMultiplier = n followSpdBox.Text = tostring(n)
+	else followSpdBox.Text = tostring(followSpeedMultiplier) end
+end)
+
+local distBox = makeBox(nil, "Stop dist 5", "")
+distBox.Size = UDim2.new(0,112,0,24)
+distBox.Parent = row3
+distBox.FocusLost:Connect(function()
+	local n = tonumber(distBox.Text)
+	if n and n > 0 then followDistance = n distBox.Text = tostring(n)
+	else distBox.Text = tostring(followDistance) end
+end)
+
+local clearBtn = makeFullBtn(scroll, "Clear Target")
+clearBtn.BackgroundColor3 = Color3.fromRGB(50,8,8)
+clearBtn.TextColor3 = Color3.fromRGB(255,160,160)
+clearBtn.MouseButton1Click:Connect(function()
+	currentTarget = nil
+	targetLabel.Text = "Target: -"
+end)
+
+local scanToggleBtn = makeFullBtn(scroll, "Player Scanner")
+scanToggleBtn.BackgroundColor3 = Color3.fromRGB(0,18,45)
+scanToggleBtn.TextColor3 = Color3.fromRGB(130,200,255)
+scanToggleBtn.Font = Enum.Font.SourceSansBold
+
+--// ============ SCANNER MENU ============
+local scanMenu = Instance.new("Frame", gui)
+scanMenu.Size = UDim2.new(0,200,0,320)
+scanMenu.Position = UDim2.new(0.05,250,0.1,0)
+scanMenu.BackgroundColor3 = Color3.fromRGB(5,5,15)
+scanMenu.BorderSizePixel = 0
+scanMenu.Active = true
+scanMenu.Draggable = true
+scanMenu.Visible = false
+scanMenu.ClipsDescendants = true
+
+local scanHead = Instance.new("Frame", scanMenu)
+scanHead.Size = UDim2.new(1,0,0,22)
+scanHead.BackgroundColor3 = Color3.fromRGB(0,20,50)
+scanHead.BorderSizePixel = 0
+
+local scanTitle = Instance.new("TextLabel", scanHead)
+scanTitle.Size = UDim2.new(0,90,1,0)
+scanTitle.Position = UDim2.new(0,4,0,0)
+scanTitle.BackgroundTransparency = 1
+scanTitle.Text = "Player Scanner"
+scanTitle.TextColor3 = Color3.fromRGB(150,210,255)
+scanTitle.Font = Enum.Font.SourceSansBold
+scanTitle.TextSize = 12
+scanTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local filterToggleBtn = Instance.new("TextButton", scanHead)
+filterToggleBtn.Size = UDim2.new(0,40,0,18)
+filterToggleBtn.Position = UDim2.new(1,-64,0,2)
+filterToggleBtn.Text = "Filter"
+filterToggleBtn.BackgroundColor3 = Color3.fromRGB(0,40,80)
+filterToggleBtn.TextColor3 = Color3.fromRGB(150,210,255)
+filterToggleBtn.Font = Enum.Font.SourceSansBold
+filterToggleBtn.TextSize = 10
+filterToggleBtn.BorderSizePixel = 0
+filterToggleBtn.ZIndex = 4
+
+local filterOkBtn = Instance.new("TextButton", scanHead)
+filterOkBtn.Size = UDim2.new(0,20,0,18)
+filterOkBtn.Position = UDim2.new(1,-22,0,2)
+filterOkBtn.Text = "OK"
+filterOkBtn.BackgroundColor3 = Color3.fromRGB(0,60,20)
+filterOkBtn.TextColor3 = Color3.fromRGB(150,255,150)
+filterOkBtn.Font = Enum.Font.SourceSansBold
+filterOkBtn.TextSize = 10
+filterOkBtn.BorderSizePixel = 0
+
+local scanClose = Instance.new("TextButton", scanMenu)
+scanClose.Size = UDim2.new(0,22,0,22)
+scanClose.Position = UDim2.new(1,-22,0,0)
+scanClose.Text = "X"
+scanClose.BackgroundColor3 = Color3.fromRGB(0,20,50)
+scanClose.TextColor3 = Color3.fromRGB(255,100,100)
+scanClose.TextSize = 12
+scanClose.BorderSizePixel = 0
+scanClose.ZIndex = 5
+scanClose.MouseButton1Click:Connect(function() scanMenu.Visible = false end)
+
+local filterPopup = Instance.new("Frame", scanMenu)
+filterPopup.Size = UDim2.new(1,-8,0,120)
+filterPopup.Position = UDim2.new(0,4,0,22)
+filterPopup.BackgroundColor3 = Color3.fromRGB(5,15,35)
+filterPopup.BorderSizePixel = 1
+filterPopup.BorderColor3 = Color3.fromRGB(0,60,120)
+filterPopup.Visible = false
+filterPopup.ZIndex = 10
+filterPopup.ClipsDescendants = true
+
+local filterScroll = Instance.new("ScrollingFrame", filterPopup)
+filterScroll.Size = UDim2.new(1,0,1,0)
+filterScroll.BackgroundTransparency = 1
+filterScroll.ScrollBarThickness = 3
+filterScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+filterScroll.CanvasSize = UDim2.new(0,0,0,0)
+filterScroll.ZIndex = 10
+
+local filterLayout2 = Instance.new("UIListLayout", filterScroll)
+filterLayout2.SortOrder = Enum.SortOrder.LayoutOrder
+filterLayout2.Padding = UDim.new(0,3)
+
+filterToggleBtn.MouseButton1Click:Connect(function()
+	filterPopup.Visible = not filterPopup.Visible
+	if filterPopup.Visible then
+		for _, c in pairs(filterScroll:GetChildren()) do
+			if not c:IsA("UIListLayout") then c:Destroy() end
+		end
+		pendingHide = {}
+		for colorName, colorVal in pairs(lastFoundColors) do
+			local row = Instance.new("TextButton", filterScroll)
+			row.Size = UDim2.new(1,-6,0,24)
+			row.BackgroundColor3 = hiddenTeamColors[colorName]
+				and Color3.fromRGB(80,10,10) or Color3.fromRGB(10,30,60)
+			row.TextColor3 = colorVal
+			row.Font = Enum.Font.SourceSansBold
+			row.TextSize = 12
+			row.BorderSizePixel = 1
+			row.BorderColor3 = colorVal
+			row.AutoButtonColor = false
+			row.ZIndex = 11
+			row.Text = (hiddenTeamColors[colorName] and "✗ " or "✓ ") .. colorName
+			row.MouseButton1Click:Connect(function()
+				if pendingHide[colorName] then
+					pendingHide[colorName] = nil
+					row.BackgroundColor3 = hiddenTeamColors[colorName]
+						and Color3.fromRGB(80,10,10) or Color3.fromRGB(10,30,60)
+					row.Text = (hiddenTeamColors[colorName] and "✗ " or "✓ ") .. colorName
+				else
+					pendingHide[colorName] = true
+					local willHide = not hiddenTeamColors[colorName]
+					row.BackgroundColor3 = willHide
+						and Color3.fromRGB(80,10,10) or Color3.fromRGB(10,30,60)
+					row.Text = (willHide and "✗ " or "✓ ") .. colorName
+				end
+			end)
+		end
+	end
+end)
+
+local rangeBar = Instance.new("Frame", scanMenu)
+rangeBar.Size = UDim2.new(1,0,0,26)
+rangeBar.Position = UDim2.new(0,0,0,22)
+rangeBar.BackgroundColor3 = Color3.fromRGB(10,10,25)
+rangeBar.BorderSizePixel = 0
+
+local rangeLabel2 = Instance.new("TextLabel", rangeBar)
+rangeLabel2.Size = UDim2.new(0,50,1,0)
+rangeLabel2.Position = UDim2.new(0,4,0,0)
+rangeLabel2.BackgroundTransparency = 1
+rangeLabel2.Text = "Range:"
+rangeLabel2.TextColor3 = Color3.fromRGB(180,180,255)
+rangeLabel2.Font = Enum.Font.SourceSans
+rangeLabel2.TextSize = 12
+rangeLabel2.TextXAlignment = Enum.TextXAlignment.Left
+
+local rangeBox = Instance.new("TextBox", rangeBar)
+rangeBox.Size = UDim2.new(0,65,0,20)
+rangeBox.Position = UDim2.new(0,52,0,3)
+rangeBox.Text = "100"
+rangeBox.BackgroundColor3 = Color3.fromRGB(20,20,40)
+rangeBox.TextColor3 = Color3.fromRGB(255,255,255)
+rangeBox.Font = Enum.Font.SourceSans
+rangeBox.TextSize = 12
+rangeBox.BorderSizePixel = 0
+rangeBox.FocusLost:Connect(function()
+	local n = tonumber(rangeBox.Text)
+	if n and n > 0 then scanRange = n
+	else rangeBox.Text = tostring(scanRange) end
+end)
+
+local searchBar = Instance.new("Frame", scanMenu)
+searchBar.Size = UDim2.new(1,0,0,26)
+searchBar.Position = UDim2.new(0,0,0,48)
+searchBar.BackgroundColor3 = Color3.fromRGB(10,10,25)
+searchBar.BorderSizePixel = 0
+
+local searchLbl = Instance.new("TextLabel", searchBar)
+searchLbl.Size = UDim2.new(0,28,1,0)
+searchLbl.Position = UDim2.new(0,2,0,0)
+searchLbl.BackgroundTransparency = 1
+searchLbl.Text = "🔍"
+searchLbl.TextSize = 13
+searchLbl.Font = Enum.Font.SourceSans
+
+local searchBox = Instance.new("TextBox", searchBar)
+searchBox.Size = UDim2.new(1,-32,0,20)
+searchBox.Position = UDim2.new(0,28,0,3)
+searchBox.PlaceholderText = "ค้นหาชื่อ..."
+searchBox.Text = ""
+searchBox.BackgroundColor3 = Color3.fromRGB(20,20,40)
+searchBox.TextColor3 = Color3.fromRGB(255,255,255)
+searchBox.PlaceholderColor3 = Color3.fromRGB(100,100,130)
+searchBox.Font = Enum.Font.SourceSans
+searchBox.TextSize = 12
+searchBox.BorderSizePixel = 0
+searchBox.ClearTextOnFocus = false
+
+local listFrame = Instance.new("ScrollingFrame", scanMenu)
+listFrame.Size = UDim2.new(1,-4,1,-76)
+listFrame.Position = UDim2.new(0,2,0,76)
+listFrame.BackgroundTransparency = 1
+listFrame.ScrollBarThickness = 3
+listFrame.BorderSizePixel = 0
+listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+listFrame.CanvasSize = UDim2.new(0,0,0,0)
+
+local listLayout = Instance.new("UIListLayout", listFrame)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Padding = UDim.new(0,3)
+
+--// SEARCH TAGS (ชื่อในแมพ)
+local searchTags = {}
+
+local function clearSearchTags()
+	for _, tag in pairs(searchTags) do
+		if tag and tag.Parent then tag:Destroy() end
+	end
+	searchTags = {}
+end
+
+local function applySearchTags(filter)
+	clearSearchTags()
+	if filter == "" then return end
+	for _, p in pairs(Players:GetPlayers()) do
+		if p == player then continue end
+		if not p.Name:lower():find(filter, 1, true) then continue end
+		local pChar = p.Character
+		if not pChar then continue end
+		local hrp2 = pChar:FindFirstChild("HumanoidRootPart")
+		if not hrp2 then continue end
+
+		local bb = Instance.new("BillboardGui")
+		bb.Name = "KuySearchTag"
+		bb.AlwaysOnTop = true
+		bb.Size = UDim2.new(0, 110, 0, 24)
+		bb.StudsOffset = Vector3.new(0, 4.5, 0)
+		bb.Parent = hrp2
+
+		local lbl = Instance.new("TextLabel", bb)
+		lbl.Size = UDim2.new(1, 0, 1, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = "▶ "..p.Name
+		lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+		lbl.Font = Enum.Font.SourceSansBold
+		lbl.TextSize = 14
+		lbl.TextStrokeTransparency = 0.2
+		lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		table.insert(searchTags, bb)
+	end
+end
+
+local function doScan()
+	for _, c in pairs(listFrame:GetChildren()) do
+		if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
+	end
+	local hrp = getRoot()
+	if not hrp then return end
+
+	local found = {}
+	local foundColors = {}
+	local filter = nameFilter
+
+	for _, p in pairs(Players:GetPlayers()) do
+		if p == player then continue end
+		local pChar = p.Character
+		if not pChar then continue end
+		local r = pChar:FindFirstChild("HumanoidRootPart")
+		local h = pChar:FindFirstChildOfClass("Humanoid")
+		if not r or not h or h.Health <= 0 then continue end
+		local dist = (r.Position - hrp.Position).Magnitude
+		if dist <= scanRange then
+			if filter ~= "" and not p.Name:lower():find(filter, 1, true) then continue end
+			local col, colName = getTeamColor(p)
+			foundColors[colName] = col
+			if not hiddenTeamColors[colName] then
+				table.insert(found, {p=p, dist=math.floor(dist), col=col, colName=colName})
+			end
+		end
+	end
+
+	lastFoundColors = foundColors
+	table.sort(found, function(a,b) return a.dist < b.dist end)
+
+	if #found == 0 then
+		local empty = Instance.new("TextLabel", listFrame)
+		empty.Size = UDim2.new(1,0,0,24)
+		empty.Text = filter ~= "" and "ไม่พบ: "..nameFilter or "ไม่พบผู้เล่นในระยะ"
+		empty.BackgroundTransparency = 1
+		empty.TextColor3 = Color3.fromRGB(130,130,130)
+		empty.Font = Enum.Font.SourceSans
+		empty.TextSize = 12
+		return
+	end
+
+	for _, data in ipairs(found) do
+		local p = data.p
+		local col = data.col
+
+		local btn = Instance.new("TextButton", listFrame)
+		btn.Size = UDim2.new(1,-4,0,26)
+		btn.BackgroundColor3 = Color3.fromRGB(
+			math.clamp(col.R*255*0.12,4,35),
+			math.clamp(col.G*255*0.12,4,35),
+			math.clamp(col.B*255*0.12,4,35)
+		)
+		btn.BorderSizePixel = 0
+		btn.AutoButtonColor = false
+		btn.ClipsDescendants = true
+
+		local bar = Instance.new("Frame", btn)
+		bar.Size = UDim2.new(0,3,1,0)
+		bar.BackgroundColor3 = col
+		bar.BorderSizePixel = 0
+
+		local nameLbl = Instance.new("TextLabel", btn)
+		nameLbl.Size = UDim2.new(1,-54,1,0)
+		nameLbl.Position = UDim2.new(0,7,0,0)
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.Text = p.Name
+		nameLbl.TextColor3 = col
+		nameLbl.Font = Enum.Font.SourceSansBold
+		nameLbl.TextSize = 12
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+
+		local distLbl = Instance.new("TextLabel", btn)
+		distLbl.Size = UDim2.new(0,48,1,0)
+		distLbl.Position = UDim2.new(1,-50,0,0)
+		distLbl.BackgroundTransparency = 1
+		distLbl.Text = data.dist.."m"
+		distLbl.TextColor3 = Color3.fromRGB(150,150,150)
+		distLbl.Font = Enum.Font.SourceSans
+		distLbl.TextSize = 11
+		distLbl.TextXAlignment = Enum.TextXAlignment.Right
+
+		btn.MouseButton1Click:Connect(function()
+			local pChar = p.Character
+			if not pChar then return end
+			local h2 = pChar:FindFirstChildOfClass("Humanoid")
+			local r2 = pChar:FindFirstChild("HumanoidRootPart")
+			if h2 and r2 and h2.Health > 0 then
+				currentTarget = pChar
+				targetLabel.Text = "Target: "..p.Name
+				followTargetEnabled = true
+				targetBtn.Text = "Follow Target ON"
+				targetBtn.BackgroundColor3 = Color3.fromRGB(0,35,0)
+			end
+		end)
+	end
+end
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	nameFilter = searchBox.Text:lower()
+	applySearchTags(nameFilter)
+	if scanMenu.Visible then doScan() end
+end)
+
+filterOkBtn.MouseButton1Click:Connect(function()
+	for colorName, _ in pairs(pendingHide) do
+		if hiddenTeamColors[colorName] then
+			hiddenTeamColors[colorName] = nil
+		else
+			hiddenTeamColors[colorName] = true
+		end
+	end
+	pendingHide = {}
+	filterPopup.Visible = false
+	doScan()
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(1.5)
+		if scanMenu.Visible then doScan() end
+	end
+end)
+
+scanToggleBtn.MouseButton1Click:Connect(function()
+	scanMenu.Visible = not scanMenu.Visible
+	if scanMenu.Visible then doScan() end
+end)
