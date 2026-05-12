@@ -6,7 +6,19 @@
 -- ║  + หมุนรอบเป้าหมาย (Orbit) สลับซ้าย/ขวา                   ║
 -- ║  + ทะลุกำแพง (NoClip) ON/OFF                                ║
 -- ╚══════════════════════════════════════════════════════════════╝
-
+local ok, err = pcall(function()
+-- วางโค้ด SpeedMenu_v11 ทั้งหมดตรงนี้
+end)
+if not ok then
+    warn(err)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification",{
+            Title="❌ SpeedMenu Error",
+            Text=tostring(err):sub(1,80),
+            Duration=15,
+        })
+    end)
+end   
 local Svc={
     Players=game:GetService("Players"),
     Run=game:GetService("RunService"),
